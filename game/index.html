@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SOLARIS KEYS — sun-soaked open-world crime</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #1a1030; }
+  body { font-family: "Courier New", Courier, monospace; color: #fff; }
+  #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  .hud { position: fixed; z-index: 10; pointer-events: none; text-shadow: 2px 2px 0 #1a1030; }
+  /* Top-left: district + objective. */
+  #hud-top-left { top: 16px; left: 18px; }
+  #hud-district { font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #ffd978; }
+  #hud-objective { margin-top: 6px; font-size: 15px; color: #ffe9c4; max-width: 520px; }
+  /* Top-right: money + wanted stars. */
+  #hud-top-right { top: 16px; right: 18px; text-align: right; }
+  #hud-money { font-size: 28px; font-weight: bold; color: #7affc4; }
+  #hud-stars { margin-top: 4px; font-size: 26px; letter-spacing: 4px; color: #ffd978; }
+  #hud-stars.hot { color: #ff4d5e; }
+  /* Bottom-left: circular minimap. */
+  #hud-minimap { bottom: 18px; left: 18px; }
+  #minimap { width: 168px; height: 168px; border-radius: 50%; border: 3px solid #ffd978;
+    box-shadow: 0 0 0 3px #1a1030, 0 4px 18px rgba(0,0,0,.5); background: #1a1030; }
+  /* Bottom-right: speedometer. */
+  #hud-speedo { bottom: 18px; right: 18px; text-align: right; }
+  #hud-car { font-size: 15px; letter-spacing: 2px; color: #ffd978; }
+  #hud-speed-row { font-size: 52px; font-weight: bold; line-height: 1; }
+  #hud-speed-row small { font-size: 16px; color: #ffb3c4; }
+  /* Bottom-centre: health + armour bars. */
+  #hud-bars { bottom: 18px; left: 50%; transform: translateX(-50%); width: 300px; }
+  .bar-label { font-size: 12px; letter-spacing: 2px; margin: 4px 0 2px; }
+  .bar { height: 10px; background: rgba(26,16,48,.8); border: 2px solid #fff3; }
+  .bar > div { height: 100%; }
+  #hud-health-fill { background: #7affc4; width: 100%; }
+  #hud-armour-fill { background: #7ac4ff; width: 0%; }
+  /* Centre toast message. */
+  #hud-message { top: 22%; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: bold;
+    letter-spacing: 2px; color: #fff; background: rgba(26,16,48,.75); padding: 10px 22px;
+    border: 2px solid #ffd978; opacity: 0; transition: opacity .25s; white-space: nowrap; }
+  #hud-message.visible { opacity: 1; }
+  #hud-hint { bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #ffdcb0cc; white-space: nowrap; }
+  /* Title + pause overlays. */
+  .overlay { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; text-align: center;
+    background: linear-gradient(180deg, rgba(59,42,107,.72), rgba(255,126,107,.55) 60%, rgba(255,179,71,.65)); }
+  .overlay.hidden, .hidden { display: none !important; }
+  .game-title { font-size: 84px; font-weight: bold; letter-spacing: 10px; color: #ffd978;
+    text-shadow: 4px 4px 0 #7a2a5e, 8px 8px 0 rgba(26,16,48,.6); }
+  .game-subtitle { margin-top: 10px; font-size: 20px; letter-spacing: 4px; color: #fff; }
+  .menu-button { pointer-events: auto; cursor: pointer; margin-top: 36px; font-family: inherit;
+    font-size: 24px; font-weight: bold; letter-spacing: 4px; color: #1a1030; background: #ffd978;
+    border: 3px solid #1a1030; padding: 14px 44px; box-shadow: 5px 5px 0 #1a1030; }
+  .menu-button:hover { background: #fff3c4; }
+  .menu-button:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 #1a1030; }
+  .controls { margin-top: 34px; font-size: 15px; line-height: 1.9; color: #fff; text-shadow: 2px 2px 0 #1a1030; }
+  .controls b { color: #ffd978; }
+  #load-error { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); z-index: 30;
+    background: #b3122a; color: #fff; padding: 14px 24px; font-size: 16px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "./vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<canvas id="game-canvas"></canvas>
+
+<div class="hud" id="hud-top-left">
+  <div id="hud-district">MARINA DEL SOL</div>
+  <div id="hud-objective">Press ENTER or click START to play</div>
+</div>
+<div class="hud" id="hud-top-right">
+  <div id="hud-money">$1,250</div>
+  <div id="hud-stars">☆☆☆☆☆</div>
+</div>
+<div class="hud" id="hud-minimap"><canvas id="minimap" width="168" height="168"></canvas></div>
+<div class="hud" id="hud-speedo">
+  <div id="hud-car">ON FOOT</div>
+  <div id="hud-speed-row"><span id="hud-speed">0</span> <small>KM/H</small></div>
+</div>
+<div class="hud" id="hud-bars">
+  <div class="bar-label">HEALTH</div>
+  <div class="bar"><div id="hud-health-fill"></div></div>
+  <div class="bar-label">ARMOUR</div>
+  <div class="bar"><div id="hud-armour-fill"></div></div>
+</div>
+<div class="hud" id="hud-message"></div>
+<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; drag mouse to look &nbsp;·&nbsp; ESC pause</div>
+
+<div class="overlay" id="title-screen">
+  <div class="game-title">SOLARIS KEYS</div>
+  <div class="game-subtitle">A SUN-SOAKED OPEN-WORLD CRIME STORY</div>
+  <button class="menu-button" id="start-button">START</button>
+  <div class="controls">
+    <b>WASD</b> walk / drive &nbsp;&nbsp; <b>F</b> enter &amp; exit cars &nbsp;&nbsp; <b>SHIFT</b> run<br>
+    <b>Drag mouse</b> look around &nbsp;&nbsp; <b>ESC</b> pause<br>
+    Steal cars, outrun the police, and take over the Keys.
+  </div>
+</div>
+
+<div class="overlay hidden" id="pause-screen">
+  <div class="game-title" style="font-size:56px">PAUSED</div>
+  <button class="menu-button" id="resume-button">RESUME</button>
+  <button class="menu-button" id="restart-button">RESTART</button>
+</div>
+
+<div id="load-error" class="hidden"></div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
