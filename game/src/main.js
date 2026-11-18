@@ -762,7 +762,7 @@ loadTextures()
     sideJobs = new SideJobs(scene, rng, {
       onOffered(job) {
         const spot = districtNameAt(job.pickup.x, job.pickup.z);
-        hud.showMessage(job.type === 'taxi' ? `TAXI FARE WAITING — pick up at ${spot}` : `DELIVERY JOB — package waiting at ${spot}`, 4);
+        hud.showMessage(job.type === 'taxi' ? `TAXI FARE SPOTTED — pick up at ${spot}` : `DELIVERY FOUND — package at ${spot}`, 4);
       },
       onNeedCar() {
         hud.showMessage('Get in a car to pick up the fare', 2.5);

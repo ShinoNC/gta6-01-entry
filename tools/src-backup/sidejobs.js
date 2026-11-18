@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { roadLines, districtNameAt } from './city.js';
 import { buildWalkerMesh } from './pedestrians.js';
 import { buildBeacon } from './missions.js';
-const COOLDOWN = 15, FIRST = 12, PICKUP = 8, PKG_PICKUP = 4, DROP = 10, MIN_TRIP = 80, HINT_CD = 5;
+const DISCOVER = 40, AVOID = 60, PICKUP = 8, PKG_PICKUP = 4, DROP = 10, MIN_TRIP = 80, HINT_CD = 5;
 function roadside(rng) {
   const lines = roadLines(), line = lines[(rng() * lines.length) | 0];
   const along = line.from + rng() * (line.to - line.from), side = (rng() < 0.5 ? -1 : 1) * 7.6;
@@ -13,10 +13,10 @@ export class SideJobs {
     this.rng = rng;
     this.callbacks = callbacks;
     this.job = null;
-    this.timer = FIRST;
     this.clock = 0;
     this.hintAt = -99;
     this.forcedType = null;
+    this.avoid = { x: 0, z: 0 };
     this.beacon = buildBeacon(scene, 0x7affc4);
     this.passenger = buildWalkerMesh(0xffd978, 0x2a4a8a, 0xe8b07a, 0x4a2a1a, null, 1);
     this.passenger.armLeft.rotation.z = 2.4;
@@ -33,19 +33,43 @@ export class SideJobs {
     this.package.add(box, tape);
     this.package.visible = false;
     scene.add(this.package);
+    this.offerJob(true);
   }
-  offerJob() {
+  offerJob(hidden) {
     const type = this.forcedType || (this.rng() < 0.5 ? 'taxi' : 'delivery');
     this.forcedType = null;
-    const pickup = roadside(this.rng);
-    let dropoff = roadside(this.rng), guard = 0;
+    let pickup = roadside(this.rng), guard = 0;
+    while (Math.hypot(pickup.x - this.avoid.x, pickup.z - this.avoid.z) < AVOID && guard < 20) {
+      pickup = roadside(this.rng);
+      guard += 1;
+    }
+    let dropoff = roadside(this.rng);
+    guard = 0;
     while (Math.hypot(dropoff.x - pickup.x, dropoff.z - pickup.z) < MIN_TRIP && guard < 20) {
       dropoff = roadside(this.rng);
       guard += 1;
     }
     const distance = Math.hypot(dropoff.x - pickup.x, dropoff.z - pickup.z);
     const rewardMoney = type === 'taxi' ? Math.min(150, Math.round(50 + distance * 0.5)) : Math.min(200, Math.round(75 + distance * 0.6));
-    this.job = { type, stage: 'pickup', pickup, dropoff, rewardMoney, rewardRep: type === 'taxi' ? 10 : 15 };
+    this.job = { type, stage: 'pickup', pickup, dropoff, rewardMoney, rewardRep: type === 'taxi' ? 10 : 15, discovered: !hidden };
+    if (hidden) this.showPickupHidden();
+    else {
+      this.showPickup();
+      this.callbacks.onOffered(this.job);
+    }
+  }
+  showPickupHidden() {
+    const { pickup, type } = this.job;
+    if (type === 'taxi') {
+      this.passenger.group.position.set(pickup.x, 0, pickup.z);
+      this.passenger.group.visible = true;
+    } else {
+      this.package.position.set(pickup.x, 0, pickup.z);
+      this.package.visible = true;
+    }
+  }
+  discover() {
+    this.job.discovered = true;
     this.showPickup();
     this.callbacks.onOffered(this.job);
   }
@@ -80,24 +104,24 @@ export class SideJobs {
   completeJob() {
     const finished = this.job;
     this.job = null;
-    this.timer = COOLDOWN;
     this.hideAll();
     this.callbacks.onComplete(finished);
+    this.offerJob(true);
   }
   forceJob(type) {
     this.forcedType = type;
-    this.timer = 0;
     if (this.job) {
       this.job = null;
       this.hideAll();
     }
+    this.offerJob(false);
   }
   get target() {
-    if (!this.job) return null;
+    if (!this.job || !this.job.discovered) return null;
     return this.job.stage === 'pickup' ? this.job.pickup : this.job.dropoff;
   }
   objectiveLine() {
-    if (!this.job) return null;
+    if (!this.job || !this.job.discovered) return null;
     const { type, stage, pickup, dropoff, rewardMoney } = this.job;
     if (type === 'taxi') {
       return stage === 'pickup'
@@ -109,18 +133,19 @@ export class SideJobs {
       : `DELIVERY — Deliver to ${districtNameAt(dropoff.x, dropoff.z)} ($${rewardMoney})`;
   }
   statusLine() {
-    if (!this.job) return null;
+    if (!this.job || !this.job.discovered) return null;
     return this.job.type === 'taxi' ? 'SIDE JOB — TAXI FARE' : 'SIDE JOB — DELIVERY RUN';
   }
   update(dt, context) {
     this.clock += dt;
     const { focusPos, driving } = context;
-    if (!this.job) {
-      this.timer -= dt;
-      if (this.timer <= 0) this.offerJob();
+    this.avoid = focusPos;
+    if (!this.job) return;
+    const job = this.job;
+    if (!job.discovered) {
+      if (Math.hypot(focusPos.x - job.pickup.x, focusPos.z - job.pickup.z) < DISCOVER) this.discover();
       return;
     }
-    const job = this.job;
     this.beacon.pillar.material.opacity = 0.18 + 0.08 * Math.sin(this.clock * 3);
     if (this.taxiMarker.visible) {
       this.taxiMarker.rotation.y += dt * 2;
