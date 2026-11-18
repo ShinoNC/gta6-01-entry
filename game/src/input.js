@@ -1,6 +1,7 @@
 // Keyboard + mouse state. Keys are tracked by code (KeyW, KeyF, ...), and
 // `pressed` reports a key only on the frame it went down, so F enters a car
-// once instead of toggling every frame. Dragging the mouse orbits the camera.
+// once instead of toggling every frame. Dragging the mouse orbits the camera;
+// the scroll wheel cycles weapons; a quick click without a drag shoots.
 export class Input {
   constructor() {
     this.down = new Set();
@@ -13,6 +14,8 @@ export class Input {
     this.mouseDownAt = 0;
     this.mouseDownX = 0;
     this.mouseDownY = 0;
+    // Accumulated wheel notches since the last frame: +1 scrolls down.
+    this.wheelNotches = 0;
 
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
@@ -45,6 +48,13 @@ export class Input {
       this.dragDeltaX += event.movementX;
       this.dragDeltaY += event.movementY;
     });
+    window.addEventListener(
+      'wheel',
+      (event) => {
+        this.wheelNotches += event.deltaY > 0 ? 1 : -1;
+      },
+      { passive: true },
+    );
   }
 
   isDown(code) {
@@ -53,6 +63,19 @@ export class Input {
 
   pressed(code) {
     return this.justPressed.has(code);
+  }
+
+  // True when any of the given codes went down this frame.
+  pressedAny(codes) {
+    return codes.some((code) => this.justPressed.has(code));
+  }
+
+  // Weapon-cycle steps since the last frame: +1 forward, -1 back, 0 none.
+  // Consumes the accumulated wheel input.
+  consumeWheel() {
+    const steps = this.wheelNotches;
+    this.wheelNotches = 0;
+    return steps;
   }
 
   moveAxes() {

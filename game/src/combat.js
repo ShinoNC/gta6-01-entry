@@ -1,7 +1,10 @@
 // On-foot combat: fists, pistol, SMG. Hitscan shots with a tracer line, a
-// muzzle flash and impact sparks. Shooting — or hitting a pedestrian —
-// raises the wanted level through the callbacks into main. The SMG starts
-// locked (mission 3 unlocks it); ammo restocks after every mission.
+// muzzle flash and impact sparks (through the shared particle system).
+// Shooting — or hitting a pedestrian — raises the wanted level through the
+// callbacks into main. The SMG starts locked (mission 3 unlocks it); ammo
+// restocks after every mission, and green ammo crates around the city
+// restock it on foot. Sustained fire blooms the spread and kicks the
+// camera, so short bursts stay accurate and mag dumps spray.
 import * as THREE from 'three';
 
 export const WEAPON_SLOTS = [
@@ -12,8 +15,19 @@ export const WEAPON_SLOTS = [
 const RELOAD_SECONDS = 1.2;
 const TRACER_LIFE_SECONDS = 0.09;
 const MUZZLE_FLASH_SECONDS = 0.06;
-const SPARK_COUNT = 24;
-const SPARKS_PER_HIT = 8;
+const SPREAD_BASE_RADIANS = 0.004;
+const SPREAD_PER_SHOT_RADIANS = 0.012;
+const SPREAD_MAX_RADIANS = 0.09;
+const SPREAD_RECOVER_PER_SECOND = 0.12;
+const RECOIL_PER_SHOT = 0.35;
+const RECOIL_RECOVER_PER_SECOND = 3;
+const AMMO_CRATE_PICKUP_METRES = 3;
+const AMMO_CRATE_RESPAWN_SECONDS = 45;
+const AMMO_CRATE_SPOTS = [
+  { x: 26, z: 26, name: 'Marina Del Sol' },
+  { x: -78, z: -52, name: 'Palm Row' },
+  { x: 78, z: -130, name: 'Harbor Lights' },
+];
 
 function rayHit(origin, direction, range, targets) {
   let best = null;
@@ -29,16 +43,42 @@ function rayHit(origin, direction, range, targets) {
   return best;
 }
 
+function buildAmmoCrate(scene, spot) {
+  const group = new THREE.Group();
+  const box = new THREE.Mesh(
+    new THREE.BoxGeometry(0.9, 0.6, 0.9),
+    new THREE.MeshLambertMaterial({ color: 0x2a8a4a }),
+  );
+  box.position.y = 0.3;
+  const lid = new THREE.Mesh(
+    new THREE.BoxGeometry(0.95, 0.14, 0.95),
+    new THREE.MeshLambertMaterial({ color: 0x7affc4 }),
+  );
+  lid.position.y = 0.65;
+  const marker = new THREE.Mesh(
+    new THREE.OctahedronGeometry(0.35),
+    new THREE.MeshBasicMaterial({ color: 0x7affc4 }),
+  );
+  marker.position.y = 1.6;
+  group.add(box, lid, marker);
+  group.position.set(spot.x, 0, spot.z);
+  scene.add(group);
+  return { group, marker, x: spot.x, z: spot.z, name: spot.name, available: true, respawnTimer: 0 };
+}
+
 export class Combat {
-  constructor(scene, callbacks) {
+  constructor(scene, callbacks, effects) {
     this.scene = scene;
     this.callbacks = callbacks;
+    this.effects = effects;
     this.weapons = WEAPON_SLOTS.map((slot) => ({ ...slot, mag: slot.magSize, reserve: slot.reserveAmmo }));
     this.selected = 1;
     this.cooldownTimer = 0;
     this.reloading = false;
     this.reloadTimer = 0;
     this.muzzleTimer = 0;
+    this.spread = SPREAD_BASE_RADIANS;
+    this.recoil = 0;
     this.tracerIndex = 0;
     this.tracers = [];
     for (let i = 0; i < 6; i += 1) {
@@ -64,16 +104,7 @@ export class Combat {
     );
     this.muzzle.visible = false;
     scene.add(this.muzzle);
-    this.sparkPositions = new Float32Array(SPARK_COUNT * 3).fill(-50);
-    this.sparkVelocities = new Float32Array(SPARK_COUNT * 3);
-    this.sparkLife = new Float32Array(SPARK_COUNT);
-    const sparkGeometry = new THREE.BufferGeometry();
-    sparkGeometry.setAttribute('position', new THREE.BufferAttribute(this.sparkPositions, 3));
-    this.sparks = new THREE.Points(
-      sparkGeometry,
-      new THREE.PointsMaterial({ color: 0xffd978, size: 0.18, transparent: true, depthWrite: false }),
-    );
-    scene.add(this.sparks);
+    this.ammoCrates = AMMO_CRATE_SPOTS.map((spot) => buildAmmoCrate(scene, spot));
   }
 
   currentWeapon() {
@@ -86,6 +117,18 @@ export class Combat {
     this.selected = index;
     this.reloading = false;
     return 'ok';
+  }
+
+  // Step to the next unlocked weapon (scroll wheel), wrapping around.
+  cycleWeapon(step) {
+    for (let tries = 0; tries < this.weapons.length; tries += 1) {
+      this.selected = (this.selected + step + this.weapons.length) % this.weapons.length;
+      if (!this.weapons[this.selected].locked) {
+        this.reloading = false;
+        return this.currentWeapon().name;
+      }
+    }
+    return null;
   }
 
   unlockWeapon(id) {
@@ -122,19 +165,8 @@ export class Combat {
     }));
   }
 
-  burstSparks(x, y, z) {
-    let placed = 0;
-    for (let i = 0; i < SPARK_COUNT && placed < SPARKS_PER_HIT; i += 1) {
-      if (this.sparkLife[i] > 0) continue;
-      this.sparkPositions[i * 3] = x;
-      this.sparkPositions[i * 3 + 1] = y;
-      this.sparkPositions[i * 3 + 2] = z;
-      this.sparkVelocities[i * 3] = (Math.random() - 0.5) * 6;
-      this.sparkVelocities[i * 3 + 1] = Math.random() * 5;
-      this.sparkVelocities[i * 3 + 2] = (Math.random() - 0.5) * 6;
-      this.sparkLife[i] = 0.4;
-      placed += 1;
-    }
+  ammoCratesForHud() {
+    return this.ammoCrates.map((crate) => ({ x: crate.x, z: crate.z, available: crate.available }));
   }
 
   fireTracer(from, to) {
@@ -154,7 +186,10 @@ export class Combat {
   tryShoot(origin, aimYaw, targets) {
     if (this.cooldownTimer > 0 || this.reloading) return 'busy';
     const weapon = this.currentWeapon();
-    const direction = { x: -Math.sin(aimYaw), z: -Math.cos(aimYaw) };
+    // Bloom: the shot wanders inside the current spread cone, and every
+    // shot widens the cone until the shooter pauses to let it settle.
+    const aimError = (Math.random() - 0.5) * 2 * this.spread;
+    const direction = { x: -Math.sin(aimYaw + aimError), z: -Math.cos(aimYaw + aimError) };
     this.cooldownTimer = weapon.cooldownSeconds;
     if (weapon.id === 'fists') {
       const hit = rayHit(origin, direction, weapon.range, targets.filter((target) => target.kind === 'pedestrian'));
@@ -170,9 +205,13 @@ export class Combat {
       return 'empty';
     }
     weapon.mag -= 1;
+    this.spread = Math.min(SPREAD_MAX_RADIANS, this.spread + SPREAD_PER_SHOT_RADIANS);
+    this.recoil = Math.min(1, this.recoil + RECOIL_PER_SHOT);
     const muzzle = { x: origin.x + direction.x * 0.9, y: 1.4, z: origin.z + direction.z * 0.9 };
     this.muzzle.position.set(muzzle.x, muzzle.y, muzzle.z);
     this.muzzle.rotation.z = Math.random() * Math.PI;
+    const flashScale = 0.8 + Math.random() * 0.5;
+    this.muzzle.scale.set(flashScale, flashScale, 1);
     this.muzzle.visible = true;
     this.muzzleTimer = MUZZLE_FLASH_SECONDS;
     const hit = rayHit(origin, direction, weapon.range, targets);
@@ -181,7 +220,7 @@ export class Combat {
       : { x: origin.x + direction.x * weapon.range, y: 1.2, z: origin.z + direction.z * weapon.range };
     this.fireTracer(muzzle, end);
     if (hit) {
-      this.burstSparks(end.x, end.y, end.z);
+      this.effects.burstSparks(end.x, end.y, end.z);
       if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref);
       if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar(hit.ref);
     }
@@ -193,8 +232,10 @@ export class Combat {
     return 'shot';
   }
 
-  update(dt) {
+  update(dt, playerPos) {
     this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
+    this.spread = Math.max(SPREAD_BASE_RADIANS, this.spread - SPREAD_RECOVER_PER_SECOND * dt);
+    this.recoil = Math.max(0, this.recoil - RECOIL_RECOVER_PER_SECOND * dt);
     if (this.reloading) {
       this.reloadTimer -= dt;
       if (this.reloadTimer <= 0) {
@@ -215,17 +256,25 @@ export class Combat {
       tracer.line.material.opacity = Math.max(0, tracer.life / TRACER_LIFE_SECONDS) * 0.9;
       if (tracer.life <= 0) tracer.line.visible = false;
     }
-    let sparksMoved = false;
-    for (let i = 0; i < SPARK_COUNT; i += 1) {
-      if (this.sparkLife[i] <= 0) continue;
-      this.sparkLife[i] -= dt;
-      this.sparkVelocities[i * 3 + 1] -= 9 * dt;
-      this.sparkPositions[i * 3] += this.sparkVelocities[i * 3] * dt;
-      this.sparkPositions[i * 3 + 1] += this.sparkVelocities[i * 3 + 1] * dt;
-      this.sparkPositions[i * 3 + 2] += this.sparkVelocities[i * 3 + 2] * dt;
-      if (this.sparkLife[i] <= 0) this.sparkPositions[i * 3 + 1] = -50;
-      sparksMoved = true;
+    // Ammo crates: walk into one to restock, then it respawns after a wait.
+    for (const crate of this.ammoCrates) {
+      if (!crate.available) {
+        crate.respawnTimer -= dt;
+        if (crate.respawnTimer <= 0) {
+          crate.available = true;
+          crate.group.visible = true;
+        }
+        continue;
+      }
+      crate.marker.rotation.y += dt * 2;
+      crate.marker.position.y = 1.6 + Math.sin(performance.now() / 300) * 0.12;
+      if (playerPos && Math.hypot(playerPos.x - crate.x, playerPos.z - crate.z) < AMMO_CRATE_PICKUP_METRES) {
+        this.restock();
+        crate.available = false;
+        crate.respawnTimer = AMMO_CRATE_RESPAWN_SECONDS;
+        crate.group.visible = false;
+        this.callbacks.onAmmoPickup(crate.name);
+      }
     }
-    if (sparksMoved) this.sparks.geometry.attributes.position.needsUpdate = true;
   }
 }

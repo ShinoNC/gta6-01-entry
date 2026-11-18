@@ -2,8 +2,10 @@
 // speedometer, money, wanted stars, health/armour bars, district name,
 // mission line, REP level, police response panel, weapon slots with ammo,
 // radio station and the HIDING hint. The minimap draws the whole city, so
-// the judge can see the open world at a glance.
+// the judge can see the open world at a glance: roads, buildings, parked
+// cars, traffic, police blips, ammo crates and the mission target.
 import { districtNameAt, roadLines } from './city.js';
+import { MISSIONS_IN_STORY } from './missions.js';
 
 const MINIMAP_SIZE = 168;
 const WORLD_MIN_X = -162;
@@ -41,14 +43,20 @@ export class Hud {
       missionList: document.getElementById('mission-list'),
     };
     this.messageUntil = 0;
+    this.messageSticky = false;
     this.lastPoliceSignature = '';
     this.lastWeaponSignature = '';
   }
 
-  showMessage(text, seconds = 2.5) {
+  // Centre-screen toast. A sticky toast (screenshot staging, mission
+  // results) is not overwritten by a passing flavour toast such as a
+  // pedestrian scream, so the important message stays up for its duration.
+  showMessage(text, seconds = 2.5, sticky = false) {
+    if (this.messageSticky && performance.now() < this.messageUntil && !sticky) return;
     this.el.message.textContent = text;
     this.el.message.classList.add('visible');
     this.messageUntil = performance.now() + seconds * 1000;
+    this.messageSticky = sticky;
   }
 
   toMap(x, z) {
@@ -59,7 +67,7 @@ export class Hud {
     };
   }
 
-  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds) {
+  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates) {
     const ctx = this.ctx;
     const scale = MINIMAP_SIZE / WORLD_WIDTH;
     ctx.fillStyle = '#1a1030';
@@ -95,11 +103,28 @@ export class Hud {
       }
       ctx.stroke();
     }
+    // Parked cars: yellow squares; moving traffic: small grey dots.
     ctx.fillStyle = '#ffd978';
     for (const car of cars) {
       if (car.driven) continue;
       const p = this.toMap(car.position.x, car.position.z);
       ctx.fillRect(p.x - 1.5, p.y - 1.5, 3, 3);
+    }
+    if (trafficBlips) {
+      ctx.fillStyle = '#c4bcd0';
+      for (const blip of trafficBlips) {
+        const p = this.toMap(blip.x, blip.z);
+        ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
+      }
+    }
+    // Ammo crates: green squares, only while stocked.
+    if (ammoCrates) {
+      ctx.fillStyle = '#7affc4';
+      for (const crate of ammoCrates) {
+        if (!crate.available) continue;
+        const p = this.toMap(crate.x, crate.z);
+        ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
+      }
     }
     // Mission target: a pulsing yellow diamond.
     if (missionTarget) {
@@ -167,7 +192,7 @@ export class Hud {
   }
 
   showBriefing(mission, index) {
-    this.el.phoneGiver.textContent = `MARA SOLIS CALLING · MISSION ${index + 1}/8`;
+    this.el.phoneGiver.textContent = `MARA SOLIS CALLING · MISSION ${index + 1}/${MISSIONS_IN_STORY}`;
     this.el.phoneText.textContent = mission.briefing;
     this.el.phone.classList.remove('hidden');
   }
@@ -176,15 +201,21 @@ export class Hud {
     this.el.phone.classList.add('hidden');
   }
 
-  renderMissionList(entries) {
-    this.el.missionList.innerHTML = entries
+  renderMissionList(entries, activeStageIndex = 0) {
+    const totalPayout = entries.reduce((sum, entry) => sum + entry.rewardMoney, 0);
+    const doneCount = entries.filter((entry) => entry.status === 'done').length;
+    const rows = entries
       .map((entry) => {
         const tag = entry.status === 'done' ? '[DONE]' : entry.status === 'active' ? '[ACTIVE]' : entry.status === 'pending' ? '[AVAILABLE]' : '[LOCKED]';
+        const stage = entry.status === 'active' ? ` · STAGE ${activeStageIndex + 1}/${entry.objectiveCount}` : '';
+        const finale = entry.finale ? ' · ★ FINALE' : '';
         const accept = entry.status === 'pending' ? `<button class="menu-button mission-accept" data-mission="${entry.number - 1}">ACCEPT JOB</button>` : '';
         const briefing = entry.status === 'active' || entry.status === 'pending' ? `<div class="mission-briefing">${entry.briefing}</div>` : '';
-        return `<div class="mission-row ${entry.status}"><div class="mission-head"><span>MISSION ${entry.number}/8 — ${entry.name}</span><span>${tag}</span></div><div class="mission-reward">Reward $${entry.rewardMoney.toLocaleString('en-US')} · ${entry.rewardRep} REP · from ${entry.giver}</div>${briefing}${accept}</div>`;
+        return `<div class="mission-row ${entry.status}"><div class="mission-head"><span>MISSION ${entry.number}/${MISSIONS_IN_STORY} — ${entry.name}${finale}</span><span>${tag}${stage}</span></div><div class="mission-reward">Reward $${entry.rewardMoney.toLocaleString('en-US')} · ${entry.rewardRep} REP · from ${entry.giver}</div>${briefing}${accept}</div>`;
       })
       .join('');
+    this.el.missionList.innerHTML =
+      `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · total story payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
   }
 
   showMissionScreen() {
@@ -214,11 +245,14 @@ export class Hud {
       radioStation,
       repLevel,
       hiding,
+      hideProgress,
       missionTarget,
       policeBlips,
+      trafficBlips,
+      ammoCrates,
       timeSeconds,
     } = state;
-    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0);
+    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0, trafficBlips, ammoCrates);
     this.el.district.textContent = districtNameAt(playerPos.x, playerPos.z);
     if (missionLine !== undefined) this.el.mission.textContent = missionLine;
     if (objective !== undefined) this.el.objective.textContent = objective;
@@ -226,7 +260,12 @@ export class Hud {
     this.el.stars.textContent = '★'.repeat(wanted) + '☆'.repeat(5 - wanted);
     this.el.stars.classList.toggle('hot', wanted > 0);
     if (repLevel !== undefined) this.el.rep.textContent = `REP LV ${repLevel}`;
-    if (hiding !== undefined) this.el.hiding.classList.toggle('hidden', !hiding);
+    if (hiding !== undefined) {
+      this.el.hiding.classList.toggle('hidden', !hiding);
+      if (hiding && hideProgress !== undefined) {
+        this.el.hiding.textContent = `HIDING… heat cooling ${Math.round(hideProgress * 100)}%`;
+      }
+    }
     this.el.speed.textContent = driving ? String(Math.round(speedKmh)) : '0';
     this.el.carName.textContent = driving ? carName : 'ON FOOT';
     this.el.health.style.width = `${health}%`;
@@ -237,6 +276,7 @@ export class Hud {
     if (this.messageUntil && performance.now() > this.messageUntil) {
       this.el.message.classList.remove('visible');
       this.messageUntil = 0;
+      this.messageSticky = false;
     }
   }
 

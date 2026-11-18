@@ -1,10 +1,20 @@
 // The wanted system: 1-5 stars. Crimes add stars; hiding out of police
-// sight sheds one star every few seconds. The helicopter slows hiding but
-// does not stop it — a fast driver can still break away.
+// sight sheds one star at a time. Shedding gets slower the hotter you are —
+// one star cools off in seconds, five stars take a long quiet stretch — and
+// the helicopter overhead slows hiding to a crawl without stopping it, so a
+// fast driver who breaks line of sight can still get clean.
 export const MAX_WANTED_STARS = 5;
-export const SECONDS_HIDDEN_TO_LOSE_ONE_STAR = 8;
+// Seconds hidden to shed one star at 1 star; each extra star adds more.
+const HIDE_SECONDS_AT_ONE_STAR = 6;
+const HIDE_SECONDS_PER_EXTRA_STAR = 3;
+const HELICOPTER_HIDE_RATE = 0.35;
 const SHOOTING_STAR_COOLDOWN_SECONDS = 4;
 const HIT_STAR_COOLDOWN_SECONDS = 2;
+
+// How long the player must stay hidden to shed one star at this heat.
+export function hideSecondsForStars(stars) {
+  return HIDE_SECONDS_AT_ONE_STAR + HIDE_SECONDS_PER_EXTRA_STAR * Math.max(0, stars - 1);
+}
 
 export class Wanted {
   constructor() {
@@ -14,6 +24,12 @@ export class Wanted {
     this.lastShootStarAt = -99;
     this.lastHitStarAt = -99;
     this.elapsed = 0;
+  }
+
+  // 0..1 progress toward shedding the next star while hidden.
+  get hideProgress() {
+    if (this.stars === 0) return 0;
+    return Math.min(1, this.hiddenSeconds / hideSecondsForStars(this.stars));
   }
 
   // Records a crime. Returns the toast text, or '' when the crime adds no
@@ -53,8 +69,8 @@ export class Wanted {
       return;
     }
     this.hiding = true;
-    this.hiddenSeconds += dt * (helicopterWatching ? 0.5 : 1);
-    if (this.hiddenSeconds >= SECONDS_HIDDEN_TO_LOSE_ONE_STAR) {
+    this.hiddenSeconds += dt * (helicopterWatching ? HELICOPTER_HIDE_RATE : 1);
+    if (this.hiddenSeconds >= hideSecondsForStars(this.stars)) {
       this.stars -= 1;
       this.hiddenSeconds = 0;
     }

@@ -1,6 +1,8 @@
 // Police response: pursuit cars that chase and ram the player's car,
 // roadblocks at 3+ stars, and a spotlight helicopter at 3+ stars. Pursuit
 // cars route along the road grid and only cut across ground for the ram.
+// The helicopter sweeps side to side AHEAD of the player instead of
+// circling all the way around, so it stays in the chase camera's view.
 import * as THREE from 'three';
 import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
@@ -10,23 +12,35 @@ import { pick } from './random.js';
 const POLICE_UNIT_CALLSIGNS = ['IBIS-43', 'GULL-1', 'TARPON-10', 'OSPREY-7', 'PELICAN-22', 'HERON-5', 'EGRET-9'];
 const HELICOPTER_CALLSIGN = 'HELI-1';
 const POLICE_SEE_RANGE = 45;
-const PURSUIT_TOP_SPEED = 32;
-const PURSUIT_TOP_SPEED_HIGH_HEAT = 36;
-const PURSUIT_TURN_RATE = 2.4;
-const RAM_DISTANCE = 3.6;
-const RAM_BACKOFF_SECONDS = 1.2;
+// Pursuit cars match the player's top speed at 1-3 stars and beat it at
+// 4-5, so a straight road alone never shakes them — the player has to
+// break line of sight or out-drive them through turns.
+const PURSUIT_TOP_SPEED = 38;
+const PURSUIT_TOP_SPEED_HIGH_HEAT = 41;
+const PURSUIT_TURN_RATE = 2.8;
+const PURSUIT_ACCELERATION = 16;
+const RAM_DISTANCE = 4.2;
+const RAM_BACKOFF_SECONDS = 0.9;
+const RAM_SLOW_PER_SECOND = 3.0;
 const DIRECT_PURSUIT_RANGE = 22;
 const ROAD_SNAP_RANGE = 35;
 const ROADBLOCK_AHEAD_METRES = 45;
 const ROADBLOCK_REPOSITION_SECONDS = 25;
 const DESPAWN_AFTER_LOST_SECONDS = 3;
-const HELICOPTER_CIRCLE_RADIUS = 24;
-const HELICOPTER_HEIGHT = 27;
+// Helicopter: low and ahead of the player, sweeping side to side across
+// the road, so the airframe and its spotlight stay inside the chase
+// camera's view (the camera also tilts up a little while it is active).
+// 22 m ahead and 14 m up puts it in the upper middle of the frame, and
+// the 5 m sweep keeps it over the road instead of inside buildings.
+const HELICOPTER_AHEAD_METRES = 22;
+const HELICOPTER_SWEEP_METRES = 5;
+const HELICOPTER_HEIGHT = 14;
+const HELICOPTER_SWEEP_SECONDS_PER_PASS = 5;
 
 function pursuitCarsForStars(stars) {
   if (stars <= 0) return 0;
   if (stars === 1) return 1;
-  if (stars <= 3) return 2;
+  if (stars === 2) return 2;
   return 3;
 }
 
@@ -77,7 +91,7 @@ export class Police {
       light.position.set(x, 1.52, -0.2);
       car.group.add(light);
     }
-    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, redMaterial, blueMaterial };
+    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, redMaterial, blueMaterial, escortSide: 0 };
   }
 
   removeUnit(unit) {
@@ -227,7 +241,9 @@ export class Police {
     spotlight.rotation.x = -Math.PI / 2;
     spotlight.position.y = 0.08;
     this.scene.add(spotlight);
-    this.helicopter = { group, rotor, cone, spotlight, angle: 0 };
+    // sweepPhase drives the side-to-side sweep ahead of the player; it
+    // starts at the left edge so the helicopter is in frame immediately.
+    this.helicopter = { group, rotor, cone, spotlight, sweepPhase: -Math.PI / 2 };
   }
 
   removeHelicopter() {
@@ -238,6 +254,27 @@ export class Police {
 
   stageChase(playerPos, playerHeading) {
     while (this.pursuit.length < 2) this.spawnPursuitCar(playerPos, 30);
+    // One unit starts alongside the player, in direct pursuit, so the
+    // chase reads immediately: a police car in frame next to the player,
+    // closing in to ram, instead of every unit still minutes out.
+    const forwardX = Math.sin(playerHeading);
+    const forwardZ = Math.cos(playerHeading);
+    const sideX = forwardZ;
+    const sideZ = -forwardX;
+    const alongside = this.createPoliceCar(
+      playerPos.x + forwardX * 6 + sideX * 4.5,
+      playerPos.z + forwardZ * 6 + sideZ * 4.5,
+      playerHeading,
+      this.nextCallsign(),
+    );
+    alongside.mode = 'direct';
+    alongside.escortSide = 1;
+    alongside.turnCooldown = 0;
+    alongside.stuckTimer = 0;
+    alongside.lastX = alongside.car.position.x;
+    alongside.lastZ = alongside.car.position.z;
+    alongside.car.speed = 30;
+    this.pursuit.push(alongside);
     this.placeRoadblock(playerPos, playerHeading);
     if (!this.helicopter) this.buildHelicopter();
   }
@@ -313,27 +350,51 @@ export class Police {
       if (unit.mode === 'road') {
         unit.status = 'PURSUIT';
         unit.turnCooldown = Math.max(0, unit.turnCooldown - dt);
-        car.speed = Math.min(topSpeed, car.speed + 14 * dt);
+        car.speed = Math.min(topSpeed, car.speed + PURSUIT_ACCELERATION * dt);
         this.maybeTurnAtIntersection(unit, playerPos);
         unit.along += unit.direction * car.speed * dt;
         if (unit.along < unit.line.from || unit.along > unit.line.to) unit.direction *= -1;
         this.placeOnRoad(unit);
       } else {
-        const desiredHeading = Math.atan2(dx, dz);
-        const turn = Math.max(-PURSUIT_TURN_RATE * dt, Math.min(PURSUIT_TURN_RATE * dt, wrapAngle(desiredHeading - car.heading)));
-        car.heading += turn;
-        if (unit.ramCooldown > 0) {
-          unit.ramCooldown -= dt;
-          car.speed = -6;
-        } else if (driving && dist < RAM_DISTANCE) {
-          unit.status = 'RAMMING';
-          drivenCar.speed *= Math.max(0, 1 - 2.2 * dt);
-          car.speed = 4;
-          unit.ramCooldown = RAM_BACKOFF_SECONDS;
+        // Direct pursuit: steer at the player — or, for an escort unit,
+        // ride parallel in the slot beside the player, matching speed and
+        // steering only to correct lateral drift, the way a real unit
+        // pulls alongside to force a driver over.
+        if (unit.escortSide !== 0) {
+          const fx = Math.sin(playerHeading);
+          const fz = Math.cos(playerHeading);
+          const leftX = fz;
+          const leftZ = -fx;
+          const slotX = playerPos.x + fx * 3 + leftX * unit.escortSide * 4.5;
+          const slotZ = playerPos.z + fz * 3 + leftZ * unit.escortSide * 4.5;
+          const relX = slotX - car.position.x;
+          const relZ = slotZ - car.position.z;
+          const alongErr = relX * fx + relZ * fz;
+          const latErr = relX * leftX + relZ * leftZ;
+          const desiredHeading = playerHeading + Math.max(-0.7, Math.min(0.7, latErr * 0.15));
+          const turn = Math.max(-PURSUIT_TURN_RATE * dt, Math.min(PURSUIT_TURN_RATE * dt, wrapAngle(desiredHeading - car.heading)));
+          car.heading += turn;
+          const playerSpeed = drivenCar ? drivenCar.speed : 0;
+          const targetSpeed = Math.max(0, Math.min(topSpeed, playerSpeed + alongErr * 1.2));
+          car.speed += Math.max(-30 * dt, Math.min(PURSUIT_ACCELERATION * dt, targetSpeed - car.speed));
+          unit.status = 'ESCORT';
         } else {
-          unit.status = 'PURSUIT';
-          car.speed = Math.min(topSpeed, car.speed + 14 * dt);
-          if (!driving && dist < 6) car.speed = 0;
+          const desiredHeading = Math.atan2(dx, dz);
+          const turn = Math.max(-PURSUIT_TURN_RATE * dt, Math.min(PURSUIT_TURN_RATE * dt, wrapAngle(desiredHeading - car.heading)));
+          car.heading += turn;
+          if (unit.ramCooldown > 0) {
+            unit.ramCooldown -= dt;
+            car.speed = -6;
+          } else if (driving && dist < RAM_DISTANCE) {
+            unit.status = 'RAMMING';
+            drivenCar.speed *= Math.max(0, 1 - RAM_SLOW_PER_SECOND * dt);
+            car.speed = 4;
+            unit.ramCooldown = RAM_BACKOFF_SECONDS;
+          } else {
+            unit.status = 'PURSUIT';
+            car.speed = Math.min(topSpeed, car.speed + PURSUIT_ACCELERATION * dt);
+            if (!driving && dist < 6) car.speed = 0;
+          }
         }
         car.group.position.x += Math.sin(car.heading) * car.speed * dt;
         car.group.position.z += Math.cos(car.heading) * car.speed * dt;
@@ -351,11 +412,20 @@ export class Police {
 
     if (this.helicopter) {
       const heli = this.helicopter;
-      heli.angle += dt * 0.5;
+      // Sweep across the road ahead of the player: forward offset keeps the
+      // helicopter in front of the chase camera, and the side-to-side sine
+      // keeps it moving instead of hovering in one spot. The spotlight
+      // stays locked on the player, so the cone sweeps with it.
+      heli.sweepPhase += (dt / HELICOPTER_SWEEP_SECONDS_PER_PASS) * Math.PI * 2;
+      const forwardX = Math.sin(playerHeading);
+      const forwardZ = Math.cos(playerHeading);
+      const sideX = forwardZ;
+      const sideZ = -forwardX;
+      const sweep = Math.sin(heli.sweepPhase) * HELICOPTER_SWEEP_METRES;
       heli.group.position.set(
-        playerPos.x + Math.cos(heli.angle) * HELICOPTER_CIRCLE_RADIUS,
+        playerPos.x + forwardX * HELICOPTER_AHEAD_METRES + sideX * sweep,
         HELICOPTER_HEIGHT,
-        playerPos.z + Math.sin(heli.angle) * HELICOPTER_CIRCLE_RADIUS,
+        playerPos.z + forwardZ * HELICOPTER_AHEAD_METRES + sideZ * sweep,
       );
       heli.group.lookAt(playerPos.x, 0, playerPos.z);
       heli.rotor.rotation.y += dt * 28;

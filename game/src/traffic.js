@@ -1,10 +1,12 @@
 // NPC traffic: cars that drive the city roads in their own lanes, brake
 // when something blocks the road ahead, and respawn at the map edge when
 // they reach the end of a road. The look-ahead check makes them stop for
-// the player's car too.
+// the player's car too. The fleet is mixed — sedans, a pickup, a van and a
+// yellow taxi — with a different cruise speed per body style, so the road
+// reads as a real city instead of ten copies of one car.
 import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
-import { intBetween, pick } from './random.js';
+import { intBetween, pick, weightedPick } from './random.js';
 
 export const TRAFFIC_CAR_COUNT = 10;
 const TRAFFIC_MIN_SPEED = 9;
@@ -13,7 +15,19 @@ const LANE_OFFSET = 2.5;
 const LOOK_AHEAD_METRES = 9;
 const BLOCKED_LATERAL_METRES = 2.6;
 
-const TRAFFIC_PAINTS = [0xd6303e, 0x346edc, 0xe8a33d, 0x3da86b, 0x9a5fd0, 0xe8e8e8];
+const TRAFFIC_PAINTS = [0xd6303e, 0x346edc, 0xe8a33d, 0x3da86b, 0x9a5fd0, 0xe8e8e8, 0xff6b9d, 0x2ad0c4, 0xffc828];
+const TRAFFIC_BODY_STYLES = [
+  ['sedan', 6],
+  ['pickup', 2],
+  ['van', 2],
+];
+// Cruise-speed band per body style: vans lumber, taxis hurry.
+const STYLE_SPEED_BAND = {
+  sedan: [9, 15],
+  pickup: [8, 13],
+  van: [7, 11],
+  taxi: [11, 16],
+};
 
 export function laneOffsetFor(axis, direction) {
   if (axis === 'z') return direction > 0 ? -LANE_OFFSET : LANE_OFFSET;
@@ -29,33 +43,35 @@ export class Traffic {
   constructor(scene, textures, rng) {
     this.lines = roadLines();
     this.rng = rng;
+    this.textures = textures;
     this.cars = [];
     for (let i = 0; i < TRAFFIC_CAR_COUNT; i += 1) {
-      const line = pick(rng, this.lines);
-      const direction = rng() < 0.5 ? -1 : 1;
-      const paint = pick(rng, TRAFFIC_PAINTS);
-      const car = createCar(
-        scene,
-        textures,
-        'TRAFFIC',
-        paint === 0xd6303e ? textures.carRed : textures.carBlue,
-        paint,
-        0,
-        0,
-        0,
-      );
-      const npc = {
-        car,
-        line,
-        direction,
-        along: line.from + rng() * (line.to - line.from),
-        cruiseSpeed: intBetween(rng, TRAFFIC_MIN_SPEED, TRAFFIC_MAX_SPEED),
-        speed: 0,
-        stoppedTimer: 0,
-      };
-      this.placeOnRoad(npc);
-      this.cars.push(npc);
+      this.cars.push(this.buildNpc(scene, rng));
     }
+  }
+
+  // One NPC car: a random body style and paint, with a taxi (yellow body
+  // texture, fastest band) mixed in so the fleet is not all one look.
+  buildNpc(scene, rng) {
+    const line = pick(rng, this.lines);
+    const direction = rng() < 0.5 ? -1 : 1;
+    const isTaxi = rng() < 0.15;
+    const style = isTaxi ? 'sedan' : weightedPick(rng, TRAFFIC_BODY_STYLES);
+    const paint = isTaxi ? 0xffc828 : pick(rng, TRAFFIC_PAINTS);
+    const texture = isTaxi ? this.textures.carTaxi : paint === 0xd6303e || paint === 0xe8a33d ? this.textures.carRed : this.textures.carBlue;
+    const [minSpeed, maxSpeed] = STYLE_SPEED_BAND[isTaxi ? 'taxi' : style];
+    const car = createCar(scene, this.textures, isTaxi ? 'KEYS TAXI' : 'TRAFFIC', texture, paint, 0, 0, 0, style);
+    const npc = {
+      car,
+      line,
+      direction,
+      along: line.from + rng() * (line.to - line.from),
+      cruiseSpeed: intBetween(rng, minSpeed, maxSpeed),
+      speed: 0,
+      stoppedTimer: 0,
+    };
+    this.placeOnRoad(npc);
+    return npc;
   }
 
   placeOnRoad(npc) {

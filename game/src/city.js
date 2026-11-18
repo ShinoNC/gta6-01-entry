@@ -108,7 +108,7 @@ export function buildCity(scene, textures, rng) {
   const group = new THREE.Group();
   const buildingBoxes = [];
   scene.background = skyGradientTexture();
-  scene.fog = new THREE.Fog(0xff9e7e, 130, 430);
+  scene.fog = new THREE.Fog(0xff8f6b, 110, 430);
 
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(26, 24),
@@ -175,7 +175,7 @@ export function buildCity(scene, textures, rng) {
   ocean.position.set(0, -0.15, (SHORELINE_Z + OCEAN_FAR_Z) / 2);
   group.add(ocean);
 
-  const facades = [textures.facadeA, textures.facadeB, textures.facadeC];
+  const facades = [textures.facadeA, textures.facadeB, textures.facadeC, textures.facadeD];
   const roofMaterial = new THREE.MeshLambertMaterial({ map: textures.roof });
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
   for (let row = 0; row < CITY_BLOCK_ROWS; row += 1) {
@@ -244,10 +244,33 @@ export function buildCity(scene, textures, rng) {
     plantPalm(x, z, 0.8 + rng() * 0.4);
   }
 
-  const sunLight = new THREE.DirectionalLight(0xffb36b, 1.6);
-  sunLight.position.set(-120, 90, 180);
+  // Rooftop-style billboards on the beach, facing the beachfront avenue:
+  // sunset art the player sees from the road.
+  const billboardMaterial = new THREE.MeshBasicMaterial({ map: textures.billboard });
+  const billboardBack = new THREE.MeshLambertMaterial({ color: 0x241a2a });
+  for (const bx of [-52, 52]) {
+    const board = new THREE.Mesh(new THREE.BoxGeometry(14, 7, 0.4), [
+      billboardBack,
+      billboardBack,
+      billboardBack,
+      billboardBack,
+      billboardMaterial,
+      billboardBack,
+    ]);
+    board.position.set(bx, 10, 62);
+    board.rotation.y = Math.PI;
+    group.add(board);
+    const post = new THREE.Mesh(new THREE.BoxGeometry(0.6, 7, 0.6), billboardBack);
+    post.position.set(bx, 3.5, 62);
+    group.add(post);
+  }
+
+  // Golden-hour light: a warmer, stronger sun low over the ocean and a
+  // cooler sky fill, so the long shadows read sunset instead of noon.
+  const sunLight = new THREE.DirectionalLight(0xffa050, 1.9);
+  sunLight.position.set(-120, 70, 200);
   scene.add(sunLight);
-  scene.add(new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 0.9));
+  scene.add(new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 0.75));
 
   scene.add(group);
   return {

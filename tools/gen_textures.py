@@ -48,6 +48,10 @@ PALETTE = {
     "red_dark": (150, 28, 44),
     "blue": (52, 110, 220),
     "blue_dark": (30, 70, 160),
+    "taxi": (255, 200, 40),
+    "taxi_dark": (190, 140, 20),
+    "neon_pink": (255, 80, 180),
+    "neon_cyan": (80, 240, 255),
     "white": (245, 240, 230),
     "black": (24, 20, 32),
 }
@@ -268,18 +272,107 @@ def roof():
     save(im, "roof.png")
 
 
+def facade_deco():
+    """Art-deco facade: deep purple wall, vertical neon fins, lit windows."""
+    size = 64
+    im = img(size, "purple")
+    px = im.load()
+    rng = random.Random(4)
+    # Vertical shading stripes, deco-style.
+    for x in range(size):
+        shade = -12 if x % 8 < 4 else 10
+        for y in range(size):
+            r, g, b = px[x, y]
+            px[x, y] = (max(0, r + shade), max(0, g + shade), max(0, b + shade))
+    # Neon fin strips down the face.
+    for x in (14, 30, 46):
+        for y in range(4, size - 4):
+            px[x, y] = PALETTE["neon_cyan"]
+            px[x + 1, y] = PALETTE["neon_cyan"]
+    # Stepped crown along the top.
+    for x in range(size):
+        px[x, 0] = PALETTE["cream"]
+        px[x, 1] = PALETTE["cream"]
+    windows(px, size, rng, 6, 8, 4, 5, 8, 6, 6, 4, 0.5)
+    save(im, "facade-d.png")
+
+
+def billboard():
+    """A rooftop billboard: sunset gradient, sun disc, palm silhouettes and
+    the words SOLARIS KEYS in blocky neon lettering."""
+    width, height = 128, 64
+    im = Image.new("RGB", (width, height))
+    px = im.load()
+    sky = ["dusk", "purple", "pink", "coral", "orange", "cream"]
+    for y in range(height):
+        col = PALETTE[sky[min(len(sky) - 1, y * len(sky) // height)]]
+        for x in range(width):
+            px[x, y] = col
+    # Sun disc, low on the horizon.
+    import math
+
+    cx, cy, r = 96, 40, 14
+    for y in range(height):
+        for x in range(width):
+            if (x - cx) ** 2 + (y - cy) ** 2 <= r * r:
+                px[x, y] = PALETTE["glass_lit"]
+    # Palm silhouettes along the bottom.
+    for (tx, th) in ((12, 18), (30, 14), (116, 16)):
+        for y in range(height - th, height):
+            px[tx, y] = PALETTE["black"]
+        for f in range(5):
+            angle = -170 + f * 32
+            for t in range(8):
+                rad = math.radians(angle)
+                x = int(tx + math.cos(rad) * t)
+                y = int(height - th + math.sin(rad) * t * 0.5 + t * t * 0.08)
+                if 0 <= x < width and 0 <= y < height:
+                    px[x, y] = PALETTE["black"]
+    # Blocky lettering: SOLARIS over KEYS, drawn from a 3x5 pixel font.
+    font = {
+        "S": ("011", "100", "010", "001", "110"),
+        "O": ("010", "101", "101", "101", "010"),
+        "L": ("100", "100", "100", "100", "111"),
+        "A": ("010", "101", "111", "101", "101"),
+        "R": ("110", "101", "110", "101", "101"),
+        "I": ("111", "010", "010", "010", "111"),
+        "K": ("101", "101", "110", "101", "101"),
+        "E": ("111", "100", "110", "100", "111"),
+        "Y": ("101", "101", "010", "010", "010"),
+    }
+
+    def draw_word(word, x0, y0, scale, colour):
+        x = x0
+        for ch in word:
+            glyph = font[ch]
+            for row in range(5):
+                for col in range(3):
+                    if glyph[row][col] == "1":
+                        for dy in range(scale):
+                            for dx in range(scale):
+                                px[x + col * scale + dx, y0 + row * scale + dy] = PALETTE[colour]
+            x += 4 * scale
+
+    draw_word("SOLARIS", 8, 8, 2, "neon_pink")
+    draw_word("KEYS", 8, 26, 3, "neon_cyan")
+    save(im, "billboard.png")
+
+
 def main():
     facade("facade-a.png", "coral", "cream", 1, 0.45, False)
     facade("facade-b.png", "teal", "foam", 2, 0.35, True)
     facade("facade-c.png", "cream", "orange", 3, 0.55, False)
+    facade_deco()
     road()
     sidewalk()
     sand()
     palm()
     car_body("car-red.png", "red", "red_dark", 7)
     car_body("car-blue.png", "blue", "blue_dark", 8)
+    car_body("car-taxi.png", "taxi", "taxi_dark", 9)
     water()
     roof()
+    billboard()
     print("Done. Textures in", OUT)
 
 

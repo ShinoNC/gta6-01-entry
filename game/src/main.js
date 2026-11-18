@@ -19,7 +19,8 @@ import { Police } from './police.js';
 import { Missions, MISSIONS_IN_STORY } from './missions.js';
 import { Combat } from './combat.js';
 import { GameAudio } from './audio.js';
-import { saveGame, loadGame, saveSlotSummaries } from './save.js';
+import { Effects } from './effects.js';
+import { saveGame, loadGame, saveSlotSummaries, latestSaveSlot } from './save.js';
 
 const SPAWN_X = 0;
 const SPAWN_Z = 0;
@@ -27,7 +28,7 @@ const START_MONEY = 1250;
 const ENTER_CAR_RANGE = 5;
 const SHOT_DRIVE_SECONDS = 3.2;
 const SHOT_CHASE_SECONDS = 4;
-const SHOT_FOOT_SECONDS = 1.2;
+const SHOT_FOOT_SECONDS = 2;
 const SHOT_MISSION_SECONDS = 0.6;
 const REP_PER_LEVEL = 200;
 const AUTOSAVE_SLOT = 1;
@@ -63,21 +64,26 @@ let police;
 let missions;
 let combat;
 let audio;
+let effects;
 let drivenCar = null;
 let money = START_MONEY;
 let rep = 0;
 let health = 100;
 let armour = 0;
+let soundOn = true;
+let musicOn = true;
 let titleOrbitAngle = 0;
 let shotTimer = 0;
 let shotReady = false;
 let missionScreenOpen = false;
+let optionsScreenOpen = false;
 let phonePanelVisible = false;
 let gunshotAt = null;
 let freeRoamObjective = 'Explore Solaris Keys — press F near a car to drive it';
 
 const titleScreen = document.getElementById('title-screen');
 const pauseScreen = document.getElementById('pause-screen');
+const optionsScreen = document.getElementById('options-screen');
 
 function repLevel() {
   return 1 + Math.floor(rep / REP_PER_LEVEL);
@@ -104,8 +110,11 @@ function applySave(data) {
 
 function startGame() {
   state = 'play';
+  document.body.classList.remove('on-title');
   titleScreen.classList.add('hidden');
   pauseScreen.classList.add('hidden');
+  optionsScreen.classList.add('hidden');
+  optionsScreenOpen = false;
   audio.unlock();
   hud.setObjective(freeRoamObjective);
 }
@@ -119,8 +128,27 @@ function togglePause() {
   }
 }
 
+function openOptions() {
+  titleScreen.classList.add('hidden');
+  optionsScreen.classList.remove('hidden');
+  optionsScreenOpen = true;
+  refreshOptionsLabels();
+}
+
+function closeOptions() {
+  optionsScreen.classList.add('hidden');
+  optionsScreenOpen = false;
+  titleScreen.classList.remove('hidden');
+}
+
+function refreshOptionsLabels() {
+  document.getElementById('sound-toggle').textContent = `SOUND: ${soundOn ? 'ON' : 'OFF'}`;
+  document.getElementById('music-toggle').textContent = `MUSIC: ${musicOn ? 'ON' : 'OFF'}`;
+  document.getElementById('radio-option').textContent = `RADIO: ${audio.radioStationName()}`;
+}
+
 function openMissionScreen() {
-  hud.renderMissionList(missions.statusList());
+  hud.renderMissionList(missions.statusList(), missions.stageIndex);
   hud.showMissionScreen();
   missionScreenOpen = true;
 }
@@ -141,8 +169,25 @@ function acceptBriefing() {
 document.getElementById('start-button').addEventListener('click', startGame);
 document.getElementById('resume-button').addEventListener('click', startGame);
 document.getElementById('restart-button').addEventListener('click', () => window.location.reload());
+document.getElementById('options-button').addEventListener('click', openOptions);
+document.getElementById('options-back').addEventListener('click', closeOptions);
+document.getElementById('sound-toggle').addEventListener('click', () => {
+  soundOn = !soundOn;
+  audio.setSoundEnabled(soundOn);
+  refreshOptionsLabels();
+});
+document.getElementById('music-toggle').addEventListener('click', () => {
+  musicOn = !musicOn;
+  audio.setMusicEnabled(musicOn);
+  refreshOptionsLabels();
+});
+document.getElementById('radio-option').addEventListener('click', () => {
+  audio.nextStation();
+  refreshOptionsLabels();
+});
 document.getElementById('continue-button').addEventListener('click', () => {
-  const data = loadGame(AUTOSAVE_SLOT);
+  const slot = latestSaveSlot() || AUTOSAVE_SLOT;
+  const data = loadGame(slot);
   if (data) applySave(data);
   startGame();
 });
@@ -234,42 +279,51 @@ function combatTargets() {
 }
 
 // Screenshot scenes: 'core' drives up the main avenue; 'chase' stages
-// mission 6 mid-pursuit at 3 stars; 'foot' is on foot downtown with a
-// crowd; 'mission' opens the story job list.
+// mission 6 mid-pursuit at 3 stars in a stolen Sunset Coupe, so the cover
+// proves stealing, the wanted level, the police response and the helicopter
+// in one frame; 'foot' is on foot downtown with a crowd; 'mission' opens
+// the story job list with three jobs done and mission 4 active.
 function stageShot() {
   if (shotName === 'core') {
     startGame();
     enterCar(cars[0]);
-    hud.showMessage('SOLARIS KEYS — free roam', 300);
+    hud.showMessage('SOLARIS KEYS — free roam', 300, true);
   } else if (shotName === 'chase') {
     startGame();
-    const car = cars[0];
+    const car = cars[2];
     car.group.position.set(0, 0, 8);
     car.heading = Math.PI;
     car.group.rotation.y = Math.PI;
     enterCar(car);
     missions.forceStart(5);
     police.stageChase(car.position, car.heading);
-    hud.showMessage('THE GETAWAY — lose the heat', 300);
+    hud.showMessage('VEHICLE STOLEN: SUNSET COUPE — THE GETAWAY', 300, true);
   } else if (shotName === 'foot') {
     startGame();
-    player.group.position.set(-26, 0, -52);
+    // At the Palm Row intersection, facing north up the avenue: the camera
+    // looks down a long street of buildings, palms and traffic. The
+    // fixer's first call is held back so the phone panel does not cover
+    // the street in the shot.
+    player.group.position.set(-52, 0, -52);
     player.heading = Math.PI;
     player.group.rotation.y = Math.PI;
-    pedestrians.gatherNear(-26, -52, 8);
-    hud.showMessage('PALM ROW — on foot', 300);
+    pedestrians.gatherNear(-52, -52, 8);
+    missions.snoozeBriefing(30);
+    hud.showMessage('PALM ROW — on foot', 300, true);
   } else if (shotName === 'mission') {
     startGame();
-    missions.forceStart(0);
+    missions.setCompleted(3);
+    missions.forceStart(3);
     openMissionScreen();
   }
 }
 
 function update(dt) {
-  if (input.pressed('Enter') && state === 'title') startGame();
+  if (input.pressed('Enter') && state === 'title' && !optionsScreenOpen) startGame();
   if (input.pressed('Enter') && phonePanelVisible && state === 'play') acceptBriefing();
   if (input.pressed('Escape')) {
-    if (missionScreenOpen) closeMissionScreen();
+    if (optionsScreenOpen) closeOptions();
+    else if (missionScreenOpen) closeMissionScreen();
     else if (state === 'play' || state === 'pause') togglePause();
   }
   if (state === 'title') {
@@ -289,11 +343,19 @@ function update(dt) {
   if (input.pressed('KeyR')) {
     hud.showMessage(`RADIO — ${audio.nextStation()}`, 2);
   }
+  if (input.pressed('KeyH') && drivenCar) {
+    audio.horn();
+  }
   for (const [index, code] of ['Digit1', 'Digit2', 'Digit3'].entries()) {
     if (input.pressed(code)) {
       const result = combat.selectWeapon(index);
       if (result === 'locked') hud.showMessage('SMG locked — complete MISSION 3 to unlock it');
     }
+  }
+  const wheelSteps = input.consumeWheel();
+  if (wheelSteps !== 0) {
+    const weaponName = combat.cycleWeapon(wheelSteps > 0 ? 1 : -1);
+    if (weaponName) hud.showMessage(`WEAPON — ${weaponName}`, 1.2);
   }
 
   if (input.pressed('KeyF')) {
@@ -311,12 +373,26 @@ function update(dt) {
     : input;
   if (drivenCar) {
     drivenCar.update(dt, drivingInput, city);
-    chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input);
+    chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input, combat.recoil, police.helicopter ? 2 : 0);
+    // Particles: hard steering at speed throws skid smoke from the rear
+    // wheels, and a fresh collision flashes sparks at the nose.
+    if (drivenCar.skidding) {
+      const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 1.4;
+      const backZ = drivenCar.position.z - Math.cos(drivenCar.heading) * 1.4;
+      effects.puffSmoke(backX, 0.4, backZ);
+    }
+    if (drivenCar.impact > 0.7) {
+      const noseX = drivenCar.position.x + Math.sin(drivenCar.heading) * 2.1;
+      const noseZ = drivenCar.position.z + Math.cos(drivenCar.heading) * 2.1;
+      effects.burstSparks(noseX, 0.8, noseZ, 6);
+      drivenCar.impact = 0.5;
+    }
   } else {
     player.update(dt, input, chaseCamera.yaw, city);
-    chaseCamera.update(dt, player.position, player.heading, false, input);
+    chaseCamera.update(dt, player.position, player.heading, false, input, combat.recoil, police.helicopter ? 2 : 0);
   }
   city.update(dt);
+  effects.update(dt);
 
   if (!drivenCar && (input.pressed('Space') || input.tap)) {
     player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
@@ -325,7 +401,7 @@ function update(dt) {
     if (result === 'empty') hud.showMessage('NO AMMO — finish a mission to restock');
     else if (result === 'reloading') hud.showMessage('RELOADING…');
   }
-  combat.update(dt);
+  combat.update(dt, player.position);
 
   const obstacles = [];
   if (drivenCar) obstacles.push({ x: drivenCar.position.x, z: drivenCar.position.z });
@@ -399,11 +475,14 @@ function update(dt) {
     objective: missions.nextObjectiveLine() || freeRoamObjective,
     policeUnits: police.units(focus.position),
     weapons: combat.ammoForHud(),
-    radioStation: audio.radioStationName(),
+    radioStation: audio.nowPlaying(),
     repLevel: repLevel(),
     hiding: wanted.hiding,
+    hideProgress: wanted.hideProgress,
     missionTarget: missions.target,
     policeBlips: police.allCarPositions(),
+    trafficBlips: traffic.cars.map((npc) => ({ x: npc.car.position.x, z: npc.car.position.z })),
+    ammoCrates: combat.ammoCratesForHud(),
     timeSeconds: performance.now() / 1000,
   });
 
@@ -455,11 +534,13 @@ loadTextures()
         money += mission.rewardMoney;
         rep += mission.rewardRep;
         combat.restock();
-        if (mission.rewardWeapon) {
+        if (mission.finale) {
+          hud.showMessage(`KING OF THE KEYS — $${mission.rewardMoney.toLocaleString('en-US')} · THE KEYS ARE YOURS, ROOK`, 5, true);
+        } else if (mission.rewardWeapon) {
           combat.unlockWeapon(mission.rewardWeapon);
-          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + SMG UNLOCKED`, 4);
+          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + SMG UNLOCKED`, 4, true);
         } else {
-          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP`, 4);
+          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP`, 4, true);
         }
         audio.chime();
         saveGame(AUTOSAVE_SLOT, snapshotSave());
@@ -468,6 +549,7 @@ loadTextures()
         }
       },
     });
+    effects = new Effects(scene);
     combat = new Combat(scene, {
       onShot() {
         audio.gunshot();
@@ -484,16 +566,21 @@ loadTextures()
       onHitCar() {
         // Sparks already show the hit; no extra toast.
       },
-    });
+      onAmmoPickup(district) {
+        hud.showMessage(`AMMO RESTOCKED — ${district} crate`, 2.5);
+        audio.click();
+      },
+    }, effects);
     audio = new GameAudio();
     chaseCamera = new ChaseCamera(camera);
     hud = new Hud(city);
-    hud.setObjective('Press ENTER or click START to play');
-    const saved = saveSlotSummaries()[0];
-    if (saved && !saved.empty) {
+    hud.setObjective('Press ENTER or click NEW GAME to play');
+    const latestSlot = latestSaveSlot();
+    if (latestSlot) {
+      const saved = saveSlotSummaries()[latestSlot - 1];
       document.getElementById('continue-button').classList.remove('hidden');
       document.getElementById('continue-summary').textContent =
-        `Saved game: $${saved.money.toLocaleString('en-US')} · ${saved.missionsDone}/${MISSIONS_IN_STORY} missions done`;
+        `Saved game (slot ${latestSlot}): $${saved.money.toLocaleString('en-US')} · ${saved.missionsDone}/${MISSIONS_IN_STORY} missions done`;
     }
     stageShot();
     window.__game = {
@@ -524,10 +611,19 @@ loadTextures()
       missions,
       combat,
       audio,
+      effects,
       hud,
       save: { saveGame, loadGame },
       snapshotSave,
       applySave,
+      // Where the helicopter sits on screen (-1..1, 0 = centre), or null
+      // when there is no helicopter: the verify script checks it is in
+      // frame during the chase shot.
+      heliOnScreen() {
+        if (!police.helicopter) return null;
+        const projected = police.helicopter.group.position.clone().project(camera);
+        return { x: projected.x, y: projected.y, behind: projected.z > 1 };
+      },
     };
     if (shotName === 'title') window.__shotReady = true;
     loop();

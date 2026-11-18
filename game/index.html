@@ -10,6 +10,9 @@
   body { font-family: "Courier New", Courier, monospace; color: #fff; }
   #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   .hud { position: fixed; z-index: 10; pointer-events: none; text-shadow: 2px 2px 0 #1a1030; }
+  /* The HUD stays hidden on the title screen so it does not bleed through
+     the translucent overlay over the city. */
+  body.on-title .hud { display: none; }
   #hud-top-left { top: 16px; left: 18px; }
   #hud-district { font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #ffd978; }
   #hud-mission { margin-top: 4px; font-size: 16px; font-weight: bold; letter-spacing: 2px; color: #7affc4; }
@@ -49,7 +52,7 @@
   .bar > div { height: 100%; }
   #hud-health-fill { background: #7affc4; width: 100%; }
   #hud-armour-fill { background: #7ac4ff; width: 0%; }
-  #hud-message { top: 22%; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: bold;
+  #hud-message { top: 33%; left: 50%; transform: translateX(-50%); font-size: 22px; font-weight: bold;
     letter-spacing: 2px; color: #fff; background: rgba(26,16,48,.75); padding: 10px 22px;
     border: 2px solid #ffd978; opacity: 0; transition: opacity .25s; white-space: nowrap; }
   #hud-message.visible { opacity: 1; }
@@ -63,18 +66,38 @@
   .phone-button { cursor: pointer; font-family: inherit; font-size: 15px; font-weight: bold; letter-spacing: 2px;
     color: #1a1030; background: #ffd978; border: 2px solid #1a1030; padding: 8px 20px; }
   .phone-button.later { background: #3a3348; color: #ffdcb0; border-color: #ffdcb0; }
-  /* Mission list screen: compact rows so all 8 jobs fit at 720p, with an
-     opaque backdrop so the HUD behind does not bleed through. */
-  #mission-screen { justify-content: flex-start; padding-top: 28px; overflow-y: auto;
-    background: linear-gradient(180deg, rgba(59,42,107,.94), rgba(255,126,107,.88) 60%, rgba(255,179,71,.90)); }
-  #mission-list { width: 720px; max-width: 92vw; margin-top: 14px; text-align: left; }
-  .mission-row { background: rgba(26,16,48,.88); border: 2px solid #fff3; padding: 8px 16px; margin-bottom: 8px; }
+  /* Mission list screen: header + scrolling list + a footer that pins the
+     CLOSE button to the bottom of the viewport, so it is never below the
+     fold at 720p no matter how many jobs the list holds. */
+  #mission-screen { justify-content: flex-start; padding-top: 14px; overflow: hidden;
+    background: linear-gradient(180deg, rgba(59,42,107,1), rgba(255,126,107,1) 60%, rgba(255,179,71,1)); }
+  #mission-header { display: flex; gap: 18px; align-items: center; flex: 0 0 auto; }
+  .mission-subtitle { margin-top: 4px; font-size: 15px; letter-spacing: 2px; color: #ffe9c4; }
+  #mission-list { flex: 1 1 auto; min-height: 0; overflow-y: auto; width: 720px; max-width: 92vw;
+    margin-top: 10px; padding-bottom: 8px; text-align: left; }
+  #mission-footer { flex: 0 0 auto; padding: 8px 0 12px; }
+  #mission-close-button { margin-top: 0; }
+  .mission-summary { background: rgba(26,16,48,.88); border: 2px solid #ffd978; padding: 6px;
+    margin-bottom: 8px; text-align: center; font-size: 15px; font-weight: bold; letter-spacing: 2px; color: #ffd978; }
+  .mission-row { background: rgba(26,16,48,.88); border: 2px solid #fff3; padding: 5px 14px; margin-bottom: 6px; }
   .mission-row.active { border-color: #7affc4; }
   .mission-row.pending { border-color: #ffd978; }
-  .mission-head { display: flex; justify-content: space-between; font-size: 17px; font-weight: bold; letter-spacing: 1px; }
-  .mission-reward { margin-top: 5px; font-size: 14px; color: #7affc4; }
-  .mission-briefing { margin-top: 8px; font-size: 14px; line-height: 1.5; color: #ffe9c4; }
+  .mission-head { display: flex; justify-content: space-between; font-size: 16px; font-weight: bold; letter-spacing: 1px; }
+  .mission-reward { margin-top: 3px; font-size: 14px; color: #7affc4; }
+  .mission-briefing { margin-top: 6px; font-size: 14px; line-height: 1.4; color: #ffe9c4; }
   .mission-accept { margin-top: 10px; font-size: 15px; padding: 8px 22px; }
+  /* Pixel portrait of the fixer, Mara Solis (SVG symbol, reused in the
+     phone panel and the mission screen). */
+  .portrait { width: 44px; height: 44px; border: 2px solid #ffd978; flex: 0 0 auto;
+    image-rendering: pixelated; background: #3b2a6b; }
+  .portrait-large { width: 64px; height: 64px; }
+  .phone-head { display: flex; gap: 12px; align-items: center; }
+  /* Title skyline: a pixel-art silhouette strip pinned to the bottom of
+     the title screen, behind the menu. */
+  #title-skyline { position: absolute; bottom: 0; left: 0; width: 100%; height: 170px;
+    pointer-events: none; z-index: 0; }
+  #title-screen > *:not(#title-skyline) { position: relative; z-index: 1; }
+  .menu-button.compact { margin-top: 14px; }
   .overlay { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column;
     align-items: center; justify-content: center; text-align: center;
     background: linear-gradient(180deg, rgba(59,42,107,.72), rgba(255,126,107,.55) 60%, rgba(255,179,71,.65)); }
@@ -96,8 +119,34 @@
 { "imports": { "three": "./vendor/three.module.min.js" } }
 </script>
 </head>
-<body>
+<body class="on-title">
 <canvas id="game-canvas"></canvas>
+
+<!-- Pixel portrait of Mara Solis, the fixer: chunky 32x32 grid, reused by
+     the phone panel and the mission screen via <use>. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <defs>
+    <symbol id="mara-portrait" viewBox="0 0 32 32">
+      <rect width="32" height="32" fill="#3b2a6b"/>
+      <rect x="6" y="2" width="20" height="10" fill="#241a2a"/>
+      <rect x="6" y="8" width="2" height="12" fill="#241a2a"/>
+      <rect x="24" y="8" width="2" height="12" fill="#241a2a"/>
+      <rect x="8" y="8" width="16" height="14" fill="#e8b07a"/>
+      <rect x="8" y="8" width="16" height="3" fill="#241a2a"/>
+      <rect x="8" y="12" width="16" height="4" fill="#1a1030"/>
+      <rect x="10" y="13" width="3" height="1" fill="#7ac4ff"/>
+      <rect x="19" y="13" width="3" height="1" fill="#7ac4ff"/>
+      <rect x="15" y="16" width="2" height="2" fill="#c98a5a"/>
+      <rect x="12" y="19" width="8" height="1" fill="#7a2a3a"/>
+      <rect x="6" y="16" width="1" height="2" fill="#ffd978"/>
+      <rect x="14" y="22" width="4" height="2" fill="#c98a5a"/>
+      <rect x="4" y="24" width="24" height="8" fill="#17789a"/>
+      <rect x="14" y="24" width="4" height="8" fill="#f2e2b0"/>
+      <rect x="12" y="24" width="2" height="4" fill="#ffd978"/>
+      <rect x="18" y="24" width="2" height="4" fill="#ffd978"/>
+    </symbol>
+  </defs>
+</svg>
 
 <div class="hud" id="hud-top-left">
   <div id="hud-district">MARINA DEL SOL</div>
@@ -126,27 +175,65 @@
 </div>
 <div class="hud" id="hud-message"></div>
 <div class="hud hidden" id="phone-panel">
-  <div id="phone-giver">INCOMING CALL — MARA SOLIS</div>
+  <div class="phone-head">
+    <svg class="portrait"><use href="#mara-portrait"/></svg>
+    <div id="phone-giver">INCOMING CALL — MARA SOLIS</div>
+  </div>
   <div id="phone-text"></div>
   <div class="phone-buttons">
     <button class="phone-button" id="phone-accept">ACCEPT JOB</button>
     <button class="phone-button later" id="phone-later">LATER</button>
   </div>
 </div>
-<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-3 weapons &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
+<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-3 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
 
 <div class="overlay" id="title-screen">
+  <svg id="title-skyline" viewBox="0 0 1280 170" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
+    <circle cx="1020" cy="128" r="58" fill="#ffd98a" opacity="0.9"/>
+    <rect x="0" y="96" width="90" height="74" fill="#2a1a3a"/>
+    <rect x="100" y="70" width="70" height="100" fill="#3b2a6b"/>
+    <rect x="180" y="110" width="110" height="60" fill="#2a1a3a"/>
+    <rect x="300" y="52" width="80" height="118" fill="#3b2a6b"/>
+    <rect x="390" y="90" width="100" height="80" fill="#2a1a3a"/>
+    <rect x="500" y="66" width="70" height="104" fill="#3b2a6b"/>
+    <rect x="580" y="104" width="120" height="66" fill="#2a1a3a"/>
+    <rect x="710" y="44" width="84" height="126" fill="#3b2a6b"/>
+    <rect x="804" y="92" width="100" height="78" fill="#2a1a3a"/>
+    <rect x="914" y="64" width="76" height="106" fill="#3b2a6b"/>
+    <rect x="1100" y="100" width="90" height="70" fill="#2a1a3a"/>
+    <rect x="1200" y="76" width="80" height="94" fill="#3b2a6b"/>
+    <g fill="#ffd978">
+      <rect x="112" y="82" width="8" height="8"/><rect x="132" y="98" width="8" height="8"/><rect x="112" y="118" width="8" height="8"/>
+      <rect x="312" y="64" width="8" height="8"/><rect x="336" y="84" width="8" height="8"/><rect x="312" y="104" width="8" height="8"/>
+      <rect x="722" y="56" width="8" height="8"/><rect x="748" y="76" width="8" height="8"/><rect x="722" y="96" width="8" height="8"/>
+      <rect x="926" y="76" width="8" height="8"/><rect x="948" y="96" width="8" height="8"/><rect x="926" y="116" width="8" height="8"/>
+    </g>
+    <g stroke="#1a1030" stroke-width="5" fill="none">
+      <path d="M48 170 L48 128 M48 128 L30 112 M48 128 L66 112 M48 128 L48 106"/>
+      <path d="M640 170 L640 132 M640 132 L622 116 M640 132 L658 116 M640 132 L640 110"/>
+      <path d="M1150 170 L1150 130 M1150 130 L1132 114 M1150 130 L1168 114 M1150 130 L1150 108"/>
+    </g>
+  </svg>
   <div class="game-title">SOLARIS KEYS</div>
   <div class="game-subtitle">A SUN-SOAKED OPEN-WORLD CRIME STORY</div>
-  <button class="menu-button" id="start-button">START</button>
+  <button class="menu-button" id="start-button">NEW GAME</button>
   <button class="menu-button hidden" id="continue-button">CONTINUE</button>
+  <button class="menu-button" id="options-button">OPTIONS</button>
   <div class="controls" id="continue-summary"></div>
   <div class="controls">
     <b>WASD</b> walk / drive &nbsp;&nbsp; <b>F</b> enter &amp; exit cars &nbsp;&nbsp; <b>SHIFT</b> run<br>
-    <b>SPACE / click</b> shoot &nbsp;&nbsp; <b>1-3</b> weapons &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions<br>
+    <b>SPACE / click</b> shoot &nbsp;&nbsp; <b>1-3 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions<br>
     <b>Drag mouse</b> look around &nbsp;&nbsp; <b>ESC</b> pause<br>
     Steal cars, outrun the police, and take over the Keys.
   </div>
+</div>
+
+<div class="overlay hidden" id="options-screen">
+  <div class="game-title" style="font-size:44px">OPTIONS</div>
+  <button class="menu-button compact" id="sound-toggle">SOUND: ON</button>
+  <button class="menu-button compact" id="music-toggle">MUSIC: ON</button>
+  <button class="menu-button compact" id="radio-option">RADIO: WAVE 88.1 · Neon Drive</button>
+  <button class="menu-button compact" id="options-back">BACK</button>
 </div>
 
 <div class="overlay hidden" id="pause-screen">
@@ -158,9 +245,15 @@
 </div>
 
 <div class="overlay hidden" id="mission-screen">
-  <div class="game-title" style="font-size:44px">STORY JOBS — MARA SOLIS</div>
+  <div id="mission-header">
+    <svg class="portrait portrait-large"><use href="#mara-portrait"/></svg>
+    <div>
+      <div class="game-title" style="font-size:38px">STORY JOBS — MARA SOLIS</div>
+      <div class="mission-subtitle">8 jobs · the fixer calls, you drive · green crates restock ammo</div>
+    </div>
+  </div>
   <div id="mission-list"></div>
-  <button class="menu-button" id="mission-close-button">CLOSE (M)</button>
+  <div id="mission-footer"><button class="menu-button" id="mission-close-button">CLOSE (M)</button></div>
 </div>
 
 <div id="load-error" class="hidden"></div>

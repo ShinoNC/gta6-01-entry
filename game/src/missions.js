@@ -1,8 +1,10 @@
 // The story: 8 jobs from fixer Mara Solis for Rook, a driver new to
 // Solaris Keys. Every mission is waypoint-based — drive to the beacon, wait
 // out a pickup, lose the heat — with generous or no timers. Completing a
-// job pays cash and REP; one job unlocks the SMG. A yellow light pillar
-// marks the current target in 3D.
+// job pays cash and REP; one job unlocks the SMG. Rewards rise through the
+// chain so the finale pays the most, and the finale ends with the whole
+// crew on the beach at sunset. A yellow light pillar marks the current
+// target in 3D.
 import * as THREE from 'three';
 
 export const MISSIONS_IN_STORY = 8;
@@ -14,8 +16,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'Rook. Mara Solis. Word is you can drive. Prove it — pick up my client at Marina Del Sol. Do not keep them waiting.',
-    rewardMoney: 400,
-    rewardRep: 50,
+    rewardMoney: 500,
+    rewardRep: 60,
     objectives: [{ kind: 'driveTo', x: 52, z: 26, label: 'Drive to the Marina Del Sol pickup' }],
   },
   {
@@ -23,8 +25,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'Juno Reyes needs a lift off Coral Strand, fast. She is a wheelwoman — treat her car like it is your own, because soon it will be.',
-    rewardMoney: 600,
-    rewardRep: 80,
+    rewardMoney: 750,
+    rewardRep: 90,
     objectives: [
       { kind: 'waitAt', x: -52, z: 52, seconds: 2, label: 'Pick up Juno Reyes on Coral Strand' },
       { kind: 'driveTo', x: 104, z: 52, label: 'Drop Juno at Sunset Bluff' },
@@ -35,8 +37,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'The drop is blown — the Keys police are on you the second you move. Shake them, then bring the package to Old Port. I left an SMG in the glovebox for the trouble.',
-    rewardMoney: 800,
-    rewardRep: 100,
+    rewardMoney: 1000,
+    rewardRep: 120,
     rewardWeapon: 'SMG',
     scriptedHeat: 2,
     objectives: [
@@ -49,8 +51,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'A Sunset Coupe is parked in Palm Row with the keys in it. I did not say steal it. I said it needs a new garage in Old Port.',
-    rewardMoney: 1000,
-    rewardRep: 120,
+    rewardMoney: 1250,
+    rewardRep: 140,
     objectives: [
       { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe in Palm Row' },
       { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to the Old Port garage' },
@@ -61,8 +63,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then come straight back to Marina Del Sol.',
-    rewardMoney: 900,
-    rewardRep: 110,
+    rewardMoney: 1500,
+    rewardRep: 160,
     objectives: [
       { kind: 'driveTo', x: 130, z: 52, label: 'Drive to Sunset Bluff' },
       { kind: 'waitAt', x: 130, z: 52, seconds: 3, label: 'Make the drop — hold position' },
@@ -74,8 +76,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'Three stars, a helicopter, and a roadblock with your name on it. Get clean and get to Harbor Lights. This is the job that makes your name.',
-    rewardMoney: 1500,
-    rewardRep: 150,
+    rewardMoney: 1750,
+    rewardRep: 180,
     scriptedHeat: 3,
     objectives: [
       { kind: 'loseWanted', label: 'Lose the heat — 3 stars, helicopter overhead' },
@@ -87,8 +89,8 @@ export const MISSION_CHAIN = [
     giver: 'Mara Solis',
     briefing:
       'The crew is waiting at Harbor Lights. Pick them up, crack the vault, and be in Palm Row before the sirens find their pitch.',
-    rewardMoney: 2000,
-    rewardRep: 200,
+    rewardMoney: 2500,
+    rewardRep: 240,
     objectives: [
       { kind: 'waitAt', x: 104, z: -104, seconds: 2, label: 'Pick up the crew at Harbor Lights' },
       { kind: 'waitAt', x: -52, z: -104, seconds: 4, label: 'Crack the vault — hold position' },
@@ -99,13 +101,15 @@ export const MISSION_CHAIN = [
     name: 'KING OF THE KEYS',
     giver: 'Mara Solis',
     briefing:
-      'One last drive. Meet me on Coral Strand at sunset, then we take the Bluff road together. After tonight, the Keys are yours, Rook.',
-    rewardMoney: 3000,
-    rewardRep: 300,
+      'One last drive. Meet me on Coral Strand at sunset, then we take the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.',
+    rewardMoney: 4000,
+    rewardRep: 400,
+    finale: true,
     objectives: [
       { kind: 'driveTo', x: -52, z: 70, label: 'Drive to Coral Strand beach' },
-      { kind: 'waitAt', x: -52, z: 70, seconds: 3, label: 'Meet Mara on the beach' },
-      { kind: 'driveTo', x: 130, z: 52, label: 'Take the Bluff road — finish the story' },
+      { kind: 'waitAt', x: -52, z: 70, seconds: 3, label: 'Meet Mara and the crew on the beach' },
+      { kind: 'driveTo', x: 130, z: 52, label: 'Take the Bluff road — the victory lap' },
+      { kind: 'waitAt', x: 130, z: 52, seconds: 3, label: 'Watch the sunset — King of the Keys' },
     ],
   },
 ];
@@ -278,6 +282,8 @@ export class Missions {
       briefing: mission.briefing,
       rewardMoney: mission.rewardMoney,
       rewardRep: mission.rewardRep,
+      objectiveCount: mission.objectives.length,
+      finale: Boolean(mission.finale),
       status: this.status[index],
     }));
   }

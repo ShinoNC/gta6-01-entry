@@ -1,21 +1,31 @@
-// All sound is synthesized with WebAudio — no audio files. Engine hum
-// follows speed, sirens wail near police, gunshots are noise bursts, and
-// two radio stations loop short synth melodies. Silent until the player
-// clicks START (the browser needs a gesture to unlock audio).
+// All sound is synthesized with WebAudio — no audio files. The engine hum
+// steps through four gears as speed rises, sirens alternate two tones like
+// a real wail, gunshots are noise bursts, and two radio stations loop short
+// synth melodies with named tracks. Silent until the player clicks START
+// (the browser needs a gesture to unlock audio).
 export const RADIO_STATIONS = [
   {
     name: 'WAVE 88.1 · Neon Drive',
     bpm: 112,
     melodyMidi: [69, 72, 76, 79, 76, 72, 74, 76, 69, 72, 76, 81, 79, 76, 74, 72],
     bassMidi: [45, 45, 41, 43],
+    tracks: ['Midnight Run', 'Neon Tide', 'Coastal Static'],
   },
   {
     name: 'RADIO SOL 101.9',
     bpm: 96,
     melodyMidi: [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 81, 79, 76, 74],
     bassMidi: [48, 55, 53, 50],
+    tracks: ['Solset Boulevard', 'Palm Static', 'Harbor Gold'],
   },
 ];
+const ENGINE_GEAR_COUNT = 4;
+const ENGINE_BASE_HZ = 52;
+const ENGINE_TOP_HZ = 210;
+const SIREN_LOW_HZ = 720;
+const SIREN_HIGH_HZ = 980;
+const SIREN_TONE_SECONDS = 0.32;
+const TRACK_STEPS_PER_TRACK = 32;
 
 function midiToFrequency(midi) {
   return 440 * 2 ** ((midi - 69) / 12);
@@ -28,12 +38,16 @@ export class GameAudio {
     this.radioStep = 0;
     this.nextNoteTime = 0;
     this.engineOsc = null;
+    this.engineSubOsc = null;
+    this.engineFilter = null;
     this.engineGain = null;
     this.sirenOsc = null;
     this.sirenGain = null;
     this.sirenIntensity = 0;
     this.engineSpeed = 0;
     this.engineDriving = false;
+    this.soundEnabled = true;
+    this.musicEnabled = true;
     this.clock = 0;
   }
 
@@ -47,19 +61,27 @@ export class GameAudio {
       if (!AudioContext) return;
       this.ctx = new AudioContext();
       this.nextNoteTime = this.ctx.currentTime + 0.1;
+      // Engine: a sawtooth plus a sub-octave sine through a lowpass that
+      // opens with speed, so the motor growls low and rasps high.
       this.engineOsc = this.ctx.createOscillator();
       this.engineOsc.type = 'sawtooth';
-      this.engineOsc.frequency.value = 55;
-      const engineFilter = this.ctx.createBiquadFilter();
-      engineFilter.type = 'lowpass';
-      engineFilter.frequency.value = 420;
+      this.engineOsc.frequency.value = ENGINE_BASE_HZ;
+      this.engineSubOsc = this.ctx.createOscillator();
+      this.engineSubOsc.type = 'sine';
+      this.engineSubOsc.frequency.value = ENGINE_BASE_HZ / 2;
+      this.engineFilter = this.ctx.createBiquadFilter();
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 420;
       this.engineGain = this.ctx.createGain();
       this.engineGain.gain.value = 0;
-      this.engineOsc.connect(engineFilter).connect(this.engineGain).connect(this.ctx.destination);
+      this.engineOsc.connect(this.engineFilter);
+      this.engineSubOsc.connect(this.engineFilter);
+      this.engineFilter.connect(this.engineGain).connect(this.ctx.destination);
       this.engineOsc.start();
+      this.engineSubOsc.start();
       this.sirenOsc = this.ctx.createOscillator();
       this.sirenOsc.type = 'triangle';
-      this.sirenOsc.frequency.value = 800;
+      this.sirenOsc.frequency.value = SIREN_LOW_HZ;
       this.sirenGain = this.ctx.createGain();
       this.sirenGain.gain.value = 0;
       this.sirenOsc.connect(this.sirenGain).connect(this.ctx.destination);
@@ -73,11 +95,28 @@ export class GameAudio {
     return RADIO_STATIONS[this.stationIndex].name;
   }
 
+  // What the HUD shows: station plus the track now playing.
+  nowPlaying() {
+    const station = RADIO_STATIONS[this.stationIndex];
+    const track = station.tracks[Math.floor(this.radioStep / TRACK_STEPS_PER_TRACK) % station.tracks.length];
+    return `${station.name} — '${track}'`;
+  }
+
   nextStation() {
     this.stationIndex = (this.stationIndex + 1) % RADIO_STATIONS.length;
     this.radioStep = 0;
     if (this.ctx) this.nextNoteTime = this.ctx.currentTime + 0.05;
     return this.radioStationName();
+  }
+
+  setSoundEnabled(enabled) {
+    this.soundEnabled = enabled;
+    if (this.ctx && !enabled) this.ctx.suspend().catch(() => {});
+    if (this.ctx && enabled) this.ctx.resume().catch(() => {});
+  }
+
+  setMusicEnabled(enabled) {
+    this.musicEnabled = enabled;
   }
 
   setEngine(speedNorm, driving) {
@@ -92,7 +131,7 @@ export class GameAudio {
   }
 
   blip(frequency, seconds, gainValue, type = 'sine', when = 0) {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.soundEnabled) return;
     const startAt = this.ctx.currentTime + when;
     const osc = this.ctx.createOscillator();
     osc.type = type;
@@ -105,8 +144,14 @@ export class GameAudio {
     osc.stop(startAt + seconds + 0.02);
   }
 
+  // Two-note car horn (H while driving).
+  horn() {
+    this.blip(392, 0.28, 0.09, 'square');
+    this.blip(494, 0.28, 0.09, 'square');
+  }
+
   gunshot() {
-    if (!this.ctx) return;
+    if (!this.ctx || !this.soundEnabled) return;
     const duration = 0.14;
     const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * duration), this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -149,11 +194,23 @@ export class GameAudio {
   update(dt) {
     this.clock += dt;
     if (!this.ctx) return;
-    const engineFrequency = 55 + this.engineSpeed * 150;
+    // Geared engine: the note climbs within a gear, then drops a step as
+    // the next gear takes over — the rise-and-fall a real gearbox makes.
+    const gearSpan = 1 / ENGINE_GEAR_COUNT;
+    const gear = Math.min(ENGINE_GEAR_COUNT - 1, Math.floor(this.engineSpeed / gearSpan));
+    const withinGear = (this.engineSpeed - gear * gearSpan) / gearSpan;
+    const gearBase = ENGINE_BASE_HZ + gear * ((ENGINE_TOP_HZ - ENGINE_BASE_HZ) / ENGINE_GEAR_COUNT) * 0.55;
+    const engineFrequency = gearBase + withinGear * 55;
     this.engineOsc.frequency.setTargetAtTime(engineFrequency, this.ctx.currentTime, 0.08);
+    this.engineSubOsc.frequency.setTargetAtTime(engineFrequency / 2, this.ctx.currentTime, 0.08);
+    this.engineFilter.frequency.setTargetAtTime(320 + this.engineSpeed * 900, this.ctx.currentTime, 0.1);
     this.engineGain.gain.setTargetAtTime(this.engineDriving ? 0.05 : 0, this.ctx.currentTime, 0.1);
-    this.sirenOsc.frequency.setTargetAtTime(780 + 320 * Math.sin(this.clock * Math.PI * 2 * 0.55), this.ctx.currentTime, 0.05);
+    // Two-tone wail: the siren alternates low/high every third of a second
+    // instead of sweeping, so it cuts through the engine and radio.
+    const sirenTone = Math.floor(this.clock / SIREN_TONE_SECONDS) % 2 === 0 ? SIREN_LOW_HZ : SIREN_HIGH_HZ;
+    this.sirenOsc.frequency.setTargetAtTime(sirenTone, this.ctx.currentTime, 0.03);
     this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045, this.ctx.currentTime, 0.15);
+    if (!this.musicEnabled) return;
     const station = RADIO_STATIONS[this.stationIndex];
     const beatSeconds = 60 / station.bpm / 2;
     while (this.nextNoteTime < this.ctx.currentTime + 0.25) {

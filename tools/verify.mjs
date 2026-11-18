@@ -1,6 +1,10 @@
-// Functional check for SOLARIS KEYS phase A: loads the game in headless
-// Chrome, starts it, walks, enters the starter car with F, drives it, exits,
-// and reports zero console errors. Run: node tools/verify.mjs
+// Functional check for SOLARIS KEYS (phases A-C): loads the game in headless
+// Chrome and plays it through the normal path — title screen + options,
+// walk, enter the starter car with F, drive it (skid smoke fires), exit,
+// pause, traffic, pedestrians, wanted, police, missions, combat, radio,
+// ammo crates, save/load — then loads the chase shot in a second page and
+// checks the helicopter is in frame. Reports zero console errors.
+// Run: node tools/verify.mjs
 import { chromium } from '/home/hatch/workspace/tools/pw/node_modules/playwright-core/index.mjs';
 import { readFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -31,10 +35,28 @@ await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domconte
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
 await page.waitForTimeout(500);
 check('game loads, title state', await page.evaluate(() => window.__game.state === 'title'));
+check(
+  'title screen has NEW GAME + OPTIONS',
+  await page.evaluate(() => {
+    const start = document.getElementById('start-button');
+    const options = document.getElementById('options-button');
+    return start.textContent === 'NEW GAME' && !options.classList.contains('hidden') && document.getElementById('title-skyline') !== null;
+  }),
+);
+await page.click('#options-button');
+await page.waitForTimeout(300);
+check('OPTIONS opens the options screen', await page.evaluate(() => !document.getElementById('options-screen').classList.contains('hidden')));
+await page.click('#sound-toggle');
+await page.waitForTimeout(200);
+check('sound toggle flips to OFF', await page.evaluate(() => document.getElementById('sound-toggle').textContent === 'SOUND: OFF'));
+await page.click('#sound-toggle');
+await page.click('#options-back');
+await page.waitForTimeout(300);
+check('BACK returns to the title screen', await page.evaluate(() => !document.getElementById('title-screen').classList.contains('hidden')));
 
 await page.click('#start-button');
 await page.waitForTimeout(300);
-check('START begins play', await page.evaluate(() => window.__game.state === 'play'));
+check('NEW GAME begins play', await page.evaluate(() => window.__game.state === 'play'));
 
 const posBefore = await page.evaluate(() => ({ x: window.__game.player.position.x, z: window.__game.player.position.z }));
 await page.keyboard.down('KeyW');
@@ -69,6 +91,19 @@ const carState = await page.evaluate(() => ({
 const driven = Math.hypot(carState.x - carBefore.x, carState.z - carBefore.z);
 check('car drives with W', driven > 5 && Math.abs(carState.speed) > 5, `moved ${driven.toFixed(1)}m, speed ${(Math.abs(carState.speed) * 3.6).toFixed(0)} km/h`);
 check('speedometer shows speed', await page.evaluate(() => Number(document.getElementById('hud-speed').textContent) > 0));
+
+// Hard steering at speed throws skid smoke (or impact sparks on a wall):
+// either way the shared particle pool must have live particles.
+await page.keyboard.down('KeyW');
+await page.keyboard.down('KeyD');
+await page.waitForTimeout(6000);
+await page.keyboard.up('KeyD');
+await page.keyboard.up('KeyW');
+check(
+  'skid smoke / impact sparks fire while driving hard',
+  await page.evaluate(() => window.__game.effects.activeCount > 0),
+  await page.evaluate(() => `${window.__game.effects.activeCount} live particles`),
+);
 check('minimap drawn', await page.evaluate(() => {
   const ctx = document.getElementById('minimap').getContext('2d');
   const data = ctx.getImageData(0, 0, 168, 168).data;
@@ -128,8 +163,8 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(4000);
 check(
-  'mission 1 completable, pays $400',
-  await page.evaluate(() => window.__game.missions.doneCount() === 1 && window.__game.money === 1650),
+  'mission 1 completable, pays $500',
+  await page.evaluate(() => window.__game.missions.doneCount() === 1 && window.__game.money === 1750),
   await page.evaluate(() => `done=${window.__game.missions.doneCount()} money=$${window.__game.money}`),
 );
 
@@ -145,6 +180,21 @@ check(
   await page.evaluate(() => {
     const screen = document.getElementById('mission-screen');
     return !screen.classList.contains('hidden') && screen.textContent.includes('FIRST FARE') && screen.textContent.includes('[DONE]');
+  }),
+);
+check(
+  'mission list shows total story payout',
+  await page.evaluate(() => document.getElementById('mission-list').textContent.includes('total story payout $13,250')),
+);
+check(
+  'mission-list CLOSE button is inside the 720p viewport',
+  await page.evaluate(() => {
+    const rect = document.getElementById('mission-close-button').getBoundingClientRect();
+    return rect.bottom <= 720 && rect.top >= 0;
+  }),
+  await page.evaluate(() => {
+    const rect = document.getElementById('mission-close-button').getBoundingClientRect();
+    return `button bottom at ${Math.round(rect.bottom)}px`;
   }),
 );
 await page.keyboard.press('KeyM');
@@ -219,10 +269,24 @@ await page.keyboard.press('Digit3');
 await page.waitForTimeout(300);
 check('SMG locked before mission 3', await page.evaluate(() => document.getElementById('hud-message').textContent.includes('locked')));
 
-// Radio switches stations.
+// Ammo crate: walk into the Marina crate and the pistol refills to a full mag.
+await page.evaluate(() => window.__game.player.group.position.set(26, 0, 26));
+await page.waitForTimeout(2000);
+check(
+  'ammo crate restocks the pistol',
+  await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag === 12),
+  await page.evaluate(() => `mag=${window.__game.combat.ammoForHud()[1].mag}`),
+);
+
+// Radio switches stations and the HUD names the track now playing.
 await page.keyboard.press('KeyR');
 await page.waitForTimeout(500);
 check('R switches radio station', await page.evaluate(() => document.getElementById('hud-radio').textContent.includes('RADIO SOL 101.9')));
+check(
+  'HUD radio line names the track',
+  await page.evaluate(() => document.getElementById('hud-radio').textContent.includes('—')),
+  await page.evaluate(() => document.getElementById('hud-radio').textContent),
+);
 
 // Save/load round-trips through the exposed save helpers.
 check(
@@ -235,6 +299,45 @@ check(
     const loadedSnapshot = window.__game.save.loadGame(2);
     return loaded && loaded.money === 9999 && loaded.missionsDone === 3 && loadedSnapshot && loadedSnapshot.missionsDone === 1;
   }),
+);
+check(
+  'corrupt save loads as empty, not a crash',
+  await page.evaluate(() => {
+    localStorage.setItem('solaris-keys-save-3', '{"money":"not-a-number","version":99}');
+    return window.__game.save.loadGame(3) === null;
+  }),
+);
+
+// ---- Chase shot: helicopter in frame, 3 stars, full police panel ----
+const chasePage = await browser.newPage({ viewport: { width: 1280, height: 720 } });
+chasePage.on('pageerror', (e) => errors.push(`CHASE PAGEERROR: ${e.message}`));
+chasePage.on('console', (m) => { if (m.type() === 'error') errors.push(`CHASE CONSOLE: ${m.text()}`); });
+await chasePage.goto(`file://${ENTRY}/game/index.html?shot=chase&seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await chasePage.waitForFunction(() => window.__shotReady === true, null, { timeout: 120000 });
+await chasePage.waitForTimeout(500);
+const heliScreen = await chasePage.evaluate(() => window.__game.heliOnScreen());
+check(
+  'helicopter in frame in the chase shot',
+  heliScreen !== null && !heliScreen.behind && Math.abs(heliScreen.x) < 0.95 && Math.abs(heliScreen.y) < 0.95,
+  heliScreen ? `screen x=${heliScreen.x.toFixed(2)} y=${heliScreen.y.toFixed(2)}` : 'no helicopter',
+);
+check(
+  'chase shot shows 3 stars + mission 6/8 + stolen-car toast',
+  await chasePage.evaluate(() => {
+    const stars = document.getElementById('hud-stars').textContent;
+    const mission = document.getElementById('hud-mission').textContent;
+    const message = document.getElementById('hud-message').textContent;
+    return stars === '★★★☆☆' && mission.includes('MISSION 6/8') && message.includes('VEHICLE STOLEN');
+  }),
+  await chasePage.evaluate(() => `${document.getElementById('hud-stars').textContent} | ${document.getElementById('hud-mission').textContent} | ${document.getElementById('hud-message').textContent}`),
+);
+check(
+  'chase shot police panel lists 5 units incl. helicopter',
+  await chasePage.evaluate(() => {
+    const rows = document.querySelectorAll('#hud-police .police-row');
+    return rows.length >= 5 && document.getElementById('hud-police').textContent.includes('SPOTLIGHT');
+  }),
+  await chasePage.evaluate(() => `${document.querySelectorAll('#hud-police .police-row').length} rows`),
 );
 
 check('zero console/page errors', errors.length === 0, errors.length ? errors.join(' | ') : '');
