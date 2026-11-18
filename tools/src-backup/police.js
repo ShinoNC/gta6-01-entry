@@ -3,14 +3,14 @@ import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
 import { headingFor } from './traffic.js';
 import { pick, wrapAngle } from './random.js';
-const CALLSIGNS = ['IBIS-43', 'GULL-1', 'TARPON-10', 'OSPREY-7', 'PELICAN-22', 'HERON-5', 'EGRET-9'];
+const CALLSIGNS = ['IBIS-43', 'GULL-1', 'TARPON-10', 'OSPREY-7', 'PELICAN-22', 'HERON-5', 'EGRET-9', 'TERN-3', 'STORK-8', 'CRANE-12'];
 const HELI_CALLSIGN = 'HELI-1';
-const SEE_RANGE = 45, TOP_SPEED = 38, TOP_SPEED_HOT = 41, TURN_RATE = 2.8, ACCEL = 16;
+const SEE_RANGE = 45, TOP_SPEED = 38, TOP_SPEED_HOT = 41, TOP_SPEED_MAX = 44, TURN_RATE = 2.8, ACCEL = 16;
 const RAM_DIST = 4.2, RAM_BACKOFF = 0.9, RAM_SLOW = 3.0, DIRECT_RANGE = 22, SNAP_RANGE = 35;
 const RB_AHEAD = 45, RB_REPOSITION_S = 25, DESPAWN_S = 3, HELI_AHEAD = 22, HELI_SWEEP = 5;
-const HELI_H = 14, HELI_SWEEP_S = 5;
+const HELI_H = 14, HELI_SWEEP_S = 5, HELI_HP = 60, HELI_RESPAWN_S = 60;
 function pursuitCarsForStars(stars) {
-  return stars <= 0 ? 0 : stars === 1 ? 1 : stars === 2 ? 2 : 4;
+  return stars <= 0 ? 0 : stars === 1 ? 1 : stars === 2 ? 2 : stars === 3 ? 4 : stars === 4 ? 5 : 6;
 }
 export class Police {
   constructor(scene, textures, city, rng) {
@@ -26,9 +26,41 @@ export class Police {
     this.roadblockCentre = null;
     this.roadblockTimer = 0;
     this.helicopter = null;
+    this.heliHp = HELI_HP;
+    this.heliCooldown = 0;
     this.lostTimer = 0;
     this.clock = 0;
     this.callsignIndex = 0;
+  }
+  hasLineOfSight(from, to) {
+    for (const box of this.city.buildingBoxes) {
+      const dx = to.x - from.x;
+      const dz = to.z - from.z;
+      let t0 = 0;
+      let t1 = 1;
+      for (const [p, d, lo, hi] of [[from.x, dx, box.minX, box.maxX], [from.z, dz, box.minZ, box.maxZ]]) {
+        if (Math.abs(d) < 1e-9) {
+          if (p < lo || p > hi) { t0 = 1; t1 = 0; break; }
+        } else {
+          let a = (lo - p) / d;
+          let b = (hi - p) / d;
+          if (a > b) { const t = a; a = b; b = t; }
+          t0 = Math.max(t0, a);
+          t1 = Math.min(t1, b);
+          if (t0 > t1) break;
+        }
+      }
+      if (t0 <= t1) return false;
+    }
+    return true;
+  }
+  damageHelicopter(amount) {
+    if (!this.helicopter) return false;
+    this.heliHp -= amount;
+    if (this.heliHp > 0) return false;
+    this.removeHelicopter();
+    this.heliCooldown = HELI_RESPAWN_S;
+    return true;
   }
   nextCallsign() {
     const inUse = new Set([...this.pursuit, ...this.roadblock].map((unit) => unit.callsign));
@@ -125,7 +157,7 @@ export class Police {
       return;
     }
   }
-  placeRoadblock(playerPos, playerHeading) {
+  placeRoadblock(playerPos, playerHeading, stars = 3) {
     for (const unit of this.roadblock) this.removeUnit(unit);
     this.roadblock = [];
     const fx = Math.sin(playerHeading);
@@ -134,7 +166,8 @@ export class Police {
     const centreZ = playerPos.z + fz * RB_AHEAD;
     const px = fz;
     const pz = -fx;
-    for (const side of [-1, 1]) {
+    const sides = stars >= 4 ? [-1, 0, 1] : [-1, 1];
+    for (const side of sides) {
       const unit = this.createPoliceCar(centreX + px * side * 2.4, centreZ + pz * side * 2.4, playerHeading + Math.PI / 2, this.nextCallsign());
       unit.status = 'ROADBLOCK';
       this.city.resolveCircle(unit.car.group.position, 1.6);
@@ -224,19 +257,23 @@ export class Police {
     if (wantedStars > 0 || this.lostTimer > DESPAWN_S) {
       while (this.pursuit.length > wantedPursuit) this.removeUnit(this.pursuit.pop());
     }
+    this.heliCooldown = Math.max(0, this.heliCooldown - dt);
     if (wantedStars >= 3) {
       if (this.roadblock.length === 0) {
-        this.placeRoadblock(playerPos, playerHeading);
+        this.placeRoadblock(playerPos, playerHeading, wantedStars);
       } else {
         this.roadblockTimer += dt;
         const fx = Math.sin(playerHeading);
         const fz = Math.cos(playerHeading);
         const passed = (playerPos.x - this.roadblockCentre.x) * fx + (playerPos.z - this.roadblockCentre.z) * fz > 8;
         if (passed || this.roadblockTimer > RB_REPOSITION_S) {
-          this.placeRoadblock(playerPos, playerHeading);
+          this.placeRoadblock(playerPos, playerHeading, wantedStars);
         }
       }
-      if (!this.helicopter) this.buildHelicopter();
+      if (!this.helicopter && this.heliCooldown <= 0) {
+        this.heliHp = HELI_HP;
+        this.buildHelicopter();
+      }
     } else {
       for (const unit of this.roadblock) this.removeUnit(unit);
       this.roadblock = [];
@@ -248,7 +285,7 @@ export class Police {
       unit.redMaterial.color.setHex(blinkOn ? 0xff2a3a : 0x551018);
       unit.blueMaterial.color.setHex(blinkOn ? 0x10204d : 0x2a6bff);
     };
-    const topSpeed = wantedStars >= 4 ? TOP_SPEED_HOT : TOP_SPEED;
+    const topSpeed = wantedStars >= 5 ? TOP_SPEED_MAX : wantedStars >= 4 ? TOP_SPEED_HOT : TOP_SPEED;
     const steerTo = (car, desired) => {
       car.heading += Math.max(-TURN_RATE * dt, Math.min(TURN_RATE * dt, wrapAngle(desired - car.heading)));
     };
@@ -319,7 +356,7 @@ export class Police {
         if (car.group.position.x !== beforeX || car.group.position.z !== beforeZ) car.speed *= 0.4;
         car.group.rotation.y = car.heading;
       }
-      if (wantedStars >= 3 && dist < 42) {
+      if (wantedStars >= 3 && dist < 42 && this.hasLineOfSight(car.position, playerPos)) {
         unit.shootCooldown -= dt;
         if (unit.shootCooldown <= 0) {
           unit.shootCooldown = 1.1 + Math.random() * 0.9;
@@ -372,7 +409,10 @@ export class Police {
     return rows;
   }
   canSeePlayer(playerPos) {
-    return [...this.pursuit, ...this.roadblock].some((u) => Math.hypot(u.car.position.x - playerPos.x, u.car.position.z - playerPos.z) < SEE_RANGE);
+    return [...this.pursuit, ...this.roadblock].some((u) => {
+      const d = Math.hypot(u.car.position.x - playerPos.x, u.car.position.z - playerPos.z);
+      return d < SEE_RANGE && this.hasLineOfSight(u.car.position, playerPos);
+    });
   }
   nearestDistance(playerPos) {
     return this.pursuit.reduce((n, u) => Math.min(n, Math.hypot(u.car.position.x - playerPos.x, u.car.position.z - playerPos.z)), Infinity);

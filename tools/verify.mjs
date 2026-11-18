@@ -152,8 +152,16 @@ const fleeing = await page.evaluate(() => {
 });
 check('pedestrians flee from a scare', fleeing > 0, `${fleeing} fleeing`);
 
-// Mission 1: the fixer calls shortly after the game starts.
-await page.waitForSelector('#phone-panel:not(.hidden)', { timeout: 45000 });
+// Mission 1: the fixer calls shortly after the game starts (8s snooze;
+// headless runs ~0.14x, so poll with a generous budget — waitForSelector
+// proved flaky under slow headless).
+let phoneUp = false;
+for (let i = 0; i < 40 && !phoneUp; i += 1) {
+  await page.waitForTimeout(5000);
+  phoneUp = await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'));
+}
+check('mission 1 briefing appears after the snooze', phoneUp);
+if (!phoneUp) { await browser.close(); process.exit(1); }
 await page.click('#phone-accept');
 await page.waitForTimeout(500);
 check('mission 1 briefing accepted', await page.evaluate(() => document.getElementById('hud-mission').textContent.includes('MISSION 1/8')));

@@ -178,6 +178,18 @@ export function buildCity(scene, textures, rng) {
     post.position.set(bx, 3.5, 62);
     group.add(post);
   }
+  const wallMaterial = new THREE.MeshLambertMaterial({ color: 0x4a4460 });
+  const stripeMaterial = new THREE.MeshLambertMaterial({ color: 0xffc828 });
+  const edgeWall = (w, d, x, z) => {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, 2.6, d), wallMaterial);
+    wall.position.set(x, 1.3, z);
+    const stripe = new THREE.Mesh(new THREE.BoxGeometry(w, 0.3, d), stripeMaterial);
+    stripe.position.set(x, 2.6, z);
+    group.add(wall, stripe);
+  };
+  edgeWall(HALF_W * 2 + 4, 1, 0, NORTH_EDGE - 1.5);
+  edgeWall(1, SHORELINE_Z - NORTH_EDGE + 4, -HALF_W - 1.5, (NORTH_EDGE + SHORELINE_Z) / 2);
+  edgeWall(1, SHORELINE_Z - NORTH_EDGE + 4, HALF_W + 1.5, (NORTH_EDGE + SHORELINE_Z) / 2);
   const sunLight = new THREE.DirectionalLight(0xffa050, 2.2);
   sunLight.position.set(-120, 70, 200);
   scene.add(sunLight);

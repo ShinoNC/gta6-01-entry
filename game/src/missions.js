@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 export const MISSIONS_IN_STORY = 8;
-const ARRIVE_M = 10;
+const ARRIVE_M = 15;
 export const MISSION_CHAIN = [
   {
     name: 'FIRST FARE',
@@ -9,7 +9,7 @@ export const MISSION_CHAIN = [
       'Rook. Mara Solis. Word is you can drive. Prove it — pick up my client at Marina Del Sol. Do not keep them waiting.',
     rewardMoney: 500,
     rewardRep: 60,
-    objectives: [{ kind: 'driveTo', x: 52, z: 26, label: 'Drive to the Marina Del Sol pickup' }],
+    objectives: [{ kind: 'driveTo', x: 52, z: 0, label: 'Drive to the Marina Del Sol pickup' }],
   },
   {
     name: 'THE CORAL RUN',
@@ -19,8 +19,8 @@ export const MISSION_CHAIN = [
     rewardMoney: 750,
     rewardRep: 90,
     objectives: [
-      { kind: 'waitAt', x: -52, z: 52, seconds: 2, label: 'Pick up Juno Reyes on Coral Strand' },
-      { kind: 'driveTo', x: 104, z: 52, label: 'Drop Juno at Sunset Bluff' },
+      { kind: 'waitAt', x: -52, z: 70, seconds: 2, label: 'Pick up Juno Reyes on Coral Strand' },
+      { kind: 'driveTo', x: 104, z: 70, label: 'Drop Juno at Sunset Bluff' },
     ],
   },
   {
@@ -57,9 +57,9 @@ export const MISSION_CHAIN = [
     rewardMoney: 1500,
     rewardRep: 160,
     objectives: [
-      { kind: 'driveTo', x: 130, z: 52, label: 'Drive to Sunset Bluff' },
-      { kind: 'waitAt', x: 130, z: 52, seconds: 3, label: 'Make the drop — hold position' },
-      { kind: 'driveTo', x: 52, z: 26, label: 'Return to Marina Del Sol' },
+      { kind: 'driveTo', x: 130, z: 70, label: 'Drive to Sunset Bluff' },
+      { kind: 'waitAt', x: 130, z: 70, seconds: 3, label: 'Make the drop — hold position' },
+      { kind: 'driveTo', x: 52, z: 0, label: 'Return to Marina Del Sol' },
     ],
   },
   {
@@ -127,7 +127,7 @@ export class Missions {
     this.stageIndex = 0;
     this.waitSeconds = 0;
     this.briefingIdx = 0;
-    this.snooze = 1;
+    this.snooze = 8;
     this.target = null;
     this.clock = 0;
     this.missionClock = 0;

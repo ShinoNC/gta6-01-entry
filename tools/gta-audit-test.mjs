@@ -195,7 +195,14 @@ await page.evaluate(() => {
 });
 await page.waitForTimeout(1500);
 check(
-  "Pay'n'Spray clears wanted + repairs for $200",
+  "Pay'n'Spray does NOT auto-charge — no E press, no charge",
+  await page.evaluate(() => window.__game.wanted.stars === 2 && window.__game.money === 500 && window.__game.drivenCar.hp === 50),
+  `stars=${await page.evaluate(() => window.__game.wanted.stars)} money=$${await page.evaluate(() => window.__game.money)} hp=${await page.evaluate(() => window.__game.drivenCar.hp)}`,
+);
+await page.keyboard.press('KeyE');
+await page.waitForTimeout(1500);
+check(
+  "Pay'n'Spray clears wanted + repairs for $200 on E",
   await page.evaluate(() => window.__game.wanted.stars === 0 && window.__game.money === 300 && window.__game.drivenCar.hp === 100),
   `stars=${await page.evaluate(() => window.__game.wanted.stars)} money=$${await page.evaluate(() => window.__game.money)} hp=${await page.evaluate(() => window.__game.drivenCar.hp)}`,
 );

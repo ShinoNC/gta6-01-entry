@@ -176,6 +176,7 @@ export class Combat {
       if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref, true);
       if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar?.(hit.ref);
       if (hit.kind === 'getaway') this.callbacks.onHitGetaway?.(hit.ref);
+      if (hit.kind === 'helicopter') this.callbacks.onHitHelicopter?.(hit.ref);
     }
     this.callbacks.onShot();
     if (weapon.mag === 0 && weapon.reserve > 0) {

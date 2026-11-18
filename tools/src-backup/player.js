@@ -59,8 +59,10 @@ export function createPlayer(scene, startX, startZ) {
       group.position.x += dx;
       group.position.z += dz;
       city.resolveCircle(group.position, PLAYER_RADIUS);
-      this.heading = Math.atan2(dx, dz);
-      group.rotation.y = this.heading;
+      if (strafe === 0) {
+        this.heading = Math.atan2(dx, dz);
+        group.rotation.y = this.heading;
+      }
       this.walkPhase += dt * speed * 1.4;
       const swing = Math.sin(this.walkPhase) * LEG_SWING;
       legLeft.rotation.x = swing;

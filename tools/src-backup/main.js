@@ -44,6 +44,7 @@ const shotName = params.get('shot') || '';
 const seed = Number.parseInt(params.get('seed') || '1', 10) || 1;
 const $ = (id) => document.getElementById(id);
 const on = (id, fn) => $(id).addEventListener('click', fn);
+const NO_INPUT = { moveAxes: () => ({ forward: 0, strafe: 0 }), isDown: () => false };
 const canvas = $('game-canvas');
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
@@ -125,10 +126,20 @@ function snapshotSave() {
 function applySave(data) {
   money = data.money;
   rep = data.rep;
+  if (drivenCar) {
+    drivenCar.driven = false;
+    drivenCar.speed = 0;
+    drivenCar = null;
+    player.group.visible = true;
+  }
+  missions.failCurrent();
   missions.setCompleted(data.missionsDone);
   combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
   tapes.setCollected(data.tapesCollected || 0);
   if (data.look) applyLook(data.look);
+  health = 100;
+  armour = 0;
+  wanted.setStars(0);
   player.group.position.set(data.playerX, 0, data.playerZ);
 }
 function startGame() {
@@ -274,14 +285,16 @@ function exitCar() {
   const car = drivenCar;
   drivenCar = null;
   car.driven = false;
-  car.speed = 0;
+  if (car.destroyed) car.speed = 0;
   player.group.position.set(car.position.x + 2.5, 0, car.position.z);
   player.group.visible = true;
   hud.showMessage('ON FOOT — WASD to walk, F near a car to drive');
 }
 function damagePlayer(amount) {
   if (state !== 'play') return;
-  health -= amount;
+  const absorbed = Math.min(armour, amount);
+  armour -= absorbed;
+  health -= amount - absorbed;
   lastHurtAt = elapsed;
   if (health <= 0) endRun('WASTED');
 }
@@ -372,6 +385,10 @@ function combatTargets() {
     const getaway = robbery.getaway.car.position;
     targets.push({ x: getaway.x, z: getaway.z, radius: 2.2, kind: 'getaway', ref: robbery.getaway });
   }
+  if (police.helicopter) {
+    const hp = police.helicopter.group.position;
+    targets.push({ x: hp.x, z: hp.z, radius: 3, kind: 'helicopter', ref: null });
+  }
   return targets;
 }
 function stageShot() {
@@ -439,12 +456,22 @@ function update(dt) {
     return;
   }
   if (state === 'pause' || state === 'down') return;
-  elapsed += dt;
-  if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyM') && !phoneVisible) {
     if (missionOpen) closeMissionScreen();
     else openMissionScreen();
   }
+  if (!shotReady) {
+    shotTimer += dt;
+    const readyAt =
+      shotName === 'core' ? SHOT_DRIVE_SECONDS : shotName === 'chase' ? SHOT_CHASE_SECONDS : shotName === 'foot' ? SHOT_FOOT_SECONDS : shotName === 'mission' ? SHOT_MISSION_SECONDS : Infinity;
+    if (shotTimer >= readyAt) {
+      shotReady = true;
+      window.__shotReady = true;
+    }
+  }
+  if (missionOpen) return;
+  elapsed += dt;
+  if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyR')) {
     hud.showMessage(`RADIO — ${audio.nextStation()}`, 2);
   }
@@ -507,6 +534,20 @@ function update(dt) {
   } else {
     player.update(dt, input, chaseCamera.yaw, city);
     chaseCamera.update(dt, player.position, player.heading, false, input, combat.recoil, police.helicopter ? 2 : 0);
+    const pushOut = (car) => {
+      if (!car || car.destroyed) return;
+      const dx = player.position.x - car.position.x;
+      const dz = player.position.z - car.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist >= 2.6 || dist < 0.01) return;
+      player.group.position.set(car.position.x + (dx / dist) * 2.6, 0, car.position.z + (dz / dist) * 2.6);
+    };
+    for (const car of cars) pushOut(car);
+    for (const npc of traffic.cars) pushOut(npc.car);
+    for (const unit of [...police.pursuit, ...police.roadblock]) pushOut(unit.car);
+  }
+  for (const car of cars) {
+    if (!car.driven && !car.destroyed && Math.abs(car.speed) > 0.05) car.update(dt, NO_INPUT, city, 1);
   }
   city.update(dt);
   effects.update(dt);
@@ -550,19 +591,44 @@ function update(dt) {
         hud.showMessage('NEAR MISS +$100', 1.2);
       }
     }
-    for (const unit of police.roadblock) {
-      if (Math.hypot(unit.car.position.x - drivenCar.position.x, unit.car.position.z - drivenCar.position.z) < 2.8) {
-        drivenCar.speed *= 0.4;
-        effects.burstSparks(drivenCar.position.x, 0.8, drivenCar.position.z, 4);
+    const collideWith = (other, push) => {
+      if (!other || other.destroyed || other === drivenCar) return;
+      const dx = drivenCar.position.x - other.position.x;
+      const dz = drivenCar.position.z - other.position.z;
+      const dist = Math.hypot(dx, dz);
+      if (dist >= 4 || dist < 0.01) return;
+      if (push) {
+        drivenCar.position.x = other.position.x + (dx / dist) * 4;
+        drivenCar.position.z = other.position.z + (dz / dist) * 4;
       }
-    }
-    if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE && money >= SPRAY_PRICE && (drivenCar.hp < 100 || wanted.stars > 0)) {
-      money -= SPRAY_PRICE;
-      drivenCar.hp = 100;
-      drivenCar.burning = false;
-      drivenCar.warned = false;
-      wanted.setStars(0);
-      hud.showMessage("PAY'N'SPRAY — car repaired, heat cleared ($200)", 3);
+      const speed = Math.abs(drivenCar.speed);
+      if (speed > 8) {
+        const dmg = (speed - 8) * 0.8;
+        damageCar(drivenCar, dmg);
+        damageCar(other, dmg);
+        effects.burstSparks(drivenCar.position.x, 0.8, drivenCar.position.z, 6);
+        damagePlayer(3);
+      }
+      drivenCar.speed *= 0.3;
+    };
+    for (const car of cars) collideWith(car, true);
+    for (const npc of traffic.cars) collideWith(npc.car, true);
+    for (const unit of police.roadblock) collideWith(unit.car, true);
+    for (const unit of police.pursuit) collideWith(unit.car, false);
+    if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE && (drivenCar.hp < 100 || wanted.stars > 0)) {
+      if (money >= SPRAY_PRICE) {
+        hud.showMessage("PAY'N'SPRAY — press E to repair + clear heat ($200)", 0.6);
+        if (input.pressed('KeyE')) {
+          money -= SPRAY_PRICE;
+          drivenCar.hp = 100;
+          drivenCar.burning = false;
+          drivenCar.warned = false;
+          wanted.setStars(0);
+          hud.showMessage("PAY'N'SPRAY — car repaired, heat cleared ($200)", 3);
+        }
+      } else {
+        hud.showMessage("PAY'N'SPRAY — repairs cost $200", 0.6);
+      }
     }
     if (robbery.active && !robbery.getaway.stopped) {
       const getawayPos = robbery.getaway.car.position;
@@ -590,7 +656,8 @@ function update(dt) {
     onPoliceShot(from, to) {
       combat.fireTracer({ x: from.x, y: 1.4, z: from.z }, { x: to.x, y: 1.2, z: to.z });
       audio.gunshot();
-      if (Math.random() < POLICE_HIT_CHANCE) damagePlayer(POLICE_SHOT_DAMAGE);
+      const hitChance = wanted.stars >= 5 ? 0.4 : wanted.stars >= 4 ? 0.35 : POLICE_HIT_CHANCE;
+      if (Math.random() < hitChance) damagePlayer(POLICE_SHOT_DAMAGE);
     },
   });
   if (wanted.stars >= 1 && wanted.stars <= 2 && !drivenCar) {
@@ -657,15 +724,6 @@ function update(dt) {
     ammoCrates: combat.ammoCratesForHud(),
     timeSeconds: performance.now() / 1000,
   });
-  if (!shotReady) {
-    shotTimer += dt;
-    const readyAt =
-      shotName === 'core' ? SHOT_DRIVE_SECONDS : shotName === 'chase' ? SHOT_CHASE_SECONDS : shotName === 'foot' ? SHOT_FOOT_SECONDS : shotName === 'mission' ? SHOT_MISSION_SECONDS : Infinity;
-    if (shotTimer >= readyAt) {
-      shotReady = true;
-      window.__shotReady = true;
-    }
-  }
 }
 const clock = new THREE.Clock();
 function loop() {
@@ -747,11 +805,23 @@ loadTextures()
         damageCar(car, 12);
       },
       onAmmoPickup(district) {
-        hud.showMessage(`AMMO RESTOCKED — ${district} crate`, 2.5);
+        armour = Math.min(100, armour + 50);
+        hud.showMessage(`AMMO + ARMOUR RESTOCKED — ${district} crate`, 2.5);
         audio.click();
       },
       onHitGetaway() {
         robbery.shotByPlayer();
+      },
+      onHitHelicopter() {
+        const heli = police.helicopter;
+        const pos = heli ? { x: heli.group.position.x, z: heli.group.position.z } : null;
+        if (police.damageHelicopter(12) && pos) {
+          effects.burstSparks(pos.x, 8, pos.z, 24);
+          effects.puffSmoke(pos.x, 8, pos.z, 8);
+          audio.gunshot();
+          hud.showMessage('HELICOPTER DOWN!', 4, true);
+          wanted.setStars(Math.min(5, wanted.stars + 1));
+        }
       },
     }, effects);
     audio = new GameAudio();
