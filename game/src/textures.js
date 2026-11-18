@@ -1,10 +1,4 @@
-// Loads the pixel-art PNG textures and keeps them chunky: NearestFilter means
-// a texel stays one hard square instead of blurring, which is the whole look.
-// Ground textures that stretch to the horizon (road, sand, water, sidewalk)
-// use nearest-mipmapped minification so they stay crisp up close without
-// shimmering far away; flat sprites (cars, palms, facades) stay unmipped.
 import * as THREE from 'three';
-
 const TEXTURE_FILES = {
   facadeA: 'facade-a.png',
   facadeB: 'facade-b.png',
@@ -22,7 +16,6 @@ const TEXTURE_FILES = {
   billboard: 'billboard.png',
 };
 const MIPMAPPED_TEXTURES = new Set(['road', 'sidewalk', 'sand', 'water']);
-
 export function loadTextures() {
   const loader = new THREE.TextureLoader();
   const loaded = {};

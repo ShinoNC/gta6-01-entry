@@ -1,19 +1,12 @@
-// The wanted system: 1-5 stars. Crimes add stars; hiding out of police
-// sight sheds one star at a time. Shedding gets slower the hotter you are —
-// one star cools off in seconds, five stars take a long quiet stretch — and
-// the helicopter overhead slows hiding to a crawl without stopping it, so a
-// fast driver who breaks line of sight can still get clean.
 export const MAX_WANTED_STARS = 5;
 const HIDE_SECONDS_AT_ONE_STAR = 6;
 const HIDE_SECONDS_PER_EXTRA_STAR = 3;
 const HELICOPTER_HIDE_RATE = 0.35;
 const SHOOTING_STAR_COOLDOWN_SECONDS = 4;
 const HIT_STAR_COOLDOWN_SECONDS = 2;
-
 export function hideSecondsForStars(stars) {
   return HIDE_SECONDS_AT_ONE_STAR + HIDE_SECONDS_PER_EXTRA_STAR * Math.max(0, stars - 1);
 }
-
 export class Wanted {
   constructor() {
     this.stars = 0;
@@ -23,12 +16,10 @@ export class Wanted {
     this.lastHitStarAt = -99;
     this.elapsed = 0;
   }
-
   get hideProgress() {
     if (this.stars === 0) return 0;
     return Math.min(1, this.hiddenSeconds / hideSecondsForStars(this.stars));
   }
-
   commitCrime(kind) {
     if (this.stars >= MAX_WANTED_STARS) return '';
     if (kind === 'shoot') {
@@ -45,12 +36,10 @@ export class Wanted {
     if (kind === 'hitPedestrian') return 'WANTED LEVEL UP — pedestrian hit';
     return 'WANTED LEVEL UP — shots fired';
   }
-
   setStars(starCount) {
     this.stars = Math.max(0, Math.min(MAX_WANTED_STARS, starCount));
     this.hiddenSeconds = 0;
   }
-
   update(dt, policeCanSeePlayer, helicopterWatching) {
     this.elapsed += dt;
     if (this.stars === 0) {

@@ -1,3 +1,4 @@
+const $ = (id) => document.getElementById(id);
 const SPEAKERS = {
   mara: ['MARA SOLIS', 'FIXER'],
   juno: ['JUNO REYES', 'WHEELWOMAN'],
@@ -18,17 +19,15 @@ const LINES = {
     ['mara', 'That is how you earn the Keys, Rook.'],
   ],
 };
-
 export class Dialogue {
   constructor() {
-    this.el = document.getElementById('dialogue-panel');
-    this.face = document.getElementById('dialogue-face');
-    this.name = document.getElementById('dialogue-name');
-    this.text = document.getElementById('dialogue-text');
+    this.el = $('dialogue-panel');
+    this.face = $('dialogue-face');
+    this.name = $('dialogue-name');
+    this.text = $('dialogue-text');
     this.until = 0;
     this.next = { go: 0, heat: 0, done: 0 };
   }
-
   say(speaker, text, seconds = 4) {
     const [name, role] = SPEAKERS[speaker];
     this.face.setAttribute('href', `#${speaker}-portrait`);
@@ -37,14 +36,12 @@ export class Dialogue {
     this.el.classList.remove('hidden');
     this.until = performance.now() + seconds * 1000;
   }
-
   cue(kind) {
     const lines = LINES[kind];
     const [speaker, text] = lines[this.next[kind] % lines.length];
     this.next[kind] += 1;
     this.say(speaker, text);
   }
-
   update() {
     if (this.until && performance.now() > this.until) {
       this.el.classList.add('hidden');

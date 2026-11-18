@@ -1,5 +1,3 @@
-// Seeded random numbers (mulberry32) so the city layout is identical on every
-// load for a given seed. The screenshot script and the game both use seed 1.
 export function makeRng(seed) {
   let state = seed >>> 0;
   return function next() {
@@ -10,23 +8,18 @@ export function makeRng(seed) {
     return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
   };
 }
-
 export function intBetween(rng, min, max) {
   return min + Math.floor(rng() * (max - min + 1));
 }
-
 export function range(rng, min, max) {
   return min + rng() * (max - min);
 }
-
 export function chance(rng, p) {
   return rng() < p;
 }
-
 export function pick(rng, array) {
   return array[Math.floor(rng() * array.length)];
 }
-
 export function weightedPick(rng, entries) {
   let total = 0;
   for (const [, weight] of entries) total += weight;
@@ -36,4 +29,10 @@ export function weightedPick(rng, entries) {
     if (roll <= 0) return value;
   }
   return entries[entries.length - 1][0];
+}
+export function wrapAngle(angle) {
+  let wrapped = angle;
+  while (wrapped > Math.PI) wrapped -= Math.PI * 2;
+  while (wrapped < -Math.PI) wrapped += Math.PI * 2;
+  return wrapped;
 }

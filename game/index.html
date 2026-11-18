@@ -10,8 +10,6 @@
   body { font-family: "Courier New", Courier, monospace; color: #fff; }
   #game-canvas { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
   .hud { position: fixed; z-index: 10; pointer-events: none; text-shadow: 2px 2px 0 #1a1030; }
-  /* The HUD stays hidden on the title screen so it does not bleed through
-     the translucent overlay over the city. */
   body.on-title .hud { display: none; }
   #hud-top-left { top: 16px; left: 18px; }
   #hud-district { font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #ffd978; }
@@ -19,13 +17,13 @@
   #hud-objective { margin-top: 6px; font-size: 15px; color: #ffe9c4; max-width: 520px; }
   #hud-next { margin-top: 4px; font-size: 14px; color: #7ac4ff; max-width: 520px; }
   #hud-clock { font-size: 15px; letter-spacing: 2px; color: #ffb3c4; }
+  #hud-weather { font-size: 15px; letter-spacing: 2px; color: #7ac4ff; }
   #hud-tapes { margin-top: 4px; font-size: 15px; letter-spacing: 2px; color: #ff6bd6; }
   #dialogue-panel { bottom: 150px; left: 50%; transform: translateX(-50%); width: 520px; max-width: 92vw;
     display: flex; gap: 12px; align-items: center; background: rgba(26,16,48,.88);
     border: 2px solid #c47aff; padding: 10px 14px; }
   #dialogue-name { font-size: 14px; font-weight: bold; letter-spacing: 2px; color: #c47aff; }
   #dialogue-text { margin-top: 4px; font-size: 15px; line-height: 1.4; color: #fff; }
-  /* Top-right: money + wanted stars + REP. */
   #hud-top-right { top: 16px; right: 18px; text-align: right; }
   #hud-money { font-size: 28px; font-weight: bold; color: #7affc4; }
   #hud-stars { margin-top: 4px; font-size: 26px; letter-spacing: 4px; color: #ffd978; }
@@ -34,7 +32,6 @@
   #hud-hiding { margin-top: 4px; font-size: 15px; font-weight: bold; letter-spacing: 2px; color: #7ac4ff;
     animation: blink 1s steps(2) infinite; }
   @keyframes blink { 50% { opacity: 0.25; } }
-  /* Right side: police response panel. */
   #hud-police { top: 150px; right: 18px; width: 300px; background: rgba(26,16,48,.82);
     border: 2px solid #ff4d5e; padding: 10px 12px; font-size: 14px; }
   .police-title { font-weight: bold; letter-spacing: 2px; color: #ff8a94; margin-bottom: 6px; }
@@ -43,7 +40,6 @@
   #hud-minimap { bottom: 18px; left: 18px; }
   #minimap { width: 168px; height: 168px; border-radius: 50%; border: 3px solid #ffd978;
     box-shadow: 0 0 0 3px #1a1030, 0 4px 18px rgba(0,0,0,.5); background: #1a1030; }
-  /* Bottom-right: weapon slots, radio, speedometer. */
   #hud-speedo { bottom: 18px; right: 18px; text-align: right; }
   #hud-weapons { display: flex; gap: 6px; justify-content: flex-end; margin-bottom: 6px; }
   .weapon-slot { font-size: 13px; letter-spacing: 1px; padding: 4px 8px;
@@ -65,7 +61,6 @@
     border: 2px solid #ffd978; opacity: 0; transition: opacity .25s; white-space: nowrap; }
   #hud-message.visible { opacity: 1; }
   #hud-hint { bottom: 4px; left: 50%; transform: translateX(-50%); font-size: 12px; color: #ffdcb0cc; white-space: nowrap; }
-  /* Phone briefing panel: the fixer calls with a job. */
   #phone-panel { bottom: 150px; left: 50%; transform: translateX(-50%); width: 440px; max-width: 92vw;
     background: rgba(26,16,48,.92); border: 2px solid #ffd978; padding: 14px 18px; pointer-events: auto; }
   #phone-giver { font-size: 15px; font-weight: bold; letter-spacing: 2px; color: #7affc4; }
@@ -74,9 +69,6 @@
   .phone-button { cursor: pointer; font-family: inherit; font-size: 15px; font-weight: bold; letter-spacing: 2px;
     color: #1a1030; background: #ffd978; border: 2px solid #1a1030; padding: 8px 20px; }
   .phone-button.later { background: #3a3348; color: #ffdcb0; border-color: #ffdcb0; }
-  /* Mission list screen: header + scrolling list + a footer that pins the
-     CLOSE button to the bottom of the viewport, so it is never below the
-     fold at 720p no matter how many jobs the list holds. */
   #mission-screen { justify-content: flex-start; padding-top: 14px; overflow: hidden;
     background: linear-gradient(180deg, rgba(59,42,107,1), rgba(255,126,107,1) 60%, rgba(255,179,71,1)); }
   #mission-header { display: flex; gap: 18px; align-items: center; flex: 0 0 auto; }
@@ -94,14 +86,10 @@
   .mission-reward { margin-top: 3px; font-size: 14px; color: #7affc4; }
   .mission-briefing { margin-top: 6px; font-size: 14px; line-height: 1.4; color: #ffe9c4; }
   .mission-accept { margin-top: 10px; font-size: 15px; padding: 8px 22px; }
-  /* Pixel portrait of the fixer, Mara Solis (SVG symbol, reused in the
-     phone panel and the mission screen). */
   .portrait { width: 44px; height: 44px; border: 2px solid #ffd978; flex: 0 0 auto;
     image-rendering: pixelated; background: #3b2a6b; }
   .portrait-large { width: 64px; height: 64px; }
   .phone-head { display: flex; gap: 12px; align-items: center; }
-  /* Title skyline: a pixel-art silhouette strip pinned to the bottom of
-     the title screen, behind the menu. */
   #title-skyline { position: absolute; bottom: 0; left: 0; width: 100%; height: 170px;
     pointer-events: none; z-index: 0; }
   #title-screen > *:not(#title-skyline) { position: relative; z-index: 1; }
@@ -135,7 +123,6 @@
 </head>
 <body class="on-title">
 <canvas id="game-canvas"></canvas>
-
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="mara-portrait" viewBox="0 0 32 32">
@@ -180,7 +167,6 @@
     </symbol>
   </defs>
 </svg>
-
 <div class="hud" id="hud-top-left">
   <div id="hud-district">MARINA DEL SOL</div>
   <div id="hud-mission">FREE ROAM</div>
@@ -189,6 +175,7 @@
 </div>
 <div class="hud" id="hud-top-right">
   <div id="hud-clock">DAY 1 18:50</div>
+  <div id="hud-weather">☀ CLEAR</div>
   <div id="hud-money">$1,250</div>
   <div id="hud-stars">☆☆☆☆☆</div>
   <div id="hud-rep">REP LV 1</div>
@@ -226,7 +213,6 @@
   <div><div id="dialogue-name"></div><div id="dialogue-text"></div></div>
 </div>
 <div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-4 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
-
 <div class="overlay" id="title-screen">
   <svg id="title-skyline" viewBox="0 0 1280 170" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
     <circle cx="1020" cy="128" r="58" fill="#ffd98a" opacity="0.9"/>
@@ -267,7 +253,6 @@
     Steal cars, outrun the police, and take over the Keys.
   </div>
 </div>
-
 <div class="overlay hidden" id="options-screen">
   <div class="game-title" style="font-size:44px">OPTIONS</div>
   <button class="menu-button compact" id="sound-toggle">SOUND: ON</button>
@@ -278,7 +263,6 @@
   <div class="custom-row"><span>SKIN</span><div class="swatches" id="skin-swatches"></div></div>
   <button class="menu-button compact" id="options-back">BACK</button>
 </div>
-
 <div class="overlay hidden" id="pause-screen">
   <div class="game-title" style="font-size:56px">PAUSED</div>
   <button class="menu-button" id="resume-button">RESUME</button>
@@ -286,7 +270,6 @@
   <button class="menu-button" id="missions-button">MISSIONS</button>
   <button class="menu-button" id="restart-button">RESTART</button>
 </div>
-
 <div class="overlay hidden" id="mission-screen">
   <div id="mission-header">
     <svg class="portrait portrait-large"><use href="#mara-portrait"/></svg>
@@ -298,7 +281,6 @@
   <div id="mission-list"></div>
   <div id="mission-footer"><button class="menu-button" id="mission-close-button">CLOSE (M)</button></div>
 </div>
-
 <div id="load-error" class="hidden"></div>
 <script type="module" src="./src/main.js"></script>
 </body>

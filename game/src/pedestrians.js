@@ -1,13 +1,6 @@
-// Sidewalk pedestrians: box characters in varied shirts who wander the
-// pavements beside the roads. They run from the player's speeding car and
-// from gunshots, and a hit knocks one down (a crime for the wanted
-// system). A scream toast fires at most once every few seconds. Walkers
-// vary in height, hair and headwear, and a frightened few freeze in place
-// instead of running — the crowd reads as people, not clones.
 import * as THREE from 'three';
 import { roadLines } from './city.js';
 import { chance, pick, range } from './random.js';
-
 export const PEDESTRIAN_COUNT = 20;
 const SIDEWALK_OFFSET = 7.6;
 const WALK_MIN_SPEED = 1.1;
@@ -21,20 +14,17 @@ const SCREAM_COOLDOWN_SECONDS = 4;
 const LEG_SWING = 0.5;
 const FREEZE_CHANCE = 0.2;
 const FLEE_RESTEEER_SECONDS = 0.6;
-
 export const SHIRT_COLOURS = [0xff5a7a, 0x7ac4ff, 0xffd978, 0x7affc4, 0xc47aff, 0xff9a5a, 0xffffff, 0x5ad0d0];
 const PANTS_COLOURS = [0x2a4a8a, 0x3a3a44, 0x6b4a2a, 0x2a6b4a];
 export const SKIN_COLOURS = [0xe8b07a, 0xc98a5a, 0x8a5a3a, 0xf2c9a0];
 export const HAIR_COLOURS = [0x241a2a, 0x4a2a1a, 0x8a6a3a, 0xd8d8d8, 0x1a1a1a, 0x7a3a2a];
 const HAT_COLOURS = [0xffd978, 0x7ac4ff, 0xff5a7a, 0xe8e8e8];
-
-function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, heightScale) {
+export function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, heightScale) {
   const group = new THREE.Group();
   const shirt = new THREE.MeshLambertMaterial({ color: shirtColour });
   const pants = new THREE.MeshLambertMaterial({ color: pantsColour });
   const skin = new THREE.MeshLambertMaterial({ color: skinColour });
   const hair = new THREE.MeshLambertMaterial({ color: hairColour });
-
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.8, 0.4), shirt);
   torso.position.y = 1.1;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.46, 0.46), skin);
@@ -55,7 +45,6 @@ function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, 
     crown.position.y = 2.2;
     group.add(brimHat, crown);
   }
-
   function limb(geometry, material, x, y) {
     const mesh = new THREE.Mesh(geometry, material);
     mesh.position.set(x, y, 0);
@@ -73,13 +62,11 @@ function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, 
   group.scale.setScalar(heightScale);
   return { group, legLeft, legRight, armLeft, armRight };
 }
-
 let hatColourIndex = 0;
 function pickHatColour() {
   hatColourIndex = (hatColourIndex + 1) % HAT_COLOURS.length;
   return HAT_COLOURS[hatColourIndex];
 }
-
 export class Pedestrians {
   constructor(scene, rng, onScream) {
     this.lines = roadLines();
@@ -122,11 +109,9 @@ export class Pedestrians {
       this.peds.push(ped);
     }
   }
-
   get fleeingCount() {
     return this.peds.filter((ped) => ped.fleeTimer > 0).length;
   }
-
   placeOnSidewalk(ped) {
     const offset = SIDEWALK_OFFSET * ped.side;
     if (ped.line.axis === 'z') {
@@ -137,7 +122,6 @@ export class Pedestrians {
       ped.mesh.group.rotation.y = ped.direction > 0 ? Math.PI / 2 : -Math.PI / 2;
     }
   }
-
   fleeFrom(ped, fromX, fromZ) {
     const pos = ped.mesh.group.position;
     const dx = pos.x - fromX;
@@ -155,7 +139,6 @@ export class Pedestrians {
       this.onScream();
     }
   }
-
   scareFrom(x, z, range) {
     for (const ped of this.peds) {
       if (ped.knockedTimer > 0 || ped.fleeTimer > 0) continue;
@@ -163,7 +146,6 @@ export class Pedestrians {
       if (Math.hypot(pos.x - x, pos.z - z) < range) this.fleeFrom(ped, x, z);
     }
   }
-
   knockDown(ped, fromX, fromZ) {
     ped.knockedTimer = KNOCKED_DOWN_SECONDS;
     ped.fleeTimer = 0;
@@ -173,7 +155,6 @@ export class Pedestrians {
     ped.mesh.group.rotation.x = Math.PI / 2;
     ped.mesh.group.position.y = 0.4;
   }
-
   update(dt, city, playerCar, gunshot) {
     this.screamCooldown -= dt;
     for (const ped of this.peds) {

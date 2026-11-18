@@ -1,15 +1,6 @@
-// The story: 8 jobs from fixer Mara Solis for Rook, a driver new to
-// Solaris Keys. Every mission is waypoint-based — drive to the beacon, wait
-// out a pickup, lose the heat — with generous or no timers. Completing a
-// job pays cash and REP; one job unlocks the SMG. Rewards rise through the
-// chain so the finale pays the most, and the finale ends with the whole
-// crew on the beach at sunset. A yellow light pillar marks the current
-// target in 3D.
 import * as THREE from 'three';
-
 export const MISSIONS_IN_STORY = 8;
-const WAYPOINT_ARRIVE_METRES = 10;
-
+const ARRIVE_M = 10;
 export const MISSION_CHAIN = [
   {
     name: 'FIRST FARE',
@@ -113,13 +104,12 @@ export const MISSION_CHAIN = [
     ],
   },
 ];
-
-function buildBeacon(scene) {
+export function buildBeacon(scene, color = 0xffd978) {
   const group = new THREE.Group();
-  const pillarMaterial = new THREE.MeshBasicMaterial({ color: 0xffd978, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
+  const pillarMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
   const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 30, 12, 1, true), pillarMaterial);
   pillar.position.y = 15;
-  const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xffd978, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
+  const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
   const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 3.1, 24), ringMaterial);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
@@ -128,100 +118,89 @@ function buildBeacon(scene) {
   scene.add(group);
   return { group, pillar };
 }
-
 export class Missions {
   constructor(scene, callbacks) {
     this.callbacks = callbacks;
     this.status = MISSION_CHAIN.map(() => 'locked');
     this.status[0] = 'pending';
-    this.currentMissionIndex = -1;
+    this.curIdx = -1;
     this.stageIndex = 0;
     this.waitSeconds = 0;
-    this.pendingBriefingIndex = 0;
-    this.briefingSnooze = 1;
+    this.briefingIdx = 0;
+    this.snooze = 1;
     this.target = null;
     this.clock = 0;
     this.missionClock = 0;
     this.parSeconds = 0;
     this.beacon = buildBeacon(scene);
   }
-
   get pendingBriefing() {
-    if (this.pendingBriefingIndex < 0 || this.currentMissionIndex >= 0 || this.briefingSnooze > 0) return null;
-    return { mission: MISSION_CHAIN[this.pendingBriefingIndex], index: this.pendingBriefingIndex };
+    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0) return null;
+    return { mission: MISSION_CHAIN[this.briefingIdx], index: this.briefingIdx };
   }
-
   currentMission() {
-    return this.currentMissionIndex >= 0 ? MISSION_CHAIN[this.currentMissionIndex] : null;
+    return this.curIdx >= 0 ? MISSION_CHAIN[this.curIdx] : null;
   }
-
   currentObjective() {
     const mission = this.currentMission();
     return mission ? mission.objectives[this.stageIndex] : null;
   }
-
   doneCount() {
     return this.status.filter((status) => status === 'done').length;
   }
-
   snoozeBriefing(seconds) {
-    this.briefingSnooze = seconds;
+    this.snooze = seconds;
   }
-
   startMission(index) {
     const mission = MISSION_CHAIN[index];
-    this.currentMissionIndex = index;
+    this.curIdx = index;
     this.stageIndex = 0;
     this.waitSeconds = 0;
     this.missionClock = 0;
     this.parSeconds = 90 + mission.objectives.length * 45;
     this.status[index] = 'active';
-    this.pendingBriefingIndex = -1;
-    this.briefingSnooze = 0;
+    this.briefingIdx = -1;
+    this.snooze = 0;
     if (mission.scriptedHeat) this.callbacks.onScriptedHeat(mission.scriptedHeat);
     this.callbacks.onMissionStarted(mission, index);
   }
-
   forceStart(index) {
-    this.pendingBriefingIndex = -1;
+    this.briefingIdx = -1;
     this.startMission(index);
   }
-
   setCompleted(count) {
     for (let i = 0; i < MISSIONS_IN_STORY; i += 1) {
       this.status[i] = i < count ? 'done' : 'locked';
     }
     if (count < MISSIONS_IN_STORY) {
       this.status[count] = 'pending';
-      this.pendingBriefingIndex = count;
-      this.briefingSnooze = 1;
+      this.briefingIdx = count;
+      this.snooze = 1;
     } else {
-      this.pendingBriefingIndex = -1;
+      this.briefingIdx = -1;
     }
   }
-
   completeStage() {
     const mission = this.currentMission();
     this.stageIndex += 1;
     this.waitSeconds = 0;
     this.callbacks.onObjectiveComplete();
     if (this.stageIndex < mission.objectives.length) return;
-    const finishedIndex = this.currentMissionIndex;
+    const finishedIndex = this.curIdx;
     this.status[finishedIndex] = 'done';
-    this.currentMissionIndex = -1;
+    this.curIdx = -1;
     this.target = null;
     const nextIndex = finishedIndex + 1;
     if (nextIndex < MISSIONS_IN_STORY) {
       this.status[nextIndex] = 'pending';
-      this.pendingBriefingIndex = nextIndex;
-      this.briefingSnooze = 2;
+      this.briefingIdx = nextIndex;
+      this.snooze = 2;
     }
     this.callbacks.onMissionComplete(mission, finishedIndex);
   }
-
   update(dt, context) {
     this.clock += dt;
-    this.briefingSnooze = Math.max(0, this.briefingSnooze - dt);
+    this.snooze = Math.max(0, this.snooze - dt);
     const mission = this.currentMission();
     if (!mission) {
       this.target = null;
@@ -244,13 +223,12 @@ export class Missions {
       this.beacon.group.position.set(this.target.x, 0, this.target.z);
       this.beacon.pillar.material.opacity = 0.2 + 0.1 * Math.sin(this.clock * 3);
     }
-
     if (objective.kind === 'driveTo') {
-      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < WAYPOINT_ARRIVE_METRES) {
+      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M) {
         this.completeStage();
       }
     } else if (objective.kind === 'waitAt') {
-      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < WAYPOINT_ARRIVE_METRES) {
+      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M) {
         this.waitSeconds += dt;
         if (this.waitSeconds >= objective.seconds) this.completeStage();
       } else {
@@ -262,22 +240,19 @@ export class Missions {
       if (drivenCar && drivenCar.name === objective.carName) this.completeStage();
     }
   }
-
   progressLine() {
-    if (this.currentMissionIndex < 0) return this.doneCount() >= MISSIONS_IN_STORY ? 'STORY COMPLETE' : 'FREE ROAM';
+    if (this.curIdx < 0) return this.doneCount() >= MISSIONS_IN_STORY ? 'STORY COMPLETE' : 'FREE ROAM';
     const mission = this.currentMission();
     const left = Math.max(0, this.parSeconds - this.missionClock);
     const timer = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
-    return `MISSION ${this.currentMissionIndex + 1}/${MISSIONS_IN_STORY} — ${mission.name} · STAGE ${this.stageIndex + 1}/${mission.objectives.length} · ${timer}`;
+    return `MISSION ${this.curIdx + 1}/${MISSIONS_IN_STORY} — ${mission.name} · STAGE ${this.stageIndex + 1}/${mission.objectives.length} · ${timer}`;
   }
-
   nextLine() {
     const mission = this.currentMission();
     if (!mission) return '';
     const next = mission.objectives[this.stageIndex + 1];
     return next ? next.label : 'Finish the job — report to Mara';
   }
-
   nextObjectiveLine() {
     const objective = this.currentObjective();
     if (!objective) return null;
@@ -286,7 +261,6 @@ export class Missions {
     }
     return objective.label;
   }
-
   statusList() {
     return MISSION_CHAIN.map((mission, index) => ({
       number: index + 1,

@@ -1,7 +1,3 @@
-// Keyboard + mouse state. Keys are tracked by code (KeyW, KeyF, ...), and
-// `pressed` reports a key only on the frame it went down, so F enters a car
-// once instead of toggling every frame. Dragging the mouse orbits the camera;
-// the scroll wheel cycles weapons; a quick click without a drag shoots.
 export class Input {
   constructor() {
     this.down = new Set();
@@ -13,7 +9,6 @@ export class Input {
     this.mouseDownX = 0;
     this.mouseDownY = 0;
     this.wheelNotches = 0;
-
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
       this.down.add(event.code);
@@ -25,7 +20,6 @@ export class Input {
       this.down.clear();
       this.dragging = false;
     });
-
     const canvas = document.getElementById('game-canvas');
     canvas.addEventListener('mousedown', (event) => {
       this.dragging = true;
@@ -52,27 +46,22 @@ export class Input {
       { passive: true },
     );
   }
-
   isDown(code) {
     return this.down.has(code);
   }
-
   pressed(code) {
     return this.justPressed.has(code);
   }
-
   consumeWheel() {
     const steps = this.wheelNotches;
     this.wheelNotches = 0;
     return steps;
   }
-
   moveAxes() {
     const forward = (this.isDown('KeyW') || this.isDown('ArrowUp') ? 1 : 0) - (this.isDown('KeyS') || this.isDown('ArrowDown') ? 1 : 0);
     const strafe = (this.isDown('KeyD') || this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('KeyA') || this.isDown('ArrowLeft') ? 1 : 0);
     return { forward, strafe };
   }
-
   endFrame() {
     this.justPressed.clear();
     this.tap = false;

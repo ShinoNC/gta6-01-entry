@@ -1,18 +1,10 @@
-// NPC traffic: cars that drive the city roads in their own lanes, brake
-// when something blocks the road ahead, and respawn at the map edge when
-// they reach the end of a road. The look-ahead check makes them stop for
-// the player's car too. The fleet is mixed — sedans, a pickup, a van and a
-// yellow taxi — with a different cruise speed per body style, so the road
-// reads as a real city instead of ten copies of one car.
 import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
 import { intBetween, pick, weightedPick } from './random.js';
-
 export const TRAFFIC_CAR_COUNT = 10;
 const LANE_OFFSET = 2.5;
 const LOOK_AHEAD_METRES = 9;
 const BLOCKED_LATERAL_METRES = 2.6;
-
 const TRAFFIC_PAINTS = [0xd6303e, 0x346edc, 0xe8a33d, 0x3da86b, 0x9a5fd0, 0xe8e8e8, 0xff6b9d, 0x2ad0c4, 0xffc828];
 const TRAFFIC_BODY_STYLES = [
   ['sedan', 6],
@@ -25,17 +17,14 @@ const STYLE_SPEED_BAND = {
   van: [7, 11],
   taxi: [11, 16],
 };
-
 export function laneOffsetFor(axis, direction) {
   if (axis === 'z') return direction > 0 ? -LANE_OFFSET : LANE_OFFSET;
   return direction > 0 ? LANE_OFFSET : -LANE_OFFSET;
 }
-
 export function headingFor(axis, direction) {
   if (axis === 'z') return direction > 0 ? 0 : Math.PI;
   return direction > 0 ? Math.PI / 2 : -Math.PI / 2;
 }
-
 export class Traffic {
   constructor(scene, textures, rng) {
     this.lines = roadLines();
@@ -46,7 +35,6 @@ export class Traffic {
       this.cars.push(this.buildNpc(scene, rng));
     }
   }
-
   buildNpc(scene, rng) {
     const line = pick(rng, this.lines);
     const direction = rng() < 0.5 ? -1 : 1;
@@ -69,7 +57,6 @@ export class Traffic {
     this.placeOnRoad(npc);
     return npc;
   }
-
   placeOnRoad(npc) {
     const offset = laneOffsetFor(npc.line.axis, npc.direction);
     if (npc.line.axis === 'z') {
@@ -80,7 +67,6 @@ export class Traffic {
     npc.car.heading = headingFor(npc.line.axis, npc.direction);
     npc.car.group.rotation.y = npc.car.heading;
   }
-
   respawnAtEdge(npc) {
     npc.line = pick(this.rng, this.lines);
     npc.direction = this.rng() < 0.5 ? -1 : 1;
@@ -88,7 +74,6 @@ export class Traffic {
     npc.cruiseSpeed = intBetween(this.rng, npc.speedBand[0], npc.speedBand[1]);
     this.placeOnRoad(npc);
   }
-
   blockedAhead(npc, obstacles) {
     const pos = npc.car.position;
     const fx = Math.sin(npc.car.heading);
@@ -103,13 +88,11 @@ export class Traffic {
     }
     return false;
   }
-
   shove(npc) {
     npc.along += npc.direction * 1.5;
     npc.stoppedTimer = 1.2;
     npc.speed = 0;
   }
-
   update(dt, obstacles) {
     for (const npc of this.cars) {
       if (npc.stoppedTimer > 0) {

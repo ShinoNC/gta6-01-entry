@@ -1,9 +1,7 @@
 import * as THREE from 'three';
 import { roadLines } from './city.js';
-
 export const TAPE_COUNT = 20;
 const TAPE_PICKUP_METRES = 3.5;
-
 export class Tapes {
   constructor(scene, rng) {
     this.tapes = [];
@@ -23,7 +21,6 @@ export class Tapes {
     }
     this.collected = 0;
   }
-
   setCollected(count) {
     for (let i = 0; i < this.tapes.length; i += 1) {
       if (i >= count) break;
@@ -32,7 +29,6 @@ export class Tapes {
     }
     this.collected = Math.min(count, this.tapes.length);
   }
-
   update(dt, focusPos, onPickup) {
     if (this.collected >= TAPE_COUNT) return;
     for (const tape of this.tapes) {

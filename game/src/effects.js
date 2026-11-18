@@ -1,15 +1,9 @@
-// Particles: impact sparks and skid smoke, one shared pool each so the
-// combat and driving systems do not run their own. Sparks are small,
-// additive and fast with gravity; smoke is big, soft and slow, rising and
-// drifting as it fades. Dead particles park at y = -50, out of sight.
 import * as THREE from 'three';
-
 const SPARK_COUNT = 96;
 const SMOKE_COUNT = 64;
 const SPARK_LIFE_SECONDS = 0.4;
 const SMOKE_LIFE_SECONDS = 1.1;
 const PARKED_Y = -50;
-
 function makePool(scene, count, material) {
   const positions = new Float32Array(count * 3).fill(PARKED_Y);
   const velocities = new Float32Array(count * 3);
@@ -21,7 +15,6 @@ function makePool(scene, count, material) {
   scene.add(points);
   return { positions, velocities, life, points };
 }
-
 export class Effects {
   constructor(scene) {
     this.sparks = makePool(
@@ -35,7 +28,6 @@ export class Effects {
       new THREE.PointsMaterial({ color: 0x9a93a8, size: 1.3, transparent: true, opacity: 0.4, depthWrite: false }),
     );
   }
-
   get activeCount() {
     let count = 0;
     for (const pool of [this.sparks, this.smoke]) {
@@ -43,7 +35,6 @@ export class Effects {
     }
     return count;
   }
-
   burstSparks(x, y, z, burstCount = 8) {
     let placed = 0;
     for (let i = 0; i < SPARK_COUNT && placed < burstCount; i += 1) {
@@ -59,7 +50,6 @@ export class Effects {
     }
     this.sparks.points.geometry.attributes.position.needsUpdate = true;
   }
-
   puffSmoke(x, y, z, puffCount = 2) {
     let placed = 0;
     for (let i = 0; i < SMOKE_COUNT && placed < puffCount; i += 1) {
@@ -75,7 +65,6 @@ export class Effects {
     }
     this.smoke.points.geometry.attributes.position.needsUpdate = true;
   }
-
   update(dt) {
     for (const pool of [this.sparks, this.smoke]) {
       let moved = false;

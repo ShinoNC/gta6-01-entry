@@ -1,81 +1,57 @@
-// Arcade cars: no physics engine, just speed, heading and a steering angle.
-// One car starts beside the player; the rest are parked around the city to
-// steal. Three body styles — sedan, pickup and van — share the same drive
-// model; wheels spin and the front pair steers. `skidding` and `impact` are
-// read by the particle system: hard steering at speed throws up smoke, and
-// a collision flashes sparks.
 import * as THREE from 'three';
-
-const CAR_ACCELERATION = 16;
-const CAR_BRAKE = 34;
-const CAR_DRAG = 0.55;
-const CAR_MAX_SPEED = 38;
-const CAR_MAX_REVERSE_SPEED = 11;
-const CAR_STEER_RATE = 1.9;
-const CAR_RADIUS = 1.6;
-const SKID_MIN_SPEED = 20;
-const SKID_MIN_STEER = 0.25;
-
+const CAR_ACCEL = 16, CAR_BRAKE = 34, CAR_DRAG = 0.55, CAR_MAX_SPEED = 38, CAR_MAX_REVERSE = 11;
+const CAR_STEER_RATE = 1.9, CAR_RADIUS = 1.6, SKID_MIN_SPEED = 20, SKID_MIN_STEER = 0.25;
 export function createCar(scene, textures, name, bodyTexture, paintColour, x, z, heading, style = 'sedan') {
   const group = new THREE.Group();
-  const bodyMaterial = new THREE.MeshLambertMaterial({ map: bodyTexture });
-  const paintMaterial = new THREE.MeshLambertMaterial({ color: paintColour });
-  const glassMaterial = new THREE.MeshLambertMaterial({ color: 0x9fd4e8 });
-  const tyreMaterial = new THREE.MeshLambertMaterial({ color: 0x1c1a24 });
-  const lightMaterial = new THREE.MeshBasicMaterial({ color: 0xfff2a8 });
-
-  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, 4.2), bodyMaterial);
+  const bodyMat = new THREE.MeshLambertMaterial({ map: bodyTexture });
+  const paint = new THREE.MeshLambertMaterial({ color: paintColour });
+  const glass = new THREE.MeshLambertMaterial({ color: 0x9fd4e8 });
+  const tyre = new THREE.MeshLambertMaterial({ color: 0x1c1a24 });
+  const light = new THREE.MeshBasicMaterial({ color: 0xfff2a8 });
+  const body = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.62, 4.2), bodyMat);
   body.position.y = 0.55;
   group.add(body);
   if (style === 'pickup') {
-    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 1.4), glassMaterial);
+    const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 1.4), glass);
     cab.position.set(0, 1.1, 0.9);
-    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 1.45), paintMaterial);
+    const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 1.45), paint);
     cabRoof.position.set(0, 1.4, 0.9);
-    const bedWall = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.35, 0.12), paintMaterial);
+    const bedWall = new THREE.Mesh(new THREE.BoxGeometry(1.9, 0.35, 0.12), paint);
     bedWall.position.set(0, 0.95, -2.0);
     group.add(cab, cabRoof, bedWall);
   } else if (style === 'van') {
-    const shell = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.0, 3.6), paintMaterial);
+    const shell = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.0, 3.6), paint);
     shell.position.set(0, 1.35, -0.2);
-    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.1), glassMaterial);
+    const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.1), glass);
     windshield.position.set(0, 1.35, 1.62);
     group.add(shell, windshield);
   } else {
-    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.1), glassMaterial);
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 2.1), glass);
     cabin.position.set(0, 1.1, -0.2);
-    const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 2.15), paintMaterial);
+    const roofPanel = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 2.15), paint);
     roofPanel.position.set(0, 1.4, -0.2);
     group.add(cabin, roofPanel);
   }
   for (const side of [-0.65, 0.65]) {
-    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), lightMaterial);
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), light);
     lamp.position.set(side, 0.62, 2.12);
     group.add(lamp);
   }
-
   const wheelGeometry = new THREE.CylinderGeometry(0.36, 0.36, 0.3, 10);
   wheelGeometry.rotateZ(Math.PI / 2);
   const wheels = [];
-  const wheelSpots = [
-    [-0.95, 1.35, true],
-    [0.95, 1.35, true],
-    [-0.95, -1.35, false],
-    [0.95, -1.35, false],
-  ];
+  const wheelSpots = [[-0.95, 1.35, true], [0.95, 1.35, true], [-0.95, -1.35, false], [0.95, -1.35, false]];
   for (const [wx, wz, steers] of wheelSpots) {
     const pivot = new THREE.Group();
     pivot.position.set(wx, 0.36, wz);
-    const wheel = new THREE.Mesh(wheelGeometry, tyreMaterial);
+    const wheel = new THREE.Mesh(wheelGeometry, tyre);
     pivot.add(wheel);
     group.add(pivot);
     wheels.push({ pivot, wheel, steers });
   }
-
   group.position.set(x, 0, z);
   group.rotation.y = heading;
   scene.add(group);
-
   return {
     group,
     name,
@@ -90,19 +66,20 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
       return group.position;
     },
     get skidding() {
-      return Math.abs(this.speed) > SKID_MIN_SPEED && Math.abs(this.steerAngle) > SKID_MIN_STEER;
+      return Math.abs(this.speed) > SKID_MIN_SPEED && Math.abs(this.steerAngle) > SKID_MIN_STEER * (this.gripMul || 1);
     },
-    update(dt, input, city) {
+    update(dt, input, city, gripMul = 1) {
+      this.gripMul = gripMul;
       const { forward, strafe } = input.moveAxes();
-      if (forward > 0) this.speed += CAR_ACCELERATION * dt;
+      if (forward > 0) this.speed += CAR_ACCEL * dt;
       else if (forward < 0) {
-        this.speed = this.speed > 0.5 ? this.speed - CAR_BRAKE * dt : this.speed - CAR_ACCELERATION * 0.6 * dt;
+        this.speed = this.speed > 0.5 ? this.speed - CAR_BRAKE * dt : this.speed - CAR_ACCEL * 0.6 * dt;
       } else {
         this.speed -= this.speed * CAR_DRAG * dt;
         if (Math.abs(this.speed) < 0.05) this.speed = 0;
       }
-      this.speed = Math.max(-CAR_MAX_REVERSE_SPEED, Math.min(CAR_MAX_SPEED, this.speed));
-      const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - Math.abs(this.speed) / CAR_MAX_SPEED / 2);
+      this.speed = Math.max(-CAR_MAX_REVERSE, Math.min(CAR_MAX_SPEED, this.speed));
+      const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - Math.abs(this.speed) / CAR_MAX_SPEED / 2) * gripMul;
       const steerTarget = -strafe * 0.55 * grip;
       this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 8);
       this.heading += (this.speed / 2.6) * Math.tan(this.steerAngle) * dt * (this.speed < 0 ? -1 : 1);
@@ -126,7 +103,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     },
   };
 }
-
 export function createCars(scene, textures) {
   const cars = [];
   const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, -8, Math.PI);

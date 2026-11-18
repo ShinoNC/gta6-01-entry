@@ -1,16 +1,9 @@
-// Save slots in localStorage: three slots holding money, REP, story
-// progress, unlocked weapons and the player's position. Slot 1 is the
-// autosave slot, written after every completed mission. Saves carry a format
-// version and are validated on load, so a corrupt or hand-edited record is
-// treated as an empty slot instead of crashing the game.
 import { MISSIONS_IN_STORY } from './missions.js';
-
 export const SAVE_SLOT_COUNT = 3;
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_KEY_PREFIX = 'solaris-keys-save-';
 const LOOK_KEY = 'solaris-keys-look';
 const memorySlots = new Map();
-
 function isValidSave(data) {
   if (!data || typeof data !== 'object') return false;
   if (data.version !== SAVE_FORMAT_VERSION) return false;
@@ -21,7 +14,6 @@ function isValidSave(data) {
   if (typeof data.playerX !== 'number' || typeof data.playerZ !== 'number') return false;
   return true;
 }
-
 export function saveGame(slot, data) {
   const record = { ...data, version: SAVE_FORMAT_VERSION, savedAt: Date.now() };
   memorySlots.set(slot, record);
@@ -32,7 +24,6 @@ export function saveGame(slot, data) {
     return true;
   }
 }
-
 export function loadGame(slot) {
   let data = null;
   try {
@@ -43,14 +34,12 @@ export function loadGame(slot) {
   if (!data) data = memorySlots.get(slot) || null;
   return isValidSave(data) ? data : null;
 }
-
 export function saveLook(look) {
   try {
     localStorage.setItem(LOOK_KEY, JSON.stringify(look));
   } catch {
   }
 }
-
 export function loadLook() {
   try {
     const data = JSON.parse(localStorage.getItem(LOOK_KEY));
@@ -59,7 +48,6 @@ export function loadLook() {
   }
   return null;
 }
-
 export function latestSaveSlot() {
   let bestSlot = null;
   let bestTime = 0;
@@ -72,7 +60,6 @@ export function latestSaveSlot() {
   }
   return bestSlot;
 }
-
 export function saveSlotSummaries() {
   const summaries = [];
   for (let slot = 1; slot <= SAVE_SLOT_COUNT; slot += 1) {

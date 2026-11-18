@@ -1,8 +1,3 @@
-// All sound is synthesized with WebAudio — no audio files. The engine hum
-// steps through four gears as speed rises, sirens alternate two tones like
-// a real wail, gunshots are noise bursts, and two radio stations loop short
-// synth melodies with named tracks. Silent until the player clicks START
-// (the browser needs a gesture to unlock audio).
 export const RADIO_STATIONS = [
   {
     name: 'WAVE 88.1 · Neon Drive',
@@ -26,11 +21,9 @@ const SIREN_LOW_HZ = 720;
 const SIREN_HIGH_HZ = 980;
 const SIREN_TONE_SECONDS = 0.32;
 const TRACK_STEPS_PER_TRACK = 32;
-
 function midiToFrequency(midi) {
   return 440 * 2 ** ((midi - 69) / 12);
 }
-
 export class GameAudio {
   constructor() {
     this.ctx = null;
@@ -50,7 +43,6 @@ export class GameAudio {
     this.musicEnabled = true;
     this.clock = 0;
   }
-
   unlock() {
     if (this.ctx) {
       this.ctx.resume().catch(() => {});
@@ -88,45 +80,37 @@ export class GameAudio {
       this.ctx = null;
     }
   }
-
   radioStationName() {
     return RADIO_STATIONS[this.stationIndex].name;
   }
-
   nowPlaying() {
     const station = RADIO_STATIONS[this.stationIndex];
     const track = station.tracks[Math.floor(this.radioStep / TRACK_STEPS_PER_TRACK) % station.tracks.length];
     return `${station.name} — '${track}'`;
   }
-
   nextStation() {
     this.stationIndex = (this.stationIndex + 1) % RADIO_STATIONS.length;
     this.radioStep = 0;
     if (this.ctx) this.nextNoteTime = this.ctx.currentTime + 0.05;
     return this.radioStationName();
   }
-
   setSoundEnabled(enabled) {
     this.soundEnabled = enabled;
     if (this.ctx && !enabled) this.ctx.suspend().catch(() => {});
     if (this.ctx && enabled) this.ctx.resume().catch(() => {});
   }
-
   setMusicEnabled(enabled) {
     this.musicEnabled = enabled;
   }
-
   setEngine(speedNorm, driving) {
     this.engineSpeed = speedNorm;
     this.engineDriving = driving;
   }
-
   setSiren(nearestPoliceDistance) {
     this.sirenIntensity = Number.isFinite(nearestPoliceDistance)
       ? Math.max(0, 1 - nearestPoliceDistance / 80)
       : 0;
   }
-
   blip(frequency, seconds, gainValue, type = 'sine', when = 0) {
     if (!this.ctx || !this.soundEnabled) return;
     const startAt = this.ctx.currentTime + when;
@@ -140,12 +124,10 @@ export class GameAudio {
     osc.start(startAt);
     osc.stop(startAt + seconds + 0.02);
   }
-
   horn() {
     this.blip(392, 0.28, 0.09, 'square');
     this.blip(494, 0.28, 0.09, 'square');
   }
-
   gunshot() {
     if (!this.ctx || !this.soundEnabled) return;
     const duration = 0.14;
@@ -164,16 +146,13 @@ export class GameAudio {
     source.connect(filter).connect(gain).connect(this.ctx.destination);
     source.start();
   }
-
   chime() {
     this.blip(880, 0.14, 0.08);
     this.blip(1174.66, 0.2, 0.08, 'sine', 0.1);
   }
-
   click() {
     this.blip(1400, 0.04, 0.05, 'square');
   }
-
   scheduleRadioNote(frequency, startAt, seconds, gainValue, type) {
     const osc = this.ctx.createOscillator();
     osc.type = type;
@@ -186,7 +165,6 @@ export class GameAudio {
     osc.start(startAt);
     osc.stop(startAt + seconds + 0.02);
   }
-
   update(dt) {
     this.clock += dt;
     if (!this.ctx) return;

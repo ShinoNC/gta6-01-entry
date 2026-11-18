@@ -1,20 +1,14 @@
-// The on-foot player: a low-poly character built from boxes, moved with WASD
-// relative to the camera, with a simple run bob and a walk-cycle leg swing.
-// Collision is a circle pushed out of building boxes by the city.
 import * as THREE from 'three';
-
 const WALK_SPEED = 6;
 const RUN_SPEED = 9.5;
 const PLAYER_RADIUS = 0.7;
 const LEG_SWING = 0.55;
-
 export function createPlayer(scene, startX, startZ) {
   const group = new THREE.Group();
   const skin = new THREE.MeshLambertMaterial({ color: 0xe8b07a });
   const shirt = new THREE.MeshLambertMaterial({ color: 0xff5a7a });
   const pants = new THREE.MeshLambertMaterial({ color: 0x2a4a8a });
   const hair = new THREE.MeshLambertMaterial({ color: 0x241a2a });
-
   const torso = new THREE.Mesh(new THREE.BoxGeometry(0.72, 0.85, 0.42), shirt);
   torso.position.y = 1.15;
   const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), skin);
@@ -30,10 +24,8 @@ export function createPlayer(scene, startX, startZ) {
   const legRight = legLeft.clone();
   legRight.position.x = 0.19;
   group.add(torso, head, hairTop, armLeft, armRight, legLeft, legRight);
-
   group.position.set(startX, 0, startZ);
   scene.add(group);
-
   const player = {
     group,
     heading: Math.PI,

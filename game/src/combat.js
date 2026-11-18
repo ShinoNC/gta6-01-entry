@@ -1,12 +1,4 @@
-// On-foot combat: fists, pistol, SMG, shotgun. Hitscan shots with a tracer line, a
-// muzzle flash and impact sparks (through the shared particle system).
-// Shooting — or hitting a pedestrian — raises the wanted level through the
-// callbacks into main. The SMG starts locked (mission 3 unlocks it); ammo
-// restocks after every mission, and green ammo crates around the city
-// restock it on foot. Sustained fire blooms the spread and kicks the
-// camera, so short bursts stay accurate and mag dumps spray.
 import * as THREE from 'three';
-
 export const WEAPON_SLOTS = [
   { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false },
   { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: false },
@@ -29,7 +21,6 @@ const AMMO_CRATE_SPOTS = [
   { x: -78, z: -52, name: 'Palm Row' },
   { x: 78, z: -130, name: 'Harbor Lights' },
 ];
-
 function rayHit(origin, direction, range, targets) {
   let best = null;
   for (const target of targets) {
@@ -43,30 +34,19 @@ function rayHit(origin, direction, range, targets) {
   }
   return best;
 }
-
 function buildAmmoCrate(scene, spot) {
   const group = new THREE.Group();
-  const box = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.6, 0.9),
-    new THREE.MeshLambertMaterial({ color: 0x2a8a4a }),
-  );
+  const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.9), new THREE.MeshLambertMaterial({ color: 0x2a8a4a }));
   box.position.y = 0.3;
-  const lid = new THREE.Mesh(
-    new THREE.BoxGeometry(0.95, 0.14, 0.95),
-    new THREE.MeshLambertMaterial({ color: 0x7affc4 }),
-  );
+  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.14, 0.95), new THREE.MeshLambertMaterial({ color: 0x7affc4 }));
   lid.position.y = 0.65;
-  const marker = new THREE.Mesh(
-    new THREE.OctahedronGeometry(0.35),
-    new THREE.MeshBasicMaterial({ color: 0x7affc4 }),
-  );
+  const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.35), new THREE.MeshBasicMaterial({ color: 0x7affc4 }));
   marker.position.y = 1.6;
   group.add(box, lid, marker);
   group.position.set(spot.x, 0, spot.z);
   scene.add(group);
   return { group, marker, x: spot.x, z: spot.z, name: spot.name, available: true, respawnTimer: 0 };
 }
-
 export class Combat {
   constructor(scene, callbacks, effects) {
     this.scene = scene;
@@ -84,34 +64,19 @@ export class Combat {
     this.tracers = [];
     for (let i = 0; i < 6; i += 1) {
       const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-      const line = new THREE.Line(
-        geometry,
-        new THREE.LineBasicMaterial({ color: 0xfff2a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }),
-      );
+      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xfff2a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }));
       line.visible = false;
       scene.add(line);
       this.tracers.push({ line, life: 0 });
     }
-    this.muzzle = new THREE.Mesh(
-      new THREE.PlaneGeometry(0.7, 0.7),
-      new THREE.MeshBasicMaterial({
-        color: 0xffe9a8,
-        transparent: true,
-        opacity: 0.95,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-        side: THREE.DoubleSide,
-      }),
-    );
+    this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
     this.muzzle.visible = false;
     scene.add(this.muzzle);
     this.ammoCrates = AMMO_CRATE_SPOTS.map((spot) => buildAmmoCrate(scene, spot));
   }
-
   currentWeapon() {
     return this.weapons[this.selected];
   }
-
   selectWeapon(index) {
     if (index < 0 || index >= this.weapons.length) return 'invalid';
     if (this.weapons[index].locked) return 'locked';
@@ -119,7 +84,6 @@ export class Combat {
     this.reloading = false;
     return 'ok';
   }
-
   cycleWeapon(step) {
     for (let tries = 0; tries < this.weapons.length; tries += 1) {
       this.selected = (this.selected + step + this.weapons.length) % this.weapons.length;
@@ -130,22 +94,18 @@ export class Combat {
     }
     return null;
   }
-
   unlockWeapon(id) {
     const weapon = this.weapons.find((candidate) => candidate.id === id);
     if (weapon) weapon.locked = false;
   }
-
   ownedWeaponIds() {
     return this.weapons.filter((weapon) => !weapon.locked).map((weapon) => weapon.id);
   }
-
   setOwnedWeapons(ids) {
     for (const weapon of this.weapons) {
       weapon.locked = !ids.includes(weapon.id);
     }
   }
-
   restock() {
     for (const weapon of this.weapons) {
       weapon.mag = weapon.magSize;
@@ -153,7 +113,6 @@ export class Combat {
     }
     this.reloading = false;
   }
-
   ammoForHud() {
     return this.weapons.map((weapon, index) => ({
       name: weapon.name,
@@ -164,11 +123,9 @@ export class Combat {
       reloading: this.reloading && index === this.selected,
     }));
   }
-
   ammoCratesForHud() {
     return this.ammoCrates.map((crate) => ({ x: crate.x, z: crate.z, available: crate.available }));
   }
-
   fireTracer(from, to) {
     const tracer = this.tracers[this.tracerIndex];
     this.tracerIndex = (this.tracerIndex + 1) % this.tracers.length;
@@ -180,7 +137,6 @@ export class Combat {
     tracer.line.visible = true;
     tracer.life = TRACER_LIFE_SECONDS;
   }
-
   tryShoot(origin, aimYaw, targets) {
     if (this.cooldownTimer > 0 || this.reloading) return 'busy';
     const weapon = this.currentWeapon();
@@ -218,6 +174,7 @@ export class Combat {
     if (hit) {
       this.effects.burstSparks(end.x, end.y, end.z);
       if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref);
+      if (hit.kind === 'getaway') this.callbacks.onHitGetaway?.(hit.ref);
     }
     this.callbacks.onShot();
     if (weapon.mag === 0 && weapon.reserve > 0) {
@@ -226,7 +183,6 @@ export class Combat {
     }
     return 'shot';
   }
-
   update(dt, playerPos) {
     this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
     this.spread = Math.max(SPREAD_BASE_RADIANS, this.spread - SPREAD_RECOVER_PER_SECOND * dt);
