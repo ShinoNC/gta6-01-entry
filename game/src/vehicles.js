@@ -137,7 +137,9 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
 // a mix of sedans, a pickup and a van so the stealable fleet looks varied.
 export function createCars(scene, textures, rng) {
   const cars = [];
-  const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, 8, Math.PI);
+  // North of the spawn, in front of the player (who spawns facing north),
+  // so the first car is visible the moment play starts and W walks straight to it.
+  const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, -8, Math.PI);
   cars.push(starter);
   const parkedSpots = [
     [-52, -40, 0, 'sedan', 'PALM RUNNER', 0x346edc, 'carBlue'],

@@ -50,11 +50,11 @@ export const MISSION_CHAIN = [
     name: 'KEYS TO THE CITY',
     giver: 'Mara Solis',
     briefing:
-      'A Sunset Coupe is parked in Palm Row with the keys in it. I did not say steal it. I said it needs a new garage in Old Port.',
+      'A Sunset Coupe is parked in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port.',
     rewardMoney: 1250,
     rewardRep: 140,
     objectives: [
-      { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe in Palm Row' },
+      { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe in Harbor Lights' },
       { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to the Old Port garage' },
     ],
   },

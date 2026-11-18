@@ -16,7 +16,10 @@ const RECOIL_KICK_METRES = 0.55;
 export class ChaseCamera {
   constructor(camera) {
     this.camera = camera;
-    this.yaw = Math.PI;
+    // Start BEHIND the player (player spawns facing north, heading PI, so
+    // behind is yaw 0). Starting at PI swung the camera 180 degrees on the
+    // first frames of play and flipped the W key's direction at spawn.
+    this.yaw = 0;
     this.yawOffset = 0;
     this.currentPosition = new THREE.Vector3(0, 6, 14);
   }
