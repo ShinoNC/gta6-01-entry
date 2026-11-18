@@ -42,7 +42,6 @@ export function createPlayer(scene, startX, startZ) {
     get position() {
       return group.position;
     },
-    // Move from input axes relative to the camera yaw; returns true while moving.
     update(dt, input, cameraYaw, city) {
       const { forward, strafe } = input.moveAxes();
       const moving = forward !== 0 || strafe !== 0;

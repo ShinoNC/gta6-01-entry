@@ -141,10 +141,11 @@ export class Missions {
     this.briefingSnooze = 1;
     this.target = null;
     this.clock = 0;
+    this.missionClock = 0;
+    this.parSeconds = 0;
     this.beacon = buildBeacon(scene);
   }
 
-  // The briefing the phone panel should show right now, or null.
   get pendingBriefing() {
     if (this.pendingBriefingIndex < 0 || this.currentMissionIndex >= 0 || this.briefingSnooze > 0) return null;
     return { mission: MISSION_CHAIN[this.pendingBriefingIndex], index: this.pendingBriefingIndex };
@@ -172,6 +173,8 @@ export class Missions {
     this.currentMissionIndex = index;
     this.stageIndex = 0;
     this.waitSeconds = 0;
+    this.missionClock = 0;
+    this.parSeconds = 90 + mission.objectives.length * 45;
     this.status[index] = 'active';
     this.pendingBriefingIndex = -1;
     this.briefingSnooze = 0;
@@ -225,6 +228,7 @@ export class Missions {
       this.beacon.group.visible = false;
       return;
     }
+    this.missionClock += dt;
     const objective = mission.objectives[this.stageIndex];
     const { playerPos, drivenCar, cars, wantedStars } = context;
     if (objective.kind === 'stealCar') {
@@ -262,7 +266,16 @@ export class Missions {
   progressLine() {
     if (this.currentMissionIndex < 0) return this.doneCount() >= MISSIONS_IN_STORY ? 'STORY COMPLETE' : 'FREE ROAM';
     const mission = this.currentMission();
-    return `MISSION ${this.currentMissionIndex + 1}/${MISSIONS_IN_STORY} · STAGE ${this.stageIndex + 1}/${mission.objectives.length}`;
+    const left = Math.max(0, this.parSeconds - this.missionClock);
+    const timer = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    return `MISSION ${this.currentMissionIndex + 1}/${MISSIONS_IN_STORY} — ${mission.name} · STAGE ${this.stageIndex + 1}/${mission.objectives.length} · ${timer}`;
+  }
+
+  nextLine() {
+    const mission = this.currentMission();
+    if (!mission) return '';
+    const next = mission.objectives[this.stageIndex + 1];
+    return next ? next.label : 'Finish the job — report to Mara';
   }
 
   nextObjectiveLine() {

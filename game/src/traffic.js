@@ -21,7 +21,6 @@ const TRAFFIC_BODY_STYLES = [
   ['pickup', 2],
   ['van', 2],
 ];
-// Cruise-speed band per body style: vans lumber, taxis hurry.
 const STYLE_SPEED_BAND = {
   sedan: [9, 15],
   pickup: [8, 13],
@@ -50,8 +49,6 @@ export class Traffic {
     }
   }
 
-  // One NPC car: a random body style and paint, with a taxi (yellow body
-  // texture, fastest band) mixed in so the fleet is not all one look.
   buildNpc(scene, rng) {
     const line = pick(rng, this.lines);
     const direction = rng() < 0.5 ? -1 : 1;

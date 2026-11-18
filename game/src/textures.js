@@ -21,7 +21,6 @@ const TEXTURE_FILES = {
   roof: 'roof.png',
   billboard: 'billboard.png',
 };
-// Textures tiled over long ground planes: mipmaps kill the far-field shimmer.
 const MIPMAPPED_TEXTURES = new Set(['road', 'sidewalk', 'sand', 'water']);
 
 export function loadTextures() {

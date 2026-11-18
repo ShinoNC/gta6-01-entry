@@ -322,20 +322,21 @@ check(
   heliScreen ? `screen x=${heliScreen.x.toFixed(2)} y=${heliScreen.y.toFixed(2)}` : 'no helicopter',
 );
 check(
-  'chase shot shows 3 stars + mission 6/8 + stolen-car toast',
+  'chase shot shows 3 stars + mission 6/8 + Juno dialogue, no banner',
   await chasePage.evaluate(() => {
     const stars = document.getElementById('hud-stars').textContent;
     const mission = document.getElementById('hud-mission').textContent;
+    const dialogue = document.getElementById('dialogue-panel');
     const message = document.getElementById('hud-message').textContent;
-    return stars === '★★★☆☆' && mission.includes('MISSION 6/8') && message.includes('VEHICLE STOLEN');
+    return stars === '★★★☆☆' && mission.includes('MISSION 6/8') && !dialogue.classList.contains('hidden') && !message.includes('VEHICLE STOLEN');
   }),
   await chasePage.evaluate(() => `${document.getElementById('hud-stars').textContent} | ${document.getElementById('hud-mission').textContent} | ${document.getElementById('hud-message').textContent}`),
 );
 check(
-  'chase shot police panel lists 5 units incl. helicopter',
+  'chase shot police panel lists 7 units incl. helicopter',
   await chasePage.evaluate(() => {
     const rows = document.querySelectorAll('#hud-police .police-row');
-    return rows.length >= 5 && document.getElementById('hud-police').textContent.includes('SPOTLIGHT');
+    return rows.length >= 7 && document.getElementById('hud-police').textContent.includes('SPOTLIGHT');
   }),
   await chasePage.evaluate(() => `${document.querySelectorAll('#hud-police .police-row').length} rows`),
 );

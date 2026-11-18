@@ -17,6 +17,14 @@
   #hud-district { font-size: 30px; font-weight: bold; letter-spacing: 3px; color: #ffd978; }
   #hud-mission { margin-top: 4px; font-size: 16px; font-weight: bold; letter-spacing: 2px; color: #7affc4; }
   #hud-objective { margin-top: 6px; font-size: 15px; color: #ffe9c4; max-width: 520px; }
+  #hud-next { margin-top: 4px; font-size: 14px; color: #7ac4ff; max-width: 520px; }
+  #hud-clock { font-size: 15px; letter-spacing: 2px; color: #ffb3c4; }
+  #hud-tapes { margin-top: 4px; font-size: 15px; letter-spacing: 2px; color: #ff6bd6; }
+  #dialogue-panel { bottom: 150px; left: 50%; transform: translateX(-50%); width: 520px; max-width: 92vw;
+    display: flex; gap: 12px; align-items: center; background: rgba(26,16,48,.88);
+    border: 2px solid #c47aff; padding: 10px 14px; }
+  #dialogue-name { font-size: 14px; font-weight: bold; letter-spacing: 2px; color: #c47aff; }
+  #dialogue-text { margin-top: 4px; font-size: 15px; line-height: 1.4; color: #fff; }
   /* Top-right: money + wanted stars + REP. */
   #hud-top-right { top: 16px; right: 18px; text-align: right; }
   #hud-money { font-size: 28px; font-weight: bold; color: #7affc4; }
@@ -122,8 +130,6 @@
 <body class="on-title">
 <canvas id="game-canvas"></canvas>
 
-<!-- Pixel portrait of Mara Solis, the fixer: chunky 32x32 grid, reused by
-     the phone panel and the mission screen via <use>. -->
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs>
     <symbol id="mara-portrait" viewBox="0 0 32 32">
@@ -145,6 +151,27 @@
       <rect x="12" y="24" width="2" height="4" fill="#ffd978"/>
       <rect x="18" y="24" width="2" height="4" fill="#ffd978"/>
     </symbol>
+    <symbol id="juno-portrait" viewBox="0 0 32 32">
+      <rect width="32" height="32" fill="#2a1a3a"/>
+      <rect x="6" y="2" width="20" height="8" fill="#e8a33d"/>
+      <rect x="6" y="6" width="3" height="10" fill="#e8a33d"/>
+      <rect x="23" y="6" width="3" height="10" fill="#e8a33d"/>
+      <rect x="8" y="8" width="16" height="14" fill="#f2c89a"/>
+      <rect x="10" y="13" width="3" height="1" fill="#1a1030"/>
+      <rect x="19" y="13" width="3" height="1" fill="#1a1030"/>
+      <rect x="15" y="16" width="2" height="2" fill="#c98a5a"/>
+      <rect x="12" y="19" width="8" height="1" fill="#d6303e"/>
+      <rect x="14" y="22" width="4" height="2" fill="#c98a5a"/>
+      <rect x="4" y="24" width="24" height="8" fill="#d6303e"/>
+      <rect x="14" y="24" width="4" height="8" fill="#1a1030"/>
+    </symbol>
+    <symbol id="pd-portrait" viewBox="0 0 32 32">
+      <rect width="32" height="32" fill="#1a2a6b"/>
+      <rect x="11" y="6" width="10" height="20" fill="#ffd978"/>
+      <rect x="6" y="11" width="20" height="10" fill="#ffd978"/>
+      <rect x="14" y="12" width="4" height="4" fill="#1a2a6b"/>
+      <rect x="4" y="24" width="24" height="8" fill="#2a6bff"/>
+    </symbol>
   </defs>
 </svg>
 
@@ -152,11 +179,14 @@
   <div id="hud-district">MARINA DEL SOL</div>
   <div id="hud-mission">FREE ROAM</div>
   <div id="hud-objective">Press ENTER or click START to play</div>
+  <div id="hud-next"></div>
 </div>
 <div class="hud" id="hud-top-right">
+  <div id="hud-clock">DAY 1 18:50</div>
   <div id="hud-money">$1,250</div>
   <div id="hud-stars">☆☆☆☆☆</div>
   <div id="hud-rep">REP LV 1</div>
+  <div id="hud-tapes">TAPES 0/20</div>
   <div id="hud-hiding" class="hidden">HIDING… stay out of sight</div>
 </div>
 <div class="hud hidden" id="hud-police"></div>
@@ -185,7 +215,11 @@
     <button class="phone-button later" id="phone-later">LATER</button>
   </div>
 </div>
-<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-3 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
+<div class="hud hidden" id="dialogue-panel">
+  <svg class="portrait"><use id="dialogue-face" href="#mara-portrait"/></svg>
+  <div><div id="dialogue-name"></div><div id="dialogue-text"></div></div>
+</div>
+<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-4 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
 
 <div class="overlay" id="title-screen">
   <svg id="title-skyline" viewBox="0 0 1280 170" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
@@ -222,7 +256,7 @@
   <div class="controls" id="continue-summary"></div>
   <div class="controls">
     <b>WASD</b> walk / drive &nbsp;&nbsp; <b>F</b> enter &amp; exit cars &nbsp;&nbsp; <b>SHIFT</b> run<br>
-    <b>SPACE / click</b> shoot &nbsp;&nbsp; <b>1-3 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions<br>
+    <b>SPACE / click</b> shoot &nbsp;&nbsp; <b>1-4 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions<br>
     <b>Drag mouse</b> look around &nbsp;&nbsp; <b>ESC</b> pause<br>
     Steal cars, outrun the police, and take over the Keys.
   </div>

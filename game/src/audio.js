@@ -61,8 +61,6 @@ export class GameAudio {
       if (!AudioContext) return;
       this.ctx = new AudioContext();
       this.nextNoteTime = this.ctx.currentTime + 0.1;
-      // Engine: a sawtooth plus a sub-octave sine through a lowpass that
-      // opens with speed, so the motor growls low and rasps high.
       this.engineOsc = this.ctx.createOscillator();
       this.engineOsc.type = 'sawtooth';
       this.engineOsc.frequency.value = ENGINE_BASE_HZ;
@@ -95,7 +93,6 @@ export class GameAudio {
     return RADIO_STATIONS[this.stationIndex].name;
   }
 
-  // What the HUD shows: station plus the track now playing.
   nowPlaying() {
     const station = RADIO_STATIONS[this.stationIndex];
     const track = station.tracks[Math.floor(this.radioStep / TRACK_STEPS_PER_TRACK) % station.tracks.length];
@@ -144,7 +141,6 @@ export class GameAudio {
     osc.stop(startAt + seconds + 0.02);
   }
 
-  // Two-note car horn (H while driving).
   horn() {
     this.blip(392, 0.28, 0.09, 'square');
     this.blip(494, 0.28, 0.09, 'square');
@@ -194,8 +190,6 @@ export class GameAudio {
   update(dt) {
     this.clock += dt;
     if (!this.ctx) return;
-    // Geared engine: the note climbs within a gear, then drops a step as
-    // the next gear takes over — the rise-and-fall a real gearbox makes.
     const gearSpan = 1 / ENGINE_GEAR_COUNT;
     const gear = Math.min(ENGINE_GEAR_COUNT - 1, Math.floor(this.engineSpeed / gearSpan));
     const withinGear = (this.engineSpeed - gear * gearSpan) / gearSpan;
@@ -205,8 +199,6 @@ export class GameAudio {
     this.engineSubOsc.frequency.setTargetAtTime(engineFrequency / 2, this.ctx.currentTime, 0.08);
     this.engineFilter.frequency.setTargetAtTime(320 + this.engineSpeed * 900, this.ctx.currentTime, 0.1);
     this.engineGain.gain.setTargetAtTime(this.engineDriving ? 0.05 : 0, this.ctx.currentTime, 0.1);
-    // Two-tone wail: the siren alternates low/high every third of a second
-    // instead of sweeping, so it cuts through the engine and radio.
     const sirenTone = Math.floor(this.clock / SIREN_TONE_SECONDS) % 2 === 0 ? SIREN_LOW_HZ : SIREN_HIGH_HZ;
     this.sirenOsc.frequency.setTargetAtTime(sirenTone, this.ctx.currentTime, 0.03);
     this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045, this.ctx.currentTime, 0.15);

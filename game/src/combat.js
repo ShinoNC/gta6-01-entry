@@ -1,4 +1,4 @@
-// On-foot combat: fists, pistol, SMG. Hitscan shots with a tracer line, a
+// On-foot combat: fists, pistol, SMG, shotgun. Hitscan shots with a tracer line, a
 // muzzle flash and impact sparks (through the shared particle system).
 // Shooting — or hitting a pedestrian — raises the wanted level through the
 // callbacks into main. The SMG starts locked (mission 3 unlocks it); ammo
@@ -11,6 +11,7 @@ export const WEAPON_SLOTS = [
   { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false },
   { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: false },
   { id: 'smg', name: 'SMG', range: 45, cooldownSeconds: 0.09, magSize: 30, reserveAmmo: 90, locked: true },
+  { id: 'shotgun', name: 'SHOTGUN', range: 30, cooldownSeconds: 0.7, magSize: 6, reserveAmmo: 24, locked: true },
 ];
 const RELOAD_SECONDS = 1.2;
 const TRACER_LIFE_SECONDS = 0.09;
@@ -119,7 +120,6 @@ export class Combat {
     return 'ok';
   }
 
-  // Step to the next unlocked weapon (scroll wheel), wrapping around.
   cycleWeapon(step) {
     for (let tries = 0; tries < this.weapons.length; tries += 1) {
       this.selected = (this.selected + step + this.weapons.length) % this.weapons.length;
@@ -181,13 +181,9 @@ export class Combat {
     tracer.life = TRACER_LIFE_SECONDS;
   }
 
-  // One trigger pull: 'shot', 'punch', 'empty', 'locked' or 'busy'.
-  // Targets carry {x, z, radius, kind, ref}; aimYaw is the camera yaw.
   tryShoot(origin, aimYaw, targets) {
     if (this.cooldownTimer > 0 || this.reloading) return 'busy';
     const weapon = this.currentWeapon();
-    // Bloom: the shot wanders inside the current spread cone, and every
-    // shot widens the cone until the shooter pauses to let it settle.
     const aimError = (Math.random() - 0.5) * 2 * this.spread;
     const direction = { x: -Math.sin(aimYaw + aimError), z: -Math.cos(aimYaw + aimError) };
     this.cooldownTimer = weapon.cooldownSeconds;
@@ -256,7 +252,6 @@ export class Combat {
       tracer.line.material.opacity = Math.max(0, tracer.life / TRACER_LIFE_SECONDS) * 0.9;
       if (tracer.life <= 0) tracer.line.visible = false;
     }
-    // Ammo crates: walk into one to restock, then it respawns after a wait.
     for (const crate of this.ammoCrates) {
       if (!crate.available) {
         crate.respawnTimer -= dt;

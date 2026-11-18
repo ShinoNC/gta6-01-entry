@@ -24,9 +24,12 @@ export class Hud {
       district: document.getElementById('hud-district'),
       mission: document.getElementById('hud-mission'),
       objective: document.getElementById('hud-objective'),
+      next: document.getElementById('hud-next'),
+      clock: document.getElementById('hud-clock'),
       money: document.getElementById('hud-money'),
       stars: document.getElementById('hud-stars'),
       rep: document.getElementById('hud-rep'),
+      tapes: document.getElementById('hud-tapes'),
       hiding: document.getElementById('hud-hiding'),
       speed: document.getElementById('hud-speed'),
       carName: document.getElementById('hud-car'),
@@ -48,9 +51,6 @@ export class Hud {
     this.lastWeaponSignature = '';
   }
 
-  // Centre-screen toast. A sticky toast (screenshot staging, mission
-  // results) is not overwritten by a passing flavour toast such as a
-  // pedestrian scream, so the important message stays up for its duration.
   showMessage(text, seconds = 2.5, sticky = false) {
     if (this.messageSticky && performance.now() < this.messageUntil && !sticky) return;
     this.el.message.textContent = text;
@@ -87,7 +87,6 @@ export class Hud {
       const b = this.toMap(box.maxX, box.maxZ);
       ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
     }
-    // Roads: light grid lines over the ground.
     ctx.strokeStyle = '#8a8296';
     ctx.lineWidth = 2;
     for (const line of roadLines()) {
@@ -103,7 +102,6 @@ export class Hud {
       }
       ctx.stroke();
     }
-    // Parked cars: yellow squares; moving traffic: small grey dots.
     ctx.fillStyle = '#ffd978';
     for (const car of cars) {
       if (car.driven) continue;
@@ -117,7 +115,6 @@ export class Hud {
         ctx.fillRect(p.x - 1, p.y - 1, 2, 2);
       }
     }
-    // Ammo crates: green squares, only while stocked.
     if (ammoCrates) {
       ctx.fillStyle = '#7affc4';
       for (const crate of ammoCrates) {
@@ -126,7 +123,6 @@ export class Hud {
         ctx.fillRect(p.x - 2, p.y - 2, 4, 4);
       }
     }
-    // Mission target: a pulsing yellow diamond.
     if (missionTarget) {
       const p = this.toMap(missionTarget.x, missionTarget.z);
       const size = 5 + Math.sin(timeSeconds * 4) * 1.5;
@@ -139,7 +135,6 @@ export class Hud {
       ctx.closePath();
       ctx.fill();
     }
-    // Police blips flash red/blue like the light bars.
     if (policeBlips) {
       ctx.fillStyle = Math.floor(timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff';
       for (const blip of policeBlips) {
@@ -149,7 +144,6 @@ export class Hud {
         ctx.fill();
       }
     }
-    // Player arrow, pointing along the heading.
     const p = this.toMap(playerPos.x, playerPos.z);
     ctx.save();
     ctx.translate(p.x, p.y);
@@ -175,7 +169,7 @@ export class Hud {
     }
     this.el.police.classList.remove('hidden');
     this.el.police.innerHTML =
-      '<div class="police-title">KEYS POLICE RESPONSE</div>' +
+      `<div class="police-title">KEYS POLICE · ${units.length} UNITS</div>` +
       units.map((unit) => `<div class="police-row"><span>${unit.callsign}</span><span>${unit.distanceMetres}m</span><b>${unit.status}</b></div>`).join('');
   }
 
@@ -240,10 +234,13 @@ export class Hud {
       carName,
       missionLine,
       objective,
+      nextLine,
+      clockText,
+      tapes,
       policeUnits,
       weapons,
       radioStation,
-      repLevel,
+      repText,
       hiding,
       hideProgress,
       missionTarget,
@@ -256,10 +253,13 @@ export class Hud {
     this.el.district.textContent = districtNameAt(playerPos.x, playerPos.z);
     if (missionLine !== undefined) this.el.mission.textContent = missionLine;
     if (objective !== undefined) this.el.objective.textContent = objective;
+    if (nextLine !== undefined) this.el.next.textContent = nextLine ? `NEXT — ${nextLine}` : '';
+    if (clockText !== undefined) this.el.clock.textContent = clockText;
+    if (tapes !== undefined) this.el.tapes.textContent = `TAPES ${tapes}`;
     this.el.money.textContent = `$${money.toLocaleString('en-US')}`;
     this.el.stars.textContent = '★'.repeat(wanted) + '☆'.repeat(5 - wanted);
     this.el.stars.classList.toggle('hot', wanted > 0);
-    if (repLevel !== undefined) this.el.rep.textContent = `REP LV ${repLevel}`;
+    if (repText !== undefined) this.el.rep.textContent = repText;
     if (hiding !== undefined) {
       this.el.hiding.classList.toggle('hidden', !hiding);
       if (hiding && hideProgress !== undefined) {

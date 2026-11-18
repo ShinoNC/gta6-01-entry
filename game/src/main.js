@@ -18,6 +18,8 @@ import { Wanted } from './wanted.js';
 import { Police } from './police.js';
 import { Missions, MISSIONS_IN_STORY } from './missions.js';
 import { Combat } from './combat.js';
+import { Dialogue } from './dialogue.js';
+import { Tapes, TAPE_COUNT } from './tapes.js';
 import { GameAudio } from './audio.js';
 import { Effects } from './effects.js';
 import { saveGame, loadGame, saveSlotSummaries, latestSaveSlot } from './save.js';
@@ -27,10 +29,13 @@ const SPAWN_Z = 0;
 const START_MONEY = 1250;
 const ENTER_CAR_RANGE = 5;
 const SHOT_DRIVE_SECONDS = 3.2;
-const SHOT_CHASE_SECONDS = 4;
+const SHOT_CHASE_SECONDS = 2.5;
 const SHOT_FOOT_SECONDS = 2;
 const SHOT_MISSION_SECONDS = 0.6;
 const REP_PER_LEVEL = 200;
+const REP_RANKS = ['ROOKIE', 'HUSTLER', 'WHEELMAN', 'BAY HUSTLER', 'KINGPIN'];
+const CLOCK_START_MINUTES = 18 * 60 + 50;
+const CLOCK_MINUTES_PER_SECOND = 0.5;
 const AUTOSAVE_SLOT = 1;
 const PEDESTRIAN_HIT_RANGE = 2.1;
 const PEDESTRIAN_HIT_MIN_SPEED = 2;
@@ -63,11 +68,18 @@ let wanted;
 let police;
 let missions;
 let combat;
+let dialogue;
+let tapes;
 let audio;
 let effects;
 let drivenCar = null;
 let money = START_MONEY;
 let rep = 0;
+let prevStars = 0;
+let skidSeconds = 0;
+let driftChain = 0;
+let nearMissAt = -99;
+let elapsed = 0;
 let health = 100;
 let armour = 0;
 let soundOn = true;
@@ -89,12 +101,26 @@ function repLevel() {
   return 1 + Math.floor(rep / REP_PER_LEVEL);
 }
 
+function clockLine() {
+  const total = CLOCK_START_MINUTES + elapsed * CLOCK_MINUTES_PER_SECOND;
+  const day = 1 + Math.floor(total / 1440);
+  const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
+  const mm = String(Math.floor(total % 60)).padStart(2, '0');
+  return `DAY ${day} ${hh}:${mm}`;
+}
+
+function repText() {
+  const level = repLevel();
+  return `REP ${level} · ${REP_RANKS[level - 1]} ${rep % REP_PER_LEVEL}/${REP_PER_LEVEL} XP`;
+}
+
 function snapshotSave() {
   return {
     money,
     rep,
     missionsDone: missions.doneCount(),
     weaponsOwned: combat.ownedWeaponIds(),
+    tapesCollected: tapes.collected,
     playerX: player.position.x,
     playerZ: player.position.z,
   };
@@ -105,6 +131,7 @@ function applySave(data) {
   rep = data.rep;
   missions.setCompleted(data.missionsDone);
   combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
+  tapes.setCollected(data.tapesCollected || 0);
   player.group.position.set(data.playerX, 0, data.playerZ);
 }
 
@@ -278,11 +305,6 @@ function combatTargets() {
   return targets;
 }
 
-// Screenshot scenes: 'core' drives up the main avenue; 'chase' stages
-// mission 6 mid-pursuit at 3 stars in a stolen Sunset Coupe, so the cover
-// proves stealing, the wanted level, the police response and the helicopter
-// in one frame; 'foot' is on foot downtown with a crowd; 'mission' opens
-// the story job list with three jobs done and mission 4 active.
 function stageShot() {
   if (shotName === 'core') {
     startGame();
@@ -290,26 +312,39 @@ function stageShot() {
     hud.showMessage('SOLARIS KEYS — free roam', 300, true);
   } else if (shotName === 'chase') {
     startGame();
+    money = 15250;
+    rep = 650;
     const car = cars[2];
-    car.group.position.set(0, 0, 8);
-    car.heading = Math.PI;
-    car.group.rotation.y = Math.PI;
+    car.group.position.set(-26, 0, 0);
+    car.heading = Math.PI / 2;
+    car.group.rotation.y = Math.PI / 2;
     enterCar(car);
+    missions.setCompleted(5);
     missions.forceStart(5);
+    combat.setOwnedWeapons(['fists', 'pistol', 'smg', 'shotgun']);
+    combat.restock();
+    tapes.setCollected(3);
     police.stageChase(car.position, car.heading);
-    hud.showMessage('VEHICLE STOLEN: SUNSET COUPE — THE GETAWAY', 300, true);
+    dialogue.say('juno', 'Alarms are back! Lose them before they box you in.', 300);
+    prevStars = wanted.stars;
+    const avenue = traffic.lines.find((line) => line.axis === 'x' && line.at === 0);
+    for (const [i, direction, along] of [
+      [0, 1, 30],
+      [1, 1, 70],
+      [2, -1, 110],
+    ]) {
+      const npc = traffic.cars[i];
+      npc.line = avenue;
+      npc.direction = direction;
+      npc.along = along;
+      traffic.placeOnRoad(npc);
+    }
   } else if (shotName === 'foot') {
     startGame();
-    // At the Palm Row intersection, facing north up the avenue: the camera
-    // looks down a long street of buildings, palms and traffic. The
-    // fixer's first call is held back so the phone panel does not cover
-    // the street in the shot.
-    player.group.position.set(-52, 0, -52);
-    player.heading = Math.PI;
-    player.group.rotation.y = Math.PI;
-    pedestrians.gatherNear(-52, -52, 8);
+    player.group.position.set(-52, 0, 78);
+    player.heading = -Math.PI / 6;
+    player.group.rotation.y = -Math.PI / 6;
     missions.snoozeBriefing(30);
-    hud.showMessage('PALM ROW — on foot', 300, true);
   } else if (shotName === 'mission') {
     startGame();
     missions.setCompleted(3);
@@ -335,6 +370,7 @@ function update(dt) {
     return;
   }
   if (state === 'pause') return;
+  elapsed += dt;
 
   if (input.pressed('KeyM') && !phonePanelVisible) {
     if (missionScreenOpen) closeMissionScreen();
@@ -346,10 +382,12 @@ function update(dt) {
   if (input.pressed('KeyH') && drivenCar) {
     audio.horn();
   }
-  for (const [index, code] of ['Digit1', 'Digit2', 'Digit3'].entries()) {
+  for (const [index, code] of ['Digit1', 'Digit2', 'Digit3', 'Digit4'].entries()) {
     if (input.pressed(code)) {
       const result = combat.selectWeapon(index);
-      if (result === 'locked') hud.showMessage('SMG locked — complete MISSION 3 to unlock it');
+      if (result === 'locked') {
+        hud.showMessage(index === 3 ? 'SHOTGUN locked — reach REP 3 to unlock it' : 'SMG locked — complete MISSION 3 to unlock it');
+      }
     }
   }
   const wheelSteps = input.consumeWheel();
@@ -374,8 +412,6 @@ function update(dt) {
   if (drivenCar) {
     drivenCar.update(dt, drivingInput, city);
     chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input, combat.recoil, police.helicopter ? 2 : 0);
-    // Particles: hard steering at speed throws skid smoke from the rear
-    // wheels, and a fresh collision flashes sparks at the nose.
     if (drivenCar.skidding) {
       const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 1.4;
       const backZ = drivenCar.position.z - Math.cos(drivenCar.heading) * 1.4;
@@ -386,6 +422,19 @@ function update(dt) {
       const noseZ = drivenCar.position.z + Math.cos(drivenCar.heading) * 2.1;
       effects.burstSparks(noseX, 0.8, noseZ, 6);
       drivenCar.impact = 0.5;
+    }
+    if (drivenCar.skidding) {
+      skidSeconds += dt;
+      if (skidSeconds > 0.5) {
+        skidSeconds = 0;
+        driftChain += 1;
+        const bonus = 50 * driftChain;
+        money += bonus;
+        hud.showMessage(`DRIFT x${driftChain} +$${bonus}`, 1.2);
+      }
+    } else {
+      skidSeconds = 0;
+      driftChain = 0;
     }
   } else {
     player.update(dt, input, chaseCamera.yaw, city);
@@ -422,9 +471,14 @@ function update(dt) {
   }
   if (drivenCar) {
     for (const npc of traffic.cars) {
-      if (Math.hypot(npc.car.position.x - drivenCar.position.x, npc.car.position.z - drivenCar.position.z) < 3) {
+      const gap = Math.hypot(npc.car.position.x - drivenCar.position.x, npc.car.position.z - drivenCar.position.z);
+      if (gap < 3) {
         traffic.shove(npc);
         drivenCar.speed *= 0.55;
+      } else if (gap < 5.5 && Math.abs(drivenCar.speed) > 20 && elapsed - nearMissAt > 3) {
+        nearMissAt = elapsed;
+        money += 100;
+        hud.showMessage('NEAR MISS +$100', 1.2);
       }
     }
   }
@@ -441,6 +495,8 @@ function update(dt) {
     wantedStars: wanted.stars,
   });
   wanted.update(dt, police.canSeePlayer(focus.position), police.helicopter !== null);
+  if (wanted.stars > prevStars) dialogue.cue('heat');
+  prevStars = wanted.stars;
 
   missions.update(dt, {
     playerPos: focus.position,
@@ -448,6 +504,12 @@ function update(dt) {
     cars,
     wantedStars: wanted.stars,
   });
+
+  tapes.update(dt, focus.position, (count) => {
+    money += 25;
+    hud.showMessage(`SUNSET TAPE ${count}/${TAPE_COUNT} +$25`, 2);
+  });
+  dialogue.update();
 
   const briefing = missions.pendingBriefing;
   if (briefing && !phonePanelVisible && !missionScreenOpen) {
@@ -473,10 +535,13 @@ function update(dt) {
     carName: drivenCar ? drivenCar.name : '',
     missionLine: missions.progressLine(),
     objective: missions.nextObjectiveLine() || freeRoamObjective,
+    nextLine: missions.nextLine(),
+    clockText: clockLine(),
+    tapes: `${tapes.collected}/${TAPE_COUNT}`,
     policeUnits: police.units(focus.position),
     weapons: combat.ammoForHud(),
     radioStation: audio.nowPlaying(),
-    repLevel: repLevel(),
+    repText: repText(),
     hiding: wanted.hiding,
     hideProgress: wanted.hideProgress,
     missionTarget: missions.target,
@@ -526,6 +591,7 @@ loadTextures()
       onMissionStarted(mission, index) {
         freeRoamObjective = mission.objectives[0].label;
         hud.showMessage(`MISSION ${index + 1}/${MISSIONS_IN_STORY} — ${mission.name}`, 3);
+        dialogue.cue('go');
       },
       onObjectiveComplete() {
         audio.click();
@@ -533,6 +599,7 @@ loadTextures()
       onMissionComplete(mission, index) {
         money += mission.rewardMoney;
         rep += mission.rewardRep;
+        if (repLevel() >= 3) combat.unlockWeapon('shotgun');
         combat.restock();
         if (mission.finale) {
           hud.showMessage(`KING OF THE KEYS — $${mission.rewardMoney.toLocaleString('en-US')} · THE KEYS ARE YOURS, ROOK`, 5, true);
@@ -543,6 +610,7 @@ loadTextures()
           hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP`, 4, true);
         }
         audio.chime();
+        dialogue.cue('done');
         saveGame(AUTOSAVE_SLOT, snapshotSave());
         if (index === MISSIONS_IN_STORY - 1) {
           freeRoamObjective = 'STORY COMPLETE — the Keys are yours. Free roam!';
@@ -564,7 +632,6 @@ loadTextures()
         if (crime) hud.showMessage(crime, 2);
       },
       onHitCar() {
-        // Sparks already show the hit; no extra toast.
       },
       onAmmoPickup(district) {
         hud.showMessage(`AMMO RESTOCKED — ${district} crate`, 2.5);
@@ -574,6 +641,8 @@ loadTextures()
     audio = new GameAudio();
     chaseCamera = new ChaseCamera(camera);
     hud = new Hud(city);
+    dialogue = new Dialogue();
+    tapes = new Tapes(scene, rng);
     hud.setObjective('Press ENTER or click NEW GAME to play');
     const latestSlot = latestSaveSlot();
     if (latestSlot) {
@@ -610,15 +679,14 @@ loadTextures()
       police,
       missions,
       combat,
+      dialogue,
+      tapes,
       audio,
       effects,
       hud,
       save: { saveGame, loadGame },
       snapshotSave,
       applySave,
-      // Where the helicopter sits on screen (-1..1, 0 = centre), or null
-      // when there is no helicopter: the verify script checks it is in
-      // frame during the chase shot.
       heliOnScreen() {
         if (!police.helicopter) return null;
         const projected = police.helicopter.group.position.clone().project(camera);

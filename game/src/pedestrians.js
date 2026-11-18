@@ -28,8 +28,6 @@ const SKIN_COLOURS = [0xe8b07a, 0xc98a5a, 0x8a5a3a, 0xf2c9a0];
 const HAIR_COLOURS = [0x241a2a, 0x4a2a1a, 0x8a6a3a, 0xd8d8d8, 0x1a1a1a, 0x7a3a2a];
 const HAT_COLOURS = [0xffd978, 0x7ac4ff, 0xff5a7a, 0xe8e8e8];
 
-// A low-poly walker: torso, head, hair, arms and legs on hip pivots so
-// the walk cycle swings from the hip. Headwear and height vary per walker.
 function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, heightScale) {
   const group = new THREE.Group();
   const shirt = new THREE.MeshLambertMaterial({ color: shirtColour });
@@ -151,7 +149,6 @@ export class Pedestrians {
     ped.fleeFromZ = fromZ;
     ped.fleeTimer = FLEE_SECONDS;
     ped.resteeerTimer = 0;
-    // A frightened few freeze instead of running, arms up.
     ped.frozen = chance(this.rng, FREEZE_CHANCE);
     if (this.screamCooldown <= 0) {
       this.screamCooldown = SCREAM_COOLDOWN_SECONDS;
@@ -208,15 +205,11 @@ export class Pedestrians {
       if (ped.fleeTimer > 0) {
         ped.fleeTimer -= dt;
         if (ped.frozen) {
-          // Frozen in panic: arms up, no leg swing, then run at the end.
           ped.mesh.armLeft.rotation.x = -2.4;
           ped.mesh.armRight.rotation.x = -2.4;
           if (ped.fleeTimer <= 1) ped.frozen = false;
           continue;
         }
-        // Re-steer away from the threat every half second so the run keeps
-        // going the right way as the car moves, and bias toward the nearest
-        // sidewalk so runners leave the road instead of sprinting down it.
         ped.resteeerTimer -= dt;
         if (ped.resteeerTimer <= 0) {
           ped.resteeerTimer = FLEE_RESTEEER_SECONDS;
@@ -238,7 +231,6 @@ export class Pedestrians {
         pos.x += ped.fleeDx * FLEE_SPEED * dt;
         pos.z += ped.fleeDz * FLEE_SPEED * dt;
         city.resolveCircle(pos, 0.7);
-        // Blocked by a building: turn 90 degrees and keep running.
         if (Math.hypot(pos.x - beforeX, pos.z - beforeZ) < FLEE_SPEED * dt * 0.3) {
           const oldDx = ped.fleeDx;
           ped.fleeDx = -ped.fleeDz;

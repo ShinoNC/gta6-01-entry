@@ -9,12 +9,10 @@ export class Input {
     this.dragDeltaX = 0;
     this.dragDeltaY = 0;
     this.dragging = false;
-    // A tap is a quick click without a drag: the shoot trigger on foot.
     this.tap = false;
     this.mouseDownAt = 0;
     this.mouseDownX = 0;
     this.mouseDownY = 0;
-    // Accumulated wheel notches since the last frame: +1 scrolls down.
     this.wheelNotches = 0;
 
     window.addEventListener('keydown', (event) => {
@@ -65,13 +63,10 @@ export class Input {
     return this.justPressed.has(code);
   }
 
-  // True when any of the given codes went down this frame.
   pressedAny(codes) {
     return codes.some((code) => this.justPressed.has(code));
   }
 
-  // Weapon-cycle steps since the last frame: +1 forward, -1 back, 0 none.
-  // Consumes the accumulated wheel input.
   consumeWheel() {
     const steps = this.wheelNotches;
     this.wheelNotches = 0;

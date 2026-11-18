@@ -36,7 +36,6 @@ export class Effects {
     );
   }
 
-  // Live particles across both pools — the verify script reads this.
   get activeCount() {
     let count = 0;
     for (const pool of [this.sparks, this.smoke]) {

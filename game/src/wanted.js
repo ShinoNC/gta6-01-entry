@@ -4,14 +4,12 @@
 // the helicopter overhead slows hiding to a crawl without stopping it, so a
 // fast driver who breaks line of sight can still get clean.
 export const MAX_WANTED_STARS = 5;
-// Seconds hidden to shed one star at 1 star; each extra star adds more.
 const HIDE_SECONDS_AT_ONE_STAR = 6;
 const HIDE_SECONDS_PER_EXTRA_STAR = 3;
 const HELICOPTER_HIDE_RATE = 0.35;
 const SHOOTING_STAR_COOLDOWN_SECONDS = 4;
 const HIT_STAR_COOLDOWN_SECONDS = 2;
 
-// How long the player must stay hidden to shed one star at this heat.
 export function hideSecondsForStars(stars) {
   return HIDE_SECONDS_AT_ONE_STAR + HIDE_SECONDS_PER_EXTRA_STAR * Math.max(0, stars - 1);
 }
@@ -26,14 +24,11 @@ export class Wanted {
     this.elapsed = 0;
   }
 
-  // 0..1 progress toward shedding the next star while hidden.
   get hideProgress() {
     if (this.stars === 0) return 0;
     return Math.min(1, this.hiddenSeconds / hideSecondsForStars(this.stars));
   }
 
-  // Records a crime. Returns the toast text, or '' when the crime adds no
-  // star (a cooldown, or already at the maximum).
   commitCrime(kind) {
     if (this.stars >= MAX_WANTED_STARS) return '';
     if (kind === 'shoot') {

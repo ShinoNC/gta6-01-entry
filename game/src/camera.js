@@ -8,17 +8,14 @@ import * as THREE from 'three';
 
 const CAMERA_DISTANCE_ON_FOOT = 7.5;
 const CAMERA_HEIGHT_ON_FOOT = 3.4;
-const CAMERA_DISTANCE_DRIVING = 9;
-const CAMERA_HEIGHT_DRIVING = 3.6;
+const CAMERA_DISTANCE_DRIVING = 7.5;
+const CAMERA_HEIGHT_DRIVING = 3.2;
 const FOLLOW_STIFFNESS = 4.5;
 const RECOIL_KICK_METRES = 0.55;
 
 export class ChaseCamera {
   constructor(camera) {
     this.camera = camera;
-    // Start BEHIND the player (player spawns facing north, heading PI, so
-    // behind is yaw 0). Starting at PI swung the camera 180 degrees on the
-    // first frames of play and flipped the W key's direction at spawn.
     this.yaw = 0;
     this.yawOffset = 0;
     this.currentPosition = new THREE.Vector3(0, 6, 14);

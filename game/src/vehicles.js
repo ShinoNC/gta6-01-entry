@@ -14,7 +14,7 @@ const CAR_MAX_REVERSE_SPEED = 11;
 const CAR_STEER_RATE = 1.9;
 const CAR_RADIUS = 1.6;
 const SKID_MIN_SPEED = 20;
-const SKID_MIN_STEER = 0.3;
+const SKID_MIN_STEER = 0.25;
 
 export function createCar(scene, textures, name, bodyTexture, paintColour, x, z, heading, style = 'sedan') {
   const group = new THREE.Group();
@@ -28,7 +28,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
   body.position.y = 0.55;
   group.add(body);
   if (style === 'pickup') {
-    // Cab up front, open bed behind with low walls.
     const cab = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.55, 1.4), glassMaterial);
     cab.position.set(0, 1.1, 0.9);
     const cabRoof = new THREE.Mesh(new THREE.BoxGeometry(1.75, 0.08, 1.45), paintMaterial);
@@ -37,7 +36,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     bedWall.position.set(0, 0.95, -2.0);
     group.add(cab, cabRoof, bedWall);
   } else if (style === 'van') {
-    // One tall box: cabin and cargo in a single shell.
     const shell = new THREE.Mesh(new THREE.BoxGeometry(1.85, 1.0, 3.6), paintMaterial);
     shell.position.set(0, 1.35, -0.2);
     const windshield = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.5, 0.1), glassMaterial);
@@ -50,7 +48,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     roofPanel.position.set(0, 1.4, -0.2);
     group.add(cabin, roofPanel);
   }
-  // Headlights: two bright dots at the nose, visible at sunset.
   for (const side of [-0.65, 0.65]) {
     const lamp = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.16, 0.06), lightMaterial);
     lamp.position.set(side, 0.62, 2.12);
@@ -87,17 +84,14 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     speed: 0,
     steerAngle: 0,
     driven: false,
-    // 0..1 collision flash, set on a hard hit and decayed by update().
     impact: 0,
     wheels,
     get position() {
       return group.position;
     },
-    // Hard steering at speed: the particle system reads this for skid smoke.
     get skidding() {
       return Math.abs(this.speed) > SKID_MIN_SPEED && Math.abs(this.steerAngle) > SKID_MIN_STEER;
     },
-    // Drive from input axes: forward = throttle, strafe = steering.
     update(dt, input, city) {
       const { forward, strafe } = input.moveAxes();
       if (forward > 0) this.speed += CAR_ACCELERATION * dt;
@@ -133,12 +127,8 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
   };
 }
 
-// The starter car beside the spawn, plus parked cars on side streets —
-// a mix of sedans, a pickup and a van so the stealable fleet looks varied.
 export function createCars(scene, textures, rng) {
   const cars = [];
-  // North of the spawn, in front of the player (who spawns facing north),
-  // so the first car is visible the moment play starts and W walks straight to it.
   const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, -8, Math.PI);
   cars.push(starter);
   const parkedSpots = [

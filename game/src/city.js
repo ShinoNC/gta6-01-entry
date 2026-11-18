@@ -47,7 +47,6 @@ function roadCentreZ(index) {
   return NORTH_EDGE + ROAD_WIDTH / 2 + index * STREET_PITCH;
 }
 
-// The drivable road centrelines, for traffic and police in later phases.
 export function roadLines() {
   const lines = [];
   for (let i = 0; i <= CITY_BLOCK_COLUMNS; i += 1) {
@@ -65,9 +64,9 @@ function skyGradientTexture() {
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
   const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  gradient.addColorStop(0.0, '#3b2a6b');
-  gradient.addColorStop(0.35, '#a44a8a');
-  gradient.addColorStop(0.62, '#ff7e6b');
+  gradient.addColorStop(0.0, '#6b4a9a');
+  gradient.addColorStop(0.35, '#c45a9a');
+  gradient.addColorStop(0.62, '#ff8a7a');
   gradient.addColorStop(0.82, '#ffb347');
   gradient.addColorStop(1.0, '#ffd98a');
   ctx.fillStyle = gradient;
@@ -77,7 +76,6 @@ function skyGradientTexture() {
   return texture;
 }
 
-// Push a circle (player or car) out of every building box it overlaps.
 function resolveCircleAgainstBoxes(position, radius, boxes) {
   for (const box of boxes) {
     const nearestX = Math.max(box.minX, Math.min(position.x, box.maxX));
@@ -244,8 +242,6 @@ export function buildCity(scene, textures, rng) {
     plantPalm(x, z, 0.8 + rng() * 0.4);
   }
 
-  // Rooftop-style billboards on the beach, facing the beachfront avenue:
-  // sunset art the player sees from the road.
   const billboardMaterial = new THREE.MeshBasicMaterial({ map: textures.billboard });
   const billboardBack = new THREE.MeshLambertMaterial({ color: 0x241a2a });
   for (const bx of [-52, 52]) {
@@ -265,12 +261,10 @@ export function buildCity(scene, textures, rng) {
     group.add(post);
   }
 
-  // Golden-hour light: a warmer, stronger sun low over the ocean and a
-  // cooler sky fill, so the long shadows read sunset instead of noon.
-  const sunLight = new THREE.DirectionalLight(0xffa050, 1.9);
+  const sunLight = new THREE.DirectionalLight(0xffa050, 2.2);
   sunLight.position.set(-120, 70, 200);
   scene.add(sunLight);
-  scene.add(new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 0.75));
+  scene.add(new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 1.2));
 
   scene.add(group);
   return {

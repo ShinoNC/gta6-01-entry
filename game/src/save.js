@@ -8,7 +8,6 @@ import { MISSIONS_IN_STORY } from './missions.js';
 export const SAVE_SLOT_COUNT = 3;
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_KEY_PREFIX = 'solaris-keys-save-';
-// In-memory fallback for browsers that block localStorage on file:// URLs.
 const memorySlots = new Map();
 
 function isValidSave(data) {
@@ -39,7 +38,6 @@ export function loadGame(slot) {
     const raw = localStorage.getItem(SAVE_KEY_PREFIX + slot);
     if (raw) data = JSON.parse(raw);
   } catch {
-    // Fall through to the in-memory slot.
   }
   if (!data) data = memorySlots.get(slot) || null;
   return isValidSave(data) ? data : null;
@@ -50,11 +48,9 @@ export function deleteSave(slot) {
   try {
     localStorage.removeItem(SAVE_KEY_PREFIX + slot);
   } catch {
-    // Nothing to clean up.
   }
 }
 
-// The most recently saved non-empty slot, or null when no slot has a save.
 export function latestSaveSlot() {
   let bestSlot = null;
   let bestTime = 0;
