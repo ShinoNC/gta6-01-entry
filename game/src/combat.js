@@ -218,7 +218,6 @@ export class Combat {
     if (hit) {
       this.effects.burstSparks(end.x, end.y, end.z);
       if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref);
-      if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar(hit.ref);
     }
     this.callbacks.onShot();
     if (weapon.mag === 0 && weapon.reserve > 0) {

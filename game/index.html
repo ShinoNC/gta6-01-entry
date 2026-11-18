@@ -118,6 +118,12 @@
     border: 3px solid #1a1030; padding: 14px 44px; box-shadow: 5px 5px 0 #1a1030; }
   .menu-button:hover { background: #fff3c4; }
   .menu-button:active { transform: translate(3px, 3px); box-shadow: 2px 2px 0 #1a1030; }
+  .custom-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
+  .custom-row > span { width: 64px; text-align: right; font-size: 16px; font-weight: bold;
+    letter-spacing: 2px; color: #fff; text-shadow: 2px 2px 0 #1a1030; }
+  .swatches { display: flex; gap: 6px; }
+  .swatch { width: 28px; height: 28px; border: 2px solid #1a1030; cursor: pointer; padding: 0; }
+  .swatch.sel { border-color: #fff; outline: 2px solid #ffd978; }
   .controls { margin-top: 34px; font-size: 15px; line-height: 1.9; color: #fff; text-shadow: 2px 2px 0 #1a1030; }
   .controls b { color: #ffd978; }
   #load-error { position: fixed; top: 40%; left: 50%; transform: translate(-50%, -50%); z-index: 30;
@@ -267,6 +273,9 @@
   <button class="menu-button compact" id="sound-toggle">SOUND: ON</button>
   <button class="menu-button compact" id="music-toggle">MUSIC: ON</button>
   <button class="menu-button compact" id="radio-option">RADIO: WAVE 88.1 · Neon Drive</button>
+  <div class="custom-row"><span>HAIR</span><div class="swatches" id="hair-swatches"></div></div>
+  <div class="custom-row"><span>SHIRT</span><div class="swatches" id="shirt-swatches"></div></div>
+  <div class="custom-row"><span>SKIN</span><div class="swatches" id="skin-swatches"></div></div>
   <button class="menu-button compact" id="options-back">BACK</button>
 </div>
 

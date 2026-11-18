@@ -9,8 +9,6 @@ import { roadLines } from './city.js';
 import { intBetween, pick, weightedPick } from './random.js';
 
 export const TRAFFIC_CAR_COUNT = 10;
-const TRAFFIC_MIN_SPEED = 9;
-const TRAFFIC_MAX_SPEED = 15;
 const LANE_OFFSET = 2.5;
 const LOOK_AHEAD_METRES = 9;
 const BLOCKED_LATERAL_METRES = 2.6;
@@ -63,6 +61,7 @@ export class Traffic {
       line,
       direction,
       along: line.from + rng() * (line.to - line.from),
+      speedBand: [minSpeed, maxSpeed],
       cruiseSpeed: intBetween(rng, minSpeed, maxSpeed),
       speed: 0,
       stoppedTimer: 0,
@@ -86,7 +85,7 @@ export class Traffic {
     npc.line = pick(this.rng, this.lines);
     npc.direction = this.rng() < 0.5 ? -1 : 1;
     npc.along = npc.direction > 0 ? npc.line.from : npc.line.to;
-    npc.cruiseSpeed = intBetween(this.rng, TRAFFIC_MIN_SPEED, TRAFFIC_MAX_SPEED);
+    npc.cruiseSpeed = intBetween(this.rng, npc.speedBand[0], npc.speedBand[1]);
     this.placeOnRoad(npc);
   }
 

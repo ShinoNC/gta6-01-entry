@@ -13,7 +13,7 @@ import { createCars } from './vehicles.js';
 import { ChaseCamera } from './camera.js';
 import { Hud } from './hud.js';
 import { Traffic } from './traffic.js';
-import { Pedestrians } from './pedestrians.js';
+import { Pedestrians, SKIN_COLOURS, HAIR_COLOURS, SHIRT_COLOURS } from './pedestrians.js';
 import { Wanted } from './wanted.js';
 import { Police } from './police.js';
 import { Missions, MISSIONS_IN_STORY } from './missions.js';
@@ -22,7 +22,7 @@ import { Dialogue } from './dialogue.js';
 import { Tapes, TAPE_COUNT } from './tapes.js';
 import { GameAudio } from './audio.js';
 import { Effects } from './effects.js';
-import { saveGame, loadGame, saveSlotSummaries, latestSaveSlot } from './save.js';
+import { saveGame, loadGame, saveSlotSummaries, latestSaveSlot, saveLook, loadLook } from './save.js';
 
 const SPAWN_X = 0;
 const SPAWN_Z = 0;
@@ -111,7 +111,54 @@ function clockLine() {
 
 function repText() {
   const level = repLevel();
-  return `REP ${level} · ${REP_RANKS[level - 1]} ${rep % REP_PER_LEVEL}/${REP_PER_LEVEL} XP`;
+  const rank = REP_RANKS[Math.min(level, REP_RANKS.length) - 1];
+  return `REP ${level} · ${rank} ${rep % REP_PER_LEVEL}/${REP_PER_LEVEL} XP`;
+}
+
+// Rook's look: indices into the shared pedestrian colour arrays.
+const LOOK_OPTIONS = {
+  hair: [0, 1, 2, 5, 3].map((i) => HAIR_COLOURS[i]),
+  shirt: [0, 1, 2, 7].map((i) => SHIRT_COLOURS[i]),
+  skin: SKIN_COLOURS,
+};
+const LOOK_NAMES = {
+  hair: ['BLACK', 'BROWN', 'BLOND', 'RED', 'SILVER'],
+  shirt: ['ROSE', 'BLUE', 'GOLD', 'TEAL'],
+  skin: ['TAN', 'HONEY', 'DARK', 'FAIR'],
+};
+let look = { hair: 0, shirt: 0, skin: 0 };
+
+function applyLook(next) {
+  look = { ...look, ...next };
+  for (const key of ['hair', 'shirt', 'skin']) {
+    look[key] = Math.max(0, Math.min(LOOK_OPTIONS[key].length - 1, look[key] | 0));
+  }
+  if (player) {
+    player.setAppearance({
+      hair: LOOK_OPTIONS.hair[look.hair],
+      shirt: LOOK_OPTIONS.shirt[look.shirt],
+      skin: LOOK_OPTIONS.skin[look.skin],
+    });
+  }
+  saveLook(look);
+  for (const key of ['hair', 'shirt', 'skin']) {
+    const row = document.getElementById(`${key}-swatches`);
+    if (row) [...row.children].forEach((el, i) => el.classList.toggle('sel', i === look[key]));
+  }
+}
+
+function buildSwatches() {
+  for (const key of ['hair', 'shirt', 'skin']) {
+    const row = document.getElementById(`${key}-swatches`);
+    LOOK_OPTIONS[key].forEach((color, i) => {
+      const btn = document.createElement('button');
+      btn.className = 'swatch';
+      btn.style.background = `#${color.toString(16).padStart(6, '0')}`;
+      btn.title = LOOK_NAMES[key][i];
+      btn.addEventListener('click', () => applyLook({ [key]: i }));
+      row.appendChild(btn);
+    });
+  }
 }
 
 function snapshotSave() {
@@ -121,6 +168,7 @@ function snapshotSave() {
     missionsDone: missions.doneCount(),
     weaponsOwned: combat.ownedWeaponIds(),
     tapesCollected: tapes.collected,
+    look: { ...look },
     playerX: player.position.x,
     playerZ: player.position.z,
   };
@@ -132,6 +180,7 @@ function applySave(data) {
   missions.setCompleted(data.missionsDone);
   combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
   tapes.setCollected(data.tapesCollected || 0);
+  if (data.look) applyLook(data.look);
   player.group.position.set(data.playerX, 0, data.playerZ);
 }
 
@@ -193,6 +242,7 @@ function acceptBriefing() {
   missions.startMission(briefing.index);
 }
 
+buildSwatches();
 document.getElementById('start-button').addEventListener('click', startGame);
 document.getElementById('resume-button').addEventListener('click', startGame);
 document.getElementById('restart-button').addEventListener('click', () => window.location.reload());
@@ -575,7 +625,7 @@ loadTextures()
   .then((textures) => {
     city = buildCity(scene, textures, rng);
     player = createPlayer(scene, SPAWN_X, SPAWN_Z);
-    cars = createCars(scene, textures, rng);
+    cars = createCars(scene, textures);
     cars[0].owned = true;
     traffic = new Traffic(scene, textures, rng);
     pedestrians = new Pedestrians(scene, rng, () => {
@@ -631,8 +681,6 @@ loadTextures()
         const crime = wanted.commitCrime('hitPedestrian');
         if (crime) hud.showMessage(crime, 2);
       },
-      onHitCar() {
-      },
       onAmmoPickup(district) {
         hud.showMessage(`AMMO RESTOCKED — ${district} crate`, 2.5);
         audio.click();
@@ -651,6 +699,7 @@ loadTextures()
       document.getElementById('continue-summary').textContent =
         `Saved game (slot ${latestSlot}): $${saved.money.toLocaleString('en-US')} · ${saved.missionsDone}/${MISSIONS_IN_STORY} missions done`;
     }
+    applyLook(loadLook() || {});
     stageShot();
     window.__game = {
       scene,

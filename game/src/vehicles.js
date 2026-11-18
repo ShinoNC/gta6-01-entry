@@ -127,7 +127,7 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
   };
 }
 
-export function createCars(scene, textures, rng) {
+export function createCars(scene, textures) {
   const cars = [];
   const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, -8, Math.PI);
   cars.push(starter);
@@ -142,6 +142,5 @@ export function createCars(scene, textures, rng) {
   for (const [x, z, heading, style, name, paint, textureKey] of parkedSpots) {
     cars.push(createCar(scene, textures, name, textures[textureKey], paint, x, z, heading, style));
   }
-  void rng;
   return cars;
 }

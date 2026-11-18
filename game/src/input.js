@@ -7,7 +7,6 @@ export class Input {
     this.down = new Set();
     this.justPressed = new Set();
     this.dragDeltaX = 0;
-    this.dragDeltaY = 0;
     this.dragging = false;
     this.tap = false;
     this.mouseDownAt = 0;
@@ -44,7 +43,6 @@ export class Input {
     window.addEventListener('mousemove', (event) => {
       if (!this.dragging) return;
       this.dragDeltaX += event.movementX;
-      this.dragDeltaY += event.movementY;
     });
     window.addEventListener(
       'wheel',
@@ -63,10 +61,6 @@ export class Input {
     return this.justPressed.has(code);
   }
 
-  pressedAny(codes) {
-    return codes.some((code) => this.justPressed.has(code));
-  }
-
   consumeWheel() {
     const steps = this.wheelNotches;
     this.wheelNotches = 0;
@@ -83,6 +77,5 @@ export class Input {
     this.justPressed.clear();
     this.tap = false;
     this.dragDeltaX = 0;
-    this.dragDeltaY = 0;
   }
 }

@@ -22,10 +22,10 @@ const LEG_SWING = 0.5;
 const FREEZE_CHANCE = 0.2;
 const FLEE_RESTEEER_SECONDS = 0.6;
 
-const SHIRT_COLOURS = [0xff5a7a, 0x7ac4ff, 0xffd978, 0x7affc4, 0xc47aff, 0xff9a5a, 0xffffff, 0x5ad0d0];
+export const SHIRT_COLOURS = [0xff5a7a, 0x7ac4ff, 0xffd978, 0x7affc4, 0xc47aff, 0xff9a5a, 0xffffff, 0x5ad0d0];
 const PANTS_COLOURS = [0x2a4a8a, 0x3a3a44, 0x6b4a2a, 0x2a6b4a];
-const SKIN_COLOURS = [0xe8b07a, 0xc98a5a, 0x8a5a3a, 0xf2c9a0];
-const HAIR_COLOURS = [0x241a2a, 0x4a2a1a, 0x8a6a3a, 0xd8d8d8, 0x1a1a1a, 0x7a3a2a];
+export const SKIN_COLOURS = [0xe8b07a, 0xc98a5a, 0x8a5a3a, 0xf2c9a0];
+export const HAIR_COLOURS = [0x241a2a, 0x4a2a1a, 0x8a6a3a, 0xd8d8d8, 0x1a1a1a, 0x7a3a2a];
 const HAT_COLOURS = [0xffd978, 0x7ac4ff, 0xff5a7a, 0xe8e8e8];
 
 function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour, hat, heightScale) {
@@ -172,21 +172,6 @@ export class Pedestrians {
     ped.lastHitZ = fromZ;
     ped.mesh.group.rotation.x = Math.PI / 2;
     ped.mesh.group.position.y = 0.4;
-  }
-
-  gatherNear(x, z, count) {
-    const nearLines = this.lines.filter((line) =>
-      line.axis === 'z' ? Math.abs(line.at - x) < 26 : Math.abs(line.at - z) < 26,
-    );
-    if (nearLines.length === 0) return;
-    for (let i = 0; i < Math.min(count, this.peds.length); i += 1) {
-      const ped = this.peds[i];
-      ped.line = pick(this.rng, nearLines);
-      const centre = ped.line.axis === 'z' ? z : x;
-      ped.along = Math.max(ped.line.from + 4, Math.min(ped.line.to - 4, centre + (this.rng() - 0.5) * 24));
-      ped.direction = this.rng() < 0.5 ? -1 : 1;
-      this.placeOnSidewalk(ped);
-    }
   }
 
   update(dt, city, playerCar, gunshot) {

@@ -268,7 +268,6 @@ export function buildCity(scene, textures, rng) {
 
   scene.add(group);
   return {
-    group,
     buildingBoxes,
     bounds: { minX: -CITY_HALF_WIDTH, maxX: CITY_HALF_WIDTH, minZ: NORTH_EDGE, maxZ: SHORELINE_Z },
     resolveCircle(position, radius) {

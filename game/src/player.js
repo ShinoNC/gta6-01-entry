@@ -42,6 +42,11 @@ export function createPlayer(scene, startX, startZ) {
     get position() {
       return group.position;
     },
+    setAppearance(look) {
+      if (look.skin !== undefined) skin.color.set(look.skin);
+      if (look.hair !== undefined) hair.color.set(look.hair);
+      if (look.shirt !== undefined) shirt.color.set(look.shirt);
+    },
     update(dt, input, cameraYaw, city) {
       const { forward, strafe } = input.moveAxes();
       const moving = forward !== 0 || strafe !== 0;

@@ -8,6 +8,7 @@ import { MISSIONS_IN_STORY } from './missions.js';
 export const SAVE_SLOT_COUNT = 3;
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_KEY_PREFIX = 'solaris-keys-save-';
+const LOOK_KEY = 'solaris-keys-look';
 const memorySlots = new Map();
 
 function isValidSave(data) {
@@ -43,12 +44,20 @@ export function loadGame(slot) {
   return isValidSave(data) ? data : null;
 }
 
-export function deleteSave(slot) {
-  memorySlots.delete(slot);
+export function saveLook(look) {
   try {
-    localStorage.removeItem(SAVE_KEY_PREFIX + slot);
+    localStorage.setItem(LOOK_KEY, JSON.stringify(look));
   } catch {
   }
+}
+
+export function loadLook() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LOOK_KEY));
+    if (data && Number.isInteger(data.hair) && Number.isInteger(data.shirt) && Number.isInteger(data.skin)) return data;
+  } catch {
+  }
+  return null;
 }
 
 export function latestSaveSlot() {

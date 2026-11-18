@@ -39,7 +39,7 @@ export const MISSION_CHAIN = [
       'The drop is blown — the Keys police are on you the second you move. Shake them, then bring the package to Old Port. I left an SMG in the glovebox for the trouble.',
     rewardMoney: 1000,
     rewardRep: 120,
-    rewardWeapon: 'SMG',
+    rewardWeapon: 'smg',
     scriptedHeat: 2,
     objectives: [
       { kind: 'loseWanted', label: 'Lose the heat — break line of sight' },
