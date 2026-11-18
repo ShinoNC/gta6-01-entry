@@ -22,7 +22,6 @@ export class ChaseCamera {
     this.yawOffset = Math.max(-1.2, Math.min(1.2, this.yawOffset));
     if (!input.dragging) this.yawOffset *= Math.max(0, 1 - dt * 1.5);
 
-    // The camera wants to sit behind the target's heading, offset by the drag.
     let wantedYaw = targetHeading + Math.PI + this.yawOffset;
     let delta = wantedYaw - this.yaw;
     while (delta > Math.PI) delta -= Math.PI * 2;
@@ -37,7 +36,6 @@ export class ChaseCamera {
       targetPosition.z + Math.cos(this.yaw) * distance,
     );
     this.currentPosition.lerp(wanted, Math.min(1, dt * FOLLOW_STIFFNESS));
-    // Never dip under the street.
     this.currentPosition.y = Math.max(1.6, this.currentPosition.y);
     this.camera.position.copy(this.currentPosition);
     this.camera.lookAt(targetPosition.x, targetPosition.y + 1.6, targetPosition.z);

@@ -1,6 +1,7 @@
 // SOLARIS KEYS — game entry point. Wires the renderer, city, player, cars,
-// camera and HUD together and runs the loop. States: title (orbiting camera
-// over the city), play, pause. F enters/exits the nearest car. The ?shot=
+// camera, HUD and all phase-B systems together and runs the loop. States:
+// title (orbiting camera), play, pause. F enters/exits the nearest car;
+// stealing a car that is not yours raises the wanted level. The ?shot=
 // query stages deterministic scenes for screenshots (see shots.json).
 import * as THREE from 'three';
 import { makeRng } from './random.js';
@@ -11,12 +12,27 @@ import { createPlayer } from './player.js';
 import { createCars } from './vehicles.js';
 import { ChaseCamera } from './camera.js';
 import { Hud } from './hud.js';
+import { Traffic } from './traffic.js';
+import { Pedestrians } from './pedestrians.js';
+import { Wanted } from './wanted.js';
+import { Police } from './police.js';
+import { Missions, MISSIONS_IN_STORY } from './missions.js';
+import { Combat } from './combat.js';
+import { GameAudio } from './audio.js';
+import { saveGame, loadGame, saveSlotSummaries } from './save.js';
 
 const SPAWN_X = 0;
 const SPAWN_Z = 0;
 const START_MONEY = 1250;
 const ENTER_CAR_RANGE = 5;
 const SHOT_DRIVE_SECONDS = 3.2;
+const SHOT_CHASE_SECONDS = 4;
+const SHOT_FOOT_SECONDS = 1.2;
+const SHOT_MISSION_SECONDS = 0.6;
+const REP_PER_LEVEL = 200;
+const AUTOSAVE_SLOT = 1;
+const PEDESTRIAN_HIT_RANGE = 2.1;
+const PEDESTRIAN_HIT_MIN_SPEED = 2;
 
 const params = new URLSearchParams(window.location.search);
 const shotName = params.get('shot') || '';
@@ -40,23 +56,58 @@ let player;
 let cars;
 let chaseCamera;
 let hud;
+let traffic;
+let pedestrians;
+let wanted;
+let police;
+let missions;
+let combat;
+let audio;
 let drivenCar = null;
 let money = START_MONEY;
-let wanted = 0;
+let rep = 0;
 let health = 100;
 let armour = 0;
 let titleOrbitAngle = 0;
 let shotTimer = 0;
 let shotReady = false;
+let missionScreenOpen = false;
+let phonePanelVisible = false;
+let gunshotAt = null;
+let freeRoamObjective = 'Explore Solaris Keys — press F near a car to drive it';
 
 const titleScreen = document.getElementById('title-screen');
 const pauseScreen = document.getElementById('pause-screen');
+
+function repLevel() {
+  return 1 + Math.floor(rep / REP_PER_LEVEL);
+}
+
+function snapshotSave() {
+  return {
+    money,
+    rep,
+    missionsDone: missions.doneCount(),
+    weaponsOwned: combat.ownedWeaponIds(),
+    playerX: player.position.x,
+    playerZ: player.position.z,
+  };
+}
+
+function applySave(data) {
+  money = data.money;
+  rep = data.rep;
+  missions.setCompleted(data.missionsDone);
+  combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
+  player.group.position.set(data.playerX, 0, data.playerZ);
+}
 
 function startGame() {
   state = 'play';
   titleScreen.classList.add('hidden');
   pauseScreen.classList.add('hidden');
-  hud.setObjective('Explore Solaris Keys — press F near a car to drive it');
+  audio.unlock();
+  hud.setObjective(freeRoamObjective);
 }
 
 function togglePause() {
@@ -68,9 +119,57 @@ function togglePause() {
   }
 }
 
+function openMissionScreen() {
+  hud.renderMissionList(missions.statusList());
+  hud.showMissionScreen();
+  missionScreenOpen = true;
+}
+
+function closeMissionScreen() {
+  hud.hideMissionScreen();
+  missionScreenOpen = false;
+}
+
+function acceptBriefing() {
+  const briefing = missions.pendingBriefing;
+  if (!briefing) return;
+  hud.hideBriefing();
+  phonePanelVisible = false;
+  missions.startMission(briefing.index);
+}
+
 document.getElementById('start-button').addEventListener('click', startGame);
 document.getElementById('resume-button').addEventListener('click', startGame);
 document.getElementById('restart-button').addEventListener('click', () => window.location.reload());
+document.getElementById('continue-button').addEventListener('click', () => {
+  const data = loadGame(AUTOSAVE_SLOT);
+  if (data) applySave(data);
+  startGame();
+});
+document.getElementById('save-button').addEventListener('click', () => {
+  saveGame(AUTOSAVE_SLOT, snapshotSave());
+  hud.showMessage('GAME SAVED — SLOT 1');
+});
+document.getElementById('missions-button').addEventListener('click', () => {
+  startGame();
+  openMissionScreen();
+});
+document.getElementById('mission-close-button').addEventListener('click', closeMissionScreen);
+document.getElementById('mission-list').addEventListener('click', (event) => {
+  const button = event.target.closest('.mission-accept');
+  if (!button) return;
+  const index = Number.parseInt(button.dataset.mission, 10);
+  closeMissionScreen();
+  hud.hideBriefing();
+  phonePanelVisible = false;
+  missions.startMission(index);
+});
+document.getElementById('phone-accept').addEventListener('click', acceptBriefing);
+document.getElementById('phone-later').addEventListener('click', () => {
+  hud.hideBriefing();
+  phonePanelVisible = false;
+  missions.snoozeBriefing(20);
+});
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
@@ -97,7 +196,13 @@ function enterCar(car) {
   drivenCar = car;
   car.driven = true;
   player.group.visible = false;
-  hud.showMessage(`ENTERED ${car.name} — W to drive, S to brake`);
+  if (!car.owned) {
+    car.owned = true;
+    const crime = wanted.commitCrime('steal');
+    hud.showMessage(`VEHICLE STOLEN: ${car.name}${crime ? ' — ' + crime : ''}`, 3);
+  } else {
+    hud.showMessage(`ENTERED ${car.name} — W to drive, S to brake`);
+  }
 }
 
 function exitCar() {
@@ -110,19 +215,63 @@ function exitCar() {
   hud.showMessage('ON FOOT — WASD to walk, F near a car to drive');
 }
 
-// The screenshot scenes: 'core' puts the player in the starter car and drives
-// it up the main avenue, so the frame proves the drive loop works.
+function combatTargets() {
+  const targets = [];
+  for (const ped of pedestrians.peds) {
+    if (ped.knockedTimer > 0) continue;
+    targets.push({ x: ped.mesh.group.position.x, z: ped.mesh.group.position.z, radius: 0.9, kind: 'pedestrian', ref: ped });
+  }
+  for (const car of cars) {
+    targets.push({ x: car.position.x, z: car.position.z, radius: 2.2, kind: 'car', ref: car });
+  }
+  for (const npc of traffic.cars) {
+    targets.push({ x: npc.car.position.x, z: npc.car.position.z, radius: 2.2, kind: 'car', ref: npc.car });
+  }
+  for (const unit of [...police.pursuit, ...police.roadblock]) {
+    targets.push({ x: unit.car.position.x, z: unit.car.position.z, radius: 2.2, kind: 'police', ref: unit.car });
+  }
+  return targets;
+}
+
+// Screenshot scenes: 'core' drives up the main avenue; 'chase' stages
+// mission 6 mid-pursuit at 3 stars; 'foot' is on foot downtown with a
+// crowd; 'mission' opens the story job list.
 function stageShot() {
   if (shotName === 'core') {
     startGame();
     enterCar(cars[0]);
     hud.showMessage('SOLARIS KEYS — free roam', 300);
+  } else if (shotName === 'chase') {
+    startGame();
+    const car = cars[0];
+    car.group.position.set(0, 0, 8);
+    car.heading = Math.PI;
+    car.group.rotation.y = Math.PI;
+    enterCar(car);
+    missions.forceStart(5);
+    police.stageChase(car.position, car.heading);
+    hud.showMessage('THE GETAWAY — lose the heat', 300);
+  } else if (shotName === 'foot') {
+    startGame();
+    player.group.position.set(-26, 0, -52);
+    player.heading = Math.PI;
+    player.group.rotation.y = Math.PI;
+    pedestrians.gatherNear(-26, -52, 8);
+    hud.showMessage('PALM ROW — on foot', 300);
+  } else if (shotName === 'mission') {
+    startGame();
+    missions.forceStart(0);
+    openMissionScreen();
   }
 }
 
 function update(dt) {
   if (input.pressed('Enter') && state === 'title') startGame();
-  if (input.pressed('Escape') && (state === 'play' || state === 'pause')) togglePause();
+  if (input.pressed('Enter') && phonePanelVisible && state === 'play') acceptBriefing();
+  if (input.pressed('Escape')) {
+    if (missionScreenOpen) closeMissionScreen();
+    else if (state === 'play' || state === 'pause') togglePause();
+  }
   if (state === 'title') {
     titleOrbitAngle += dt * 0.05;
     const radius = 150;
@@ -133,6 +282,20 @@ function update(dt) {
   }
   if (state === 'pause') return;
 
+  if (input.pressed('KeyM') && !phonePanelVisible) {
+    if (missionScreenOpen) closeMissionScreen();
+    else openMissionScreen();
+  }
+  if (input.pressed('KeyR')) {
+    hud.showMessage(`RADIO — ${audio.nextStation()}`, 2);
+  }
+  for (const [index, code] of ['Digit1', 'Digit2', 'Digit3'].entries()) {
+    if (input.pressed(code)) {
+      const result = combat.selectWeapon(index);
+      if (result === 'locked') hud.showMessage('SMG locked — complete MISSION 3 to unlock it');
+    }
+  }
+
   if (input.pressed('KeyF')) {
     if (drivenCar) exitCar();
     else {
@@ -142,8 +305,10 @@ function update(dt) {
     }
   }
 
-  // In the core screenshot the car drives itself; a real player drives with W.
-  const drivingInput = shotName === 'core' && drivenCar ? { moveAxes: () => ({ forward: 1, strafe: 0 }), isDown: () => false } : input;
+  const autoDrive = (shotName === 'core' || shotName === 'chase') && drivenCar;
+  const drivingInput = autoDrive
+    ? { moveAxes: () => ({ forward: 1, strafe: 0 }), isDown: () => false }
+    : input;
   if (drivenCar) {
     drivenCar.update(dt, drivingInput, city);
     chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input);
@@ -153,23 +318,100 @@ function update(dt) {
   }
   city.update(dt);
 
+  if (!drivenCar && (input.pressed('Space') || input.tap)) {
+    player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
+    player.group.rotation.y = player.heading;
+    const result = combat.tryShoot(player.position, chaseCamera.yaw, combatTargets());
+    if (result === 'empty') hud.showMessage('NO AMMO — finish a mission to restock');
+    else if (result === 'reloading') hud.showMessage('RELOADING…');
+  }
+  combat.update(dt);
+
+  const obstacles = [];
+  if (drivenCar) obstacles.push({ x: drivenCar.position.x, z: drivenCar.position.z });
+  for (const npc of traffic.cars) obstacles.push({ x: npc.car.position.x, z: npc.car.position.z });
+  for (const position of police.allCarPositions()) obstacles.push(position);
+  traffic.update(dt, obstacles);
+
+  if (drivenCar && Math.abs(drivenCar.speed) > PEDESTRIAN_HIT_MIN_SPEED) {
+    for (const ped of pedestrians.peds) {
+      if (ped.knockedTimer > 0) continue;
+      const pos = ped.mesh.group.position;
+      if (Math.hypot(pos.x - drivenCar.position.x, pos.z - drivenCar.position.z) < PEDESTRIAN_HIT_RANGE) {
+        pedestrians.knockDown(ped, drivenCar.position.x, drivenCar.position.z);
+        const crime = wanted.commitCrime('hitPedestrian');
+        hud.showMessage(crime || 'PEDESTRIAN HIT!');
+      }
+    }
+  }
+  if (drivenCar) {
+    for (const npc of traffic.cars) {
+      if (Math.hypot(npc.car.position.x - drivenCar.position.x, npc.car.position.z - drivenCar.position.z) < 3) {
+        traffic.shove(npc);
+        drivenCar.speed *= 0.55;
+      }
+    }
+  }
+  pedestrians.update(dt, city, drivenCar, gunshotAt);
+  gunshotAt = null;
+
   const focus = drivenCar || player;
+  const focusHeading = drivenCar ? drivenCar.heading : player.heading;
+  police.update(dt, {
+    playerPos: focus.position,
+    playerHeading: focusHeading,
+    driving: Boolean(drivenCar),
+    drivenCar,
+    wantedStars: wanted.stars,
+  });
+  wanted.update(dt, police.canSeePlayer(focus.position), police.helicopter !== null);
+
+  missions.update(dt, {
+    playerPos: focus.position,
+    drivenCar,
+    cars,
+    wantedStars: wanted.stars,
+  });
+
+  const briefing = missions.pendingBriefing;
+  if (briefing && !phonePanelVisible && !missionScreenOpen) {
+    hud.showBriefing(briefing.mission, briefing.index);
+    phonePanelVisible = true;
+    audio.click();
+  }
+
+  audio.setEngine(drivenCar ? Math.abs(drivenCar.speed) / 38 : 0, Boolean(drivenCar));
+  audio.setSiren(police.nearestDistance(focus.position));
+  audio.update(dt);
+
   hud.update({
     playerPos: focus.position,
-    heading: drivenCar ? drivenCar.heading : player.heading,
+    heading: focusHeading,
     speedKmh: drivenCar ? Math.abs(drivenCar.speed) * 3.6 : 0,
     money,
-    wanted,
+    wanted: wanted.stars,
     health,
     armour,
     cars,
     driving: Boolean(drivenCar),
     carName: drivenCar ? drivenCar.name : '',
+    missionLine: missions.progressLine(),
+    objective: missions.nextObjectiveLine() || freeRoamObjective,
+    policeUnits: police.units(focus.position),
+    weapons: combat.ammoForHud(),
+    radioStation: audio.radioStationName(),
+    repLevel: repLevel(),
+    hiding: wanted.hiding,
+    missionTarget: missions.target,
+    policeBlips: police.allCarPositions(),
+    timeSeconds: performance.now() / 1000,
   });
 
-  if (shotName === 'core' && !shotReady) {
+  if (!shotReady) {
     shotTimer += dt;
-    if (shotTimer >= SHOT_DRIVE_SECONDS) {
+    const readyAt =
+      shotName === 'core' ? SHOT_DRIVE_SECONDS : shotName === 'chase' ? SHOT_CHASE_SECONDS : shotName === 'foot' ? SHOT_FOOT_SECONDS : shotName === 'mission' ? SHOT_MISSION_SECONDS : Infinity;
+    if (shotTimer >= readyAt) {
       shotReady = true;
       window.__shotReady = true;
     }
@@ -190,9 +432,69 @@ loadTextures()
     city = buildCity(scene, textures, rng);
     player = createPlayer(scene, SPAWN_X, SPAWN_Z);
     cars = createCars(scene, textures, rng);
+    cars[0].owned = true;
+    traffic = new Traffic(scene, textures, rng);
+    pedestrians = new Pedestrians(scene, rng, () => {
+      hud.showMessage(['AHH!', 'SOMEBODY HELP!', 'RUN!'][Math.floor(Math.random() * 3)], 1.5);
+    });
+    wanted = new Wanted();
+    police = new Police(scene, textures, city, rng);
+    missions = new Missions(scene, {
+      onScriptedHeat(stars) {
+        wanted.setStars(stars);
+        hud.showMessage(`THE HEAT IS ON — ${stars} stars on you`, 3);
+      },
+      onMissionStarted(mission, index) {
+        freeRoamObjective = mission.objectives[0].label;
+        hud.showMessage(`MISSION ${index + 1}/${MISSIONS_IN_STORY} — ${mission.name}`, 3);
+      },
+      onObjectiveComplete() {
+        audio.click();
+      },
+      onMissionComplete(mission, index) {
+        money += mission.rewardMoney;
+        rep += mission.rewardRep;
+        combat.restock();
+        if (mission.rewardWeapon) {
+          combat.unlockWeapon(mission.rewardWeapon);
+          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + SMG UNLOCKED`, 4);
+        } else {
+          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP`, 4);
+        }
+        audio.chime();
+        saveGame(AUTOSAVE_SLOT, snapshotSave());
+        if (index === MISSIONS_IN_STORY - 1) {
+          freeRoamObjective = 'STORY COMPLETE — the Keys are yours. Free roam!';
+        }
+      },
+    });
+    combat = new Combat(scene, {
+      onShot() {
+        audio.gunshot();
+        gunshotAt = { x: player.position.x, z: player.position.z };
+        pedestrians.scareFrom(player.position.x, player.position.z, 28);
+        const crime = wanted.commitCrime('shoot');
+        if (crime) hud.showMessage(crime, 2);
+      },
+      onHitPedestrian(ped) {
+        pedestrians.fleeFrom(ped, player.position.x, player.position.z);
+        const crime = wanted.commitCrime('hitPedestrian');
+        if (crime) hud.showMessage(crime, 2);
+      },
+      onHitCar() {
+        // Sparks already show the hit; no extra toast.
+      },
+    });
+    audio = new GameAudio();
     chaseCamera = new ChaseCamera(camera);
     hud = new Hud(city);
     hud.setObjective('Press ENTER or click START to play');
+    const saved = saveSlotSummaries()[0];
+    if (saved && !saved.empty) {
+      document.getElementById('continue-button').classList.remove('hidden');
+      document.getElementById('continue-summary').textContent =
+        `Saved game: $${saved.money.toLocaleString('en-US')} · ${saved.missionsDone}/${MISSIONS_IN_STORY} missions done`;
+    }
     stageShot();
     window.__game = {
       scene,
@@ -209,6 +511,23 @@ loadTextures()
       get drivenCar() {
         return drivenCar;
       },
+      get money() {
+        return money;
+      },
+      get rep() {
+        return rep;
+      },
+      traffic,
+      pedestrians,
+      wanted,
+      police,
+      missions,
+      combat,
+      audio,
+      hud,
+      save: { saveGame, loadGame },
+      snapshotSave,
+      applySave,
     };
     if (shotName === 'title') window.__shotReady = true;
     loop();

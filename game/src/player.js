@@ -56,7 +56,6 @@ export function createPlayer(scene, startX, startZ) {
       }
       const running = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
       const speed = running ? RUN_SPEED : WALK_SPEED;
-      // Camera-relative direction: forward is away from the camera.
       const sin = Math.sin(cameraYaw);
       const cos = Math.cos(cameraYaw);
       const dx = (-sin * forward + cos * strafe) * speed * dt;

@@ -24,9 +24,6 @@ const DISTRICTS = [
   { name: 'MARINA DEL SOL', west: false, north: false },
 ];
 
-// District for any map position: the north half splits Old Port / Harbor
-// Lights, the middle splits Palm Row / Marina Del Sol, and the beach strip
-// splits Coral Strand / Sunset Bluff.
 export function districtNameAt(x, z) {
   if (z >= BEACH_START_Z) return x < 0 ? 'CORAL STRAND' : 'SUNSET BLUFF';
   const north = z < -STREET_PITCH;
@@ -94,7 +91,6 @@ function resolveCircleAgainstBoxes(position, radius, boxes) {
       position.x = nearestX + (dx / dist) * radius;
       position.z = nearestZ + (dz / dist) * radius;
     } else {
-      // Centre inside the box: push out along the smallest penetration.
       const pushLeft = position.x - box.minX + radius;
       const pushRight = box.maxX - position.x + radius;
       const pushNorth = position.z - box.minZ + radius;
@@ -114,7 +110,6 @@ export function buildCity(scene, textures, rng) {
   scene.background = skyGradientTexture();
   scene.fog = new THREE.Fog(0xff9e7e, 130, 430);
 
-  // Sun: a flat glowing disc low over the ocean, due south-west.
   const sun = new THREE.Mesh(
     new THREE.CircleGeometry(26, 24),
     new THREE.MeshBasicMaterial({ color: 0xffe9a8, fog: false }),
@@ -123,7 +118,6 @@ export function buildCity(scene, textures, rng) {
   sun.lookAt(0, 20, 0);
   group.add(sun);
 
-  // Ground: pavement under the whole street grid.
   const groundTexture = textures.sidewalk.clone();
   groundTexture.needsUpdate = true;
   groundTexture.repeat.set(40, 28);
@@ -136,7 +130,6 @@ export function buildCity(scene, textures, rng) {
   ground.receiveShadow = true;
   group.add(ground);
 
-  // Road strips with lane markings, laid over the pavement.
   for (let i = 0; i <= CITY_BLOCK_COLUMNS; i += 1) {
     const stripTexture = textures.road.clone();
     stripTexture.needsUpdate = true;
@@ -153,9 +146,6 @@ export function buildCity(scene, textures, rng) {
     const stripTexture = textures.road.clone();
     stripTexture.needsUpdate = true;
     stripTexture.repeat.set(1, 26);
-    // Same tall plane as the north-south strips, turned east-west by rotating
-    // the geometry: rotating the mesh instead would spin the texture with it.
-    // Sits 1 cm above the north-south strips so crossings never z-fight.
     const stripGeometry = new THREE.PlaneGeometry(ROAD_WIDTH, CITY_HALF_WIDTH * 2);
     stripGeometry.rotateX(-Math.PI / 2);
     stripGeometry.rotateY(Math.PI / 2);
@@ -163,7 +153,6 @@ export function buildCity(scene, textures, rng) {
     strip.position.set(0, 0.03, roadCentreZ(j));
     group.add(strip);
   }
-  // Beach sand, then the ocean.
   const sandTexture = textures.sand.clone();
   sandTexture.needsUpdate = true;
   sandTexture.repeat.set(30, 4);
@@ -186,7 +175,6 @@ export function buildCity(scene, textures, rng) {
   ocean.position.set(0, -0.15, (SHORELINE_Z + OCEAN_FAR_Z) / 2);
   group.add(ocean);
 
-  // Buildings: one wide tower or two side-by-side blocks per city block.
   const facades = [textures.facadeA, textures.facadeB, textures.facadeC];
   const roofMaterial = new THREE.MeshLambertMaterial({ map: textures.roof });
   const boxGeometry = new THREE.BoxGeometry(1, 1, 1);
@@ -221,7 +209,6 @@ export function buildCity(scene, textures, rng) {
     }
   }
 
-  // Palms: a double row along the beach, plus scattered street palms.
   const trunkGeometry = new THREE.CylinderGeometry(0.22, 0.32, 4.4, 5);
   const trunkMaterial = new THREE.MeshLambertMaterial({ color: 0x7a5434 });
   const frondGeometry = new THREE.PlaneGeometry(7, 7);
@@ -257,7 +244,6 @@ export function buildCity(scene, textures, rng) {
     plantPalm(x, z, 0.8 + rng() * 0.4);
   }
 
-  // Warm sunset lighting: low orange sun + soft purple fill.
   const sunLight = new THREE.DirectionalLight(0xffb36b, 1.6);
   sunLight.position.set(-120, 90, 180);
   scene.add(sunLight);

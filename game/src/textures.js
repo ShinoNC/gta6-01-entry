@@ -16,8 +16,6 @@ const TEXTURE_FILES = {
   roof: 'roof.png',
 };
 
-// Load every texture; resolves to { name: THREE.Texture }. Ground textures
-// repeat, so they get RepeatWrapping here and their repeat set by the caller.
 export function loadTextures() {
   const loader = new THREE.TextureLoader();
   const loaded = {};

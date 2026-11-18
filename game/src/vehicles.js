@@ -57,6 +57,7 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     speed: 0,
     steerAngle: 0,
     driven: false,
+    wheels,
     get position() {
       return group.position;
     },
@@ -71,7 +72,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
         if (Math.abs(this.speed) < 0.05) this.speed = 0;
       }
       this.speed = Math.max(-CAR_MAX_REVERSE_SPEED, Math.min(CAR_MAX_SPEED, this.speed));
-      // Steering only bites while rolling, and less at top speed.
       const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - Math.abs(this.speed) / CAR_MAX_SPEED / 2);
       const steerTarget = -strafe * 0.55 * grip;
       this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 8);
@@ -83,7 +83,6 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
       const beforeX = group.position.x;
       const beforeZ = group.position.z;
       city.resolveCircle(group.position, CAR_RADIUS);
-      // A wall stops the car dead instead of letting it slide through.
       if (group.position.x !== beforeX || group.position.z !== beforeZ) this.speed *= 0.25;
       group.rotation.y = this.heading;
       for (const { pivot, wheel, steers } of wheels) {

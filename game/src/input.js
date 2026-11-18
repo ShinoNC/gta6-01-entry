@@ -8,6 +8,11 @@ export class Input {
     this.dragDeltaX = 0;
     this.dragDeltaY = 0;
     this.dragging = false;
+    // A tap is a quick click without a drag: the shoot trigger on foot.
+    this.tap = false;
+    this.mouseDownAt = 0;
+    this.mouseDownX = 0;
+    this.mouseDownY = 0;
 
     window.addEventListener('keydown', (event) => {
       if (event.repeat) return;
@@ -22,11 +27,18 @@ export class Input {
     });
 
     const canvas = document.getElementById('game-canvas');
-    canvas.addEventListener('mousedown', () => {
+    canvas.addEventListener('mousedown', (event) => {
       this.dragging = true;
+      this.mouseDownAt = performance.now();
+      this.mouseDownX = event.clientX;
+      this.mouseDownY = event.clientY;
     });
-    window.addEventListener('mouseup', () => {
+    window.addEventListener('mouseup', (event) => {
       this.dragging = false;
+      const quick = performance.now() - this.mouseDownAt < 250;
+      const still = Math.hypot(event.clientX - this.mouseDownX, event.clientY - this.mouseDownY) < 8;
+      if (this.mouseDownAt > 0 && quick && still) this.tap = true;
+      this.mouseDownAt = 0;
     });
     window.addEventListener('mousemove', (event) => {
       if (!this.dragging) return;
@@ -43,16 +55,15 @@ export class Input {
     return this.justPressed.has(code);
   }
 
-  // Forward/strafe as -1..1, from WASD or the arrow keys.
   moveAxes() {
     const forward = (this.isDown('KeyW') || this.isDown('ArrowUp') ? 1 : 0) - (this.isDown('KeyS') || this.isDown('ArrowDown') ? 1 : 0);
     const strafe = (this.isDown('KeyD') || this.isDown('ArrowRight') ? 1 : 0) - (this.isDown('KeyA') || this.isDown('ArrowLeft') ? 1 : 0);
     return { forward, strafe };
   }
 
-  // Call once per frame, after the game has read the input.
   endFrame() {
     this.justPressed.clear();
+    this.tap = false;
     this.dragDeltaX = 0;
     this.dragDeltaY = 0;
   }
