@@ -11,7 +11,7 @@ import { Traffic } from './traffic.js';
 import { Pedestrians, SKIN_COLOURS, HAIR_COLOURS, SHIRT_COLOURS } from './pedestrians.js';
 import { Wanted } from './wanted.js';
 import { Police } from './police.js';
-import { Missions, MISSIONS_IN_STORY } from './missions.js';
+import { Missions, MISSIONS_IN_STORY, buildBeacon } from './missions.js';
 import { Combat } from './combat.js';
 import { Dialogue } from './dialogue.js';
 import { Tapes, TAPE_COUNT } from './tapes.js';
@@ -36,6 +36,9 @@ const CLOCK_MINUTES_PER_SECOND = 0.5;
 const AUTOSAVE_SLOT = 1;
 const PEDESTRIAN_HIT_RANGE = 2.1;
 const PEDESTRIAN_HIT_MIN_SPEED = 2;
+const SPRAY_X = 104, SPRAY_Z = -52, SPRAY_PRICE = 200, SPRAY_RANGE = 9;
+const ARREST_RANGE = 3.5, ARREST_SECONDS = 3, POLICE_HIT_CHANCE = 0.3, POLICE_SHOT_DAMAGE = 8;
+const LOCK_HINTS = ['', 'complete MISSION 1', 'complete MISSION 3', 'reach REP 3'];
 const params = new URLSearchParams(window.location.search);
 const shotName = params.get('shot') || '';
 const seed = Number.parseInt(params.get('seed') || '1', 10) || 1;
@@ -53,6 +56,7 @@ const rng = makeRng(seed);
 let state = 'title';
 let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
+let arrestTimer = 0, lastHurtAt = -99, downKind = '';
 let soundOn = true, musicOn = true, titleOrbitAngle = 0, shotTimer = 0, shotReady = false;
 let missionOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
 let freeObj = 'Explore Solaris Keys — press F near a car to drive it';
@@ -179,6 +183,7 @@ function acceptBriefing() {
 }
 buildSwatches();
 on('start-button', startGame);
+on('down-button', recoverFromDown);
 on('resume-button', startGame);
 on('restart-button', () => window.location.reload());
 on('options-button', openOptions);
@@ -235,21 +240,28 @@ window.addEventListener('resize', () => {
 function nearestCar(position) {
   let best = null;
   let bestDist = ENTER_CAR_RANGE;
-  for (const car of cars) {
-    const dx = car.position.x - position.x;
-    const dz = car.position.z - position.z;
-    const dist = Math.hypot(dx, dz);
+  const consider = (car) => {
+    if (car.destroyed) return;
+    const dist = Math.hypot(car.position.x - position.x, car.position.z - position.z);
     if (dist < bestDist) {
       bestDist = dist;
       best = car;
     }
-  }
+  };
+  for (const car of cars) consider(car);
+  for (const npc of traffic.cars) consider(npc.car);
   return best;
 }
 function enterCar(car) {
   drivenCar = car;
   car.driven = true;
   player.group.visible = false;
+  const npcIndex = traffic.cars.findIndex((npc) => npc.car === car);
+  if (npcIndex >= 0) {
+    traffic.cars.splice(npcIndex, 1);
+    traffic.cars.push(traffic.buildNpc(scene, rng));
+    cars.push(car);
+  }
   if (!car.owned) {
     car.owned = true;
     const crime = wanted.commitCrime('steal');
@@ -267,21 +279,95 @@ function exitCar() {
   player.group.visible = true;
   hud.showMessage('ON FOOT — WASD to walk, F near a car to drive');
 }
+function damagePlayer(amount) {
+  if (state !== 'play') return;
+  health -= amount;
+  lastHurtAt = elapsed;
+  if (health <= 0) endRun('WASTED');
+}
+function endRun(kind) {
+  if (state !== 'play') return;
+  downKind = kind;
+  state = 'down';
+  hud.hideBriefing();
+  phoneVisible = false;
+  if (missionOpen) closeMissionScreen();
+  dialogue.el.classList.add('hidden');
+  dialogue.until = 0;
+  $('hud-message').classList.remove('visible');
+  $('hud-police').classList.add('hidden');
+  const fine = Math.floor(money * 0.1);
+  money -= fine;
+  missions.failCurrent();
+  wanted.setStars(0);
+  health = 100;
+  arrestTimer = 0;
+  if (drivenCar) {
+    drivenCar.driven = false;
+    drivenCar.speed = 0;
+    drivenCar = null;
+  }
+  player.group.visible = true;
+  const wasted = kind === 'WASTED';
+  player.group.position.set(wasted ? 52 : -104, 0, wasted ? 26 : -104);
+  $('down-title').textContent = kind;
+  $('down-sub').textContent = wasted ? `Hospital bill $${fine.toLocaleString('en-US')} — the Keys PD lost your trail` : `Fine $${fine.toLocaleString('en-US')} — the Keys PD lost your trail`;
+  $('down-screen').classList.remove('hidden');
+}
+function recoverFromDown() {
+  $('down-screen').classList.add('hidden');
+  downKind = '';
+  startGame();
+}
+function damageCar(car, amount) {
+  if (!car || car.hp <= 0 || car.name === 'SUNSET COUPE') return;
+  car.hp -= amount;
+  if (car.hp <= 0 && !car.burning) {
+    car.burning = true;
+    car.burnTimer = 3;
+  }
+}
+function updateBurning(car, dt) {
+  if (car.destroyed) return;
+  if (!car.burning) {
+    if (car.hp < 30 && car.hp > 0 && Math.random() < dt * 2) effects.puffSmoke(car.position.x, 1, car.position.z);
+    return;
+  }
+  if (car.driven && !car.warned) {
+    car.warned = true;
+    hud.showMessage(`${car.name} IS ON FIRE — get out!`, 3);
+  }
+  car.burnTimer -= dt;
+  effects.puffSmoke(car.position.x, 1.2, car.position.z);
+  if (Math.random() < dt * 6) effects.burstSparks(car.position.x, 1, car.position.z, 4);
+  if (car.burnTimer > 0) return;
+  car.burning = false;
+  car.destroyed = true;
+  effects.burstSparks(car.position.x, 1, car.position.z, 24);
+  effects.puffSmoke(car.position.x, 1.5, car.position.z, 8);
+  audio.gunshot();
+  if (car.driven) exitCar();
+  if (Math.hypot(player.position.x - car.position.x, player.position.z - car.position.z) < 9) damagePlayer(70);
+  scene.remove(car.group);
+  const ni = traffic.cars.findIndex((npc) => npc.car === car);
+  if (ni >= 0) {
+    traffic.cars.splice(ni, 1);
+    traffic.cars.push(traffic.buildNpc(scene, rng));
+  }
+}
 function combatTargets() {
   const targets = [];
   for (const ped of pedestrians.peds) {
     if (ped.knockedTimer > 0) continue;
     targets.push({ x: ped.mesh.group.position.x, z: ped.mesh.group.position.z, radius: 0.9, kind: 'pedestrian', ref: ped });
   }
-  for (const car of cars) {
-    targets.push({ x: car.position.x, z: car.position.z, radius: 2.2, kind: 'car', ref: car });
-  }
-  for (const npc of traffic.cars) {
-    targets.push({ x: npc.car.position.x, z: npc.car.position.z, radius: 2.2, kind: 'car', ref: npc.car });
-  }
-  for (const unit of [...police.pursuit, ...police.roadblock]) {
-    targets.push({ x: unit.car.position.x, z: unit.car.position.z, radius: 2.2, kind: 'police', ref: unit.car });
-  }
+  const carTarget = (car, kind) => {
+    if (car.destroyed || car === drivenCar) return;
+    targets.push({ x: car.position.x, z: car.position.z, radius: 2.2, kind, ref: car });
+  };
+  for (const car of cars) carTarget(car, 'car');
+  for (const npc of traffic.cars) carTarget(npc.car, 'car');
+  for (const unit of [...police.pursuit, ...police.roadblock]) carTarget(unit.car, 'police');
   if (robbery.active && !robbery.getaway.stopped) {
     const getaway = robbery.getaway.car.position;
     targets.push({ x: getaway.x, z: getaway.z, radius: 2.2, kind: 'getaway', ref: robbery.getaway });
@@ -337,6 +423,7 @@ function stageShot() {
 }
 function update(dt) {
   if (input.pressed('Enter') && state === 'title' && !optionsOpen) startGame();
+  if (input.pressed('Enter') && state === 'down') recoverFromDown();
   if (input.pressed('Enter') && phoneVisible && state === 'play') acceptBriefing();
   if (input.pressed('Escape')) {
     if (optionsOpen) closeOptions();
@@ -351,8 +438,9 @@ function update(dt) {
     city.update(dt);
     return;
   }
-  if (state === 'pause') return;
+  if (state === 'pause' || state === 'down') return;
   elapsed += dt;
+  if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyM') && !phoneVisible) {
     if (missionOpen) closeMissionScreen();
     else openMissionScreen();
@@ -367,7 +455,7 @@ function update(dt) {
     if (input.pressed(code)) {
       const result = combat.selectWeapon(index);
       if (result === 'locked') {
-        hud.showMessage(index === 3 ? 'SHOTGUN locked — reach REP 3 to unlock it' : 'SMG locked — complete MISSION 3 to unlock it');
+        hud.showMessage(`${combat.ammoForHud()[index].name} locked — ${LOCK_HINTS[index]} to unlock it`);
       }
     }
   }
@@ -400,6 +488,7 @@ function update(dt) {
       const noseX = drivenCar.position.x + Math.sin(drivenCar.heading) * 2.1;
       const noseZ = drivenCar.position.z + Math.cos(drivenCar.heading) * 2.1;
       effects.burstSparks(noseX, 0.8, noseZ, 6);
+      damagePlayer(3);
       drivenCar.impact = 0.5;
     }
     if (drivenCar.skidding) {
@@ -421,10 +510,14 @@ function update(dt) {
   }
   city.update(dt);
   effects.update(dt);
-  if (!drivenCar && (input.pressed('Space') || input.tap)) {
-    player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
-    player.group.rotation.y = player.heading;
-    const result = combat.tryShoot(player.position, chaseCamera.yaw, combatTargets());
+  if (input.pressed('Space') || input.tap) {
+    if (!drivenCar) {
+      player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
+      player.group.rotation.y = player.heading;
+    }
+    const origin = drivenCar ? drivenCar.position : player.position;
+    const aim = drivenCar ? drivenCar.heading + Math.PI : chaseCamera.yaw;
+    const result = combat.tryShoot(origin, aim, combatTargets());
     if (result === 'empty') hud.showMessage('NO AMMO — finish a mission to restock');
     else if (result === 'reloading') hud.showMessage('RELOADING…');
   }
@@ -457,6 +550,20 @@ function update(dt) {
         hud.showMessage('NEAR MISS +$100', 1.2);
       }
     }
+    for (const unit of police.roadblock) {
+      if (Math.hypot(unit.car.position.x - drivenCar.position.x, unit.car.position.z - drivenCar.position.z) < 2.8) {
+        drivenCar.speed *= 0.4;
+        effects.burstSparks(drivenCar.position.x, 0.8, drivenCar.position.z, 4);
+      }
+    }
+    if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE && money >= SPRAY_PRICE && (drivenCar.hp < 100 || wanted.stars > 0)) {
+      money -= SPRAY_PRICE;
+      drivenCar.hp = 100;
+      drivenCar.burning = false;
+      drivenCar.warned = false;
+      wanted.setStars(0);
+      hud.showMessage("PAY'N'SPRAY — car repaired, heat cleared ($200)", 3);
+    }
     if (robbery.active && !robbery.getaway.stopped) {
       const getawayPos = robbery.getaway.car.position;
       const ramGap = Math.hypot(getawayPos.x - drivenCar.position.x, getawayPos.z - drivenCar.position.z);
@@ -469,6 +576,9 @@ function update(dt) {
   }
   pedestrians.update(dt, city, drivenCar, gunshotAt);
   gunshotAt = null;
+  for (const car of cars) updateBurning(car, dt);
+  for (const npc of traffic.cars) updateBurning(npc.car, dt);
+  for (const unit of [...police.pursuit, ...police.roadblock]) updateBurning(unit.car, dt);
   const focus = drivenCar || player;
   const focusHeading = drivenCar ? drivenCar.heading : player.heading;
   police.update(dt, {
@@ -477,7 +587,19 @@ function update(dt) {
     driving: Boolean(drivenCar),
     drivenCar,
     wantedStars: wanted.stars,
+    onPoliceShot(from, to) {
+      combat.fireTracer({ x: from.x, y: 1.4, z: from.z }, { x: to.x, y: 1.2, z: to.z });
+      audio.gunshot();
+      if (Math.random() < POLICE_HIT_CHANCE) damagePlayer(POLICE_SHOT_DAMAGE);
+    },
   });
+  if (wanted.stars >= 1 && wanted.stars <= 2 && !drivenCar) {
+    if (police.nearestDistance(player.position) < ARREST_RANGE) {
+      arrestTimer += dt;
+      if (arrestTimer > 1) hud.showMessage('POLICE ARE GRABBING YOU — RUN!', 1);
+      if (arrestTimer >= ARREST_SECONDS) endRun('BUSTED');
+    } else arrestTimer = 0;
+  } else arrestTimer = 0;
   wanted.update(dt, police.canSeePlayer(focus.position), police.helicopter !== null);
   if (wanted.stars > prevStars) dialogue.cue('heat');
   prevStars = wanted.stars;
@@ -556,6 +678,9 @@ function loop() {
 loadTextures()
   .then((textures) => {
     city = buildCity(scene, textures, rng);
+    const sprayBeacon = buildBeacon(scene, 0x2ad0c4);
+    sprayBeacon.group.position.set(SPRAY_X, 0, SPRAY_Z);
+    sprayBeacon.group.visible = true;
     player = createPlayer(scene, SPAWN_X, SPAWN_Z);
     cars = createCars(scene, textures);
     cars[0].owned = true;
@@ -581,6 +706,8 @@ loadTextures()
       onMissionComplete(mission, index) {
         money += mission.rewardMoney;
         rep += mission.rewardRep;
+        health = 100;
+        if (index === 0) combat.unlockWeapon('pistol');
         if (repLevel() >= 3) combat.unlockWeapon('shotgun');
         combat.restock();
         if (mission.finale) {
@@ -589,7 +716,7 @@ loadTextures()
           combat.unlockWeapon(mission.rewardWeapon);
           hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + SMG UNLOCKED`, 4, true);
         } else {
-          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP`, 4, true);
+          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP${index === 0 ? ' + PISTOL UNLOCKED' : ''}`, 4, true);
         }
         audio.chime();
         dialogue.cue('done');
@@ -605,13 +732,19 @@ loadTextures()
         audio.gunshot();
         gunshotAt = { x: player.position.x, z: player.position.z };
         pedestrians.scareFrom(player.position.x, player.position.z, 28);
+        const witness = pedestrians.peds.some((ped) => ped.knockedTimer <= 0 && Math.hypot(ped.mesh.group.position.x - player.position.x, ped.mesh.group.position.z - player.position.z) < 20);
+        if (witness) wanted.lastShootStarAt = -99;
         const crime = wanted.commitCrime('shoot');
-        if (crime) hud.showMessage(crime, 2);
+        if (crime) hud.showMessage(witness ? `${crime} — witness called it in` : crime, 2);
       },
-      onHitPedestrian(ped) {
-        pedestrians.fleeFrom(ped, player.position.x, player.position.z);
+      onHitPedestrian(ped, lethal) {
+        if (lethal) pedestrians.knockDown(ped, player.position.x, player.position.z, 20);
+        else pedestrians.fleeFrom(ped, player.position.x, player.position.z);
         const crime = wanted.commitCrime('hitPedestrian');
         if (crime) hud.showMessage(crime, 2);
+      },
+      onHitCar(car) {
+        damageCar(car, 12);
       },
       onAmmoPickup(district) {
         hud.showMessage(`AMMO RESTOCKED — ${district} crate`, 2.5);
@@ -695,6 +828,15 @@ loadTextures()
       },
       get rep() {
         return rep;
+      },
+      get health() {
+        return health;
+      },
+      damagePlayer,
+      damageCar,
+      endRun,
+      setMoney(v) {
+        money = v;
       },
       traffic,
       pedestrians,

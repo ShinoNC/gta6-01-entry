@@ -168,6 +168,15 @@ export class Missions {
     this.briefingIdx = -1;
     this.startMission(index);
   }
+  failCurrent() {
+    if (this.curIdx < 0) return;
+    this.status[this.curIdx] = 'pending';
+    this.briefingIdx = this.curIdx;
+    this.snooze = 5;
+    this.curIdx = -1;
+    this.target = null;
+    this.beacon.group.visible = false;
+  }
   setCompleted(count) {
     for (let i = 0; i < MISSIONS_IN_STORY; i += 1) {
       this.status[i] = i < count ? 'done' : 'locked';

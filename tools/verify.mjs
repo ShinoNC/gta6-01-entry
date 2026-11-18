@@ -220,7 +220,10 @@ const policeDistanceBefore = await page.evaluate(() => {
   const units = window.__game.police.units(window.__game.player.position);
   return units.length ? Math.min(...units.map((u) => u.distanceMetres)) : -1;
 });
-await page.waitForTimeout(4000);
+// 12s window: pursuit cars follow the road network, so they may first drive
+// to an intersection (Euclidean distance briefly rises) before turning toward
+// the player. 4s was too short to see the approach.
+await page.waitForTimeout(12000);
 const policeDistanceAfter = await page.evaluate(() => {
   const units = window.__game.police.units(window.__game.player.position);
   return units.length ? Math.min(...units.map((u) => u.distanceMetres)) : -1;

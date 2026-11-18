@@ -47,7 +47,7 @@ export class Police {
       light.position.set(x, 1.52, -0.2);
       car.group.add(light);
     }
-    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, redMaterial, blueMaterial, escortSide: 0 };
+    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, shootCooldown: 1 + Math.random() * 2, redMaterial, blueMaterial, escortSide: 0 };
   }
   removeUnit(unit) {
     this.scene.remove(unit.car.group);
@@ -205,6 +205,8 @@ export class Police {
   update(dt, context) {
     this.clock += dt;
     const { playerPos, playerHeading, driving, drivenCar, wantedStars } = context;
+    this.pursuit = this.pursuit.filter((unit) => !unit.car.destroyed);
+    this.roadblock = this.roadblock.filter((unit) => !unit.car.destroyed);
     if (wantedStars === 0) {
       this.lostTimer += dt;
       if (this.lostTimer > DESPAWN_S) {
@@ -306,7 +308,7 @@ export class Police {
           } else {
             unit.status = 'PURSUIT';
             car.speed = Math.min(topSpeed, car.speed + ACCEL * dt);
-            if (!driving && dist < 6) car.speed = 0;
+            if (!driving && dist < 3) car.speed = 0;
           }
         }
         car.group.position.x += Math.sin(car.heading) * car.speed * dt;
@@ -317,6 +319,14 @@ export class Police {
         if (car.group.position.x !== beforeX || car.group.position.z !== beforeZ) car.speed *= 0.4;
         car.group.rotation.y = car.heading;
       }
+      if (wantedStars >= 3 && dist < 42) {
+        unit.shootCooldown -= dt;
+        if (unit.shootCooldown <= 0) {
+          unit.shootCooldown = 1.1 + Math.random() * 0.9;
+          unit.status = 'SHOOTING';
+          context.onPoliceShot?.(car.position, playerPos);
+        }
+      } else if (unit.status === 'SHOOTING') unit.status = 'PURSUIT';
       for (const wheel of car.wheels) {
         wheel.wheel.rotation.x += (car.speed / 0.36) * dt;
       }
