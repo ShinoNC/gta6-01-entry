@@ -221,7 +221,7 @@ check(
 );
 check(
   'mission list shows total story payout',
-  await page.evaluate(() => document.getElementById('mission-list').textContent.includes('total story payout $13,250')),
+  await page.evaluate(() => document.getElementById('mission-list').textContent.includes('payout $13,250')),
 );
 check(
   'mission-list CLOSE button is inside the 720p viewport',

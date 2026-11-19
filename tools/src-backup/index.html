@@ -30,7 +30,7 @@
       position:fixed;
       z-index:10;
       pointer-events:none;
-      text-shadow:2px 2px 0 #1a1030,-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030;
+      text-shadow:2px 2px 3px rgba(10,5,25,.8);
       }
       body.on-title .hud{
       display:none;
@@ -65,20 +65,10 @@
       max-width:520px;
       }
       #hud-clock{
-      font-size:15px;
+      font-size:13px;
       letter-spacing:2px;
-      color:#ffb3c4;
-      }
-      #hud-weather{
-      font-size:15px;
-      letter-spacing:2px;
-      color:#7ac4ff;
-      }
-      #hud-tapes{
-      margin-top:4px;
-      font-size:15px;
-      letter-spacing:2px;
-      color:#ff6bd6;
+      color:#ffd7e0;
+      opacity:.85;
       }
       #dialogue-panel{
       bottom:150px;
@@ -89,7 +79,7 @@
       display:flex;
       gap:12px;
       align-items:center;
-      background:rgba(26,16,48,.88);
+      background:rgba(48,32,86,.88);
       border:2px solid #c47aff;
       padding:10px 14px;
       }
@@ -126,9 +116,10 @@
       }
       #hud-rep{
       margin-top:4px;
-      font-size:15px;
+      font-size:13px;
       letter-spacing:2px;
-      color:#c47aff;
+      color:#e0b8ff;
+      opacity:.85;
       }
       #hud-hiding{
       margin-top:4px;
@@ -147,7 +138,7 @@
       top:150px;
       right:18px;
       width:300px;
-      background:rgba(26,16,48,.82);
+      background:rgba(48,32,86,.82);
       border:2px solid #ff4d5e;
       padding:10px 12px;
       font-size:14px;
@@ -195,7 +186,7 @@
       font-size:14px;
       letter-spacing:1px;
       padding:4px 8px;
-      background:rgba(26,16,48,.82);
+      background:rgba(48,32,86,.82);
       border:2px solid #fff3;
       color:#ffdcb0;
       }
@@ -203,14 +194,12 @@
       border-color:#ffd978;
       color:#fff;
       }
-      .weapon-slot.locked{
-      color:#8a8296;
-      }
       #hud-radio{
-      font-size:14px;
+      font-size:13px;
       letter-spacing:1px;
       color:#7ac4ff;
       margin-bottom:4px;
+      opacity:.85;
       }
       #hud-car{
       font-size:15px;
@@ -242,8 +231,8 @@
       margin:4px 0 2px;
       }
       .bar{
-      height:10px;
-      background:rgba(26,16,48,.8);
+      height:14px;
+      background:rgba(48,32,86,.8);
       border:2px solid #fff3;
       }
       .bar>div{
@@ -265,7 +254,7 @@
       font-weight:bold;
       letter-spacing:2px;
       color:#fff;
-      background:rgba(26,16,48,.75);
+      background:rgba(48,32,86,.92);
       padding:10px 22px;
       border:2px solid #ffd978;
       opacity:0;
@@ -298,7 +287,7 @@
       font-size:22px;
       font-weight:bold;
       color:#ffd978;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
       opacity:0;
       transform:translate(-50%,-50%);
       }
@@ -316,9 +305,8 @@
       }
       #hud-hint{
       bottom:4px;
-      left:50%;
-      transform:translateX(-50%);
-      max-width:60vw;
+      left:0;
+      right:0;
       text-align:center;
       line-height:1.5;
       font-size:14px;
@@ -330,7 +318,7 @@
       transform:translateX(-50%);
       width:440px;
       max-width:92vw;
-      background:rgba(26,16,48,.92);
+      background:rgba(48,32,86,.92);
       border:2px solid #ffd978;
       padding:14px 18px;
       pointer-events:auto;
@@ -392,7 +380,13 @@
       font-size:15px;
       letter-spacing:2px;
       color:#ffe9c4;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
+      }
+      #map-screen .mission-subtitle{
+      background:rgba(48,32,86,.88);
+      border:2px solid #ffd978;
+      padding:6px 14px;
+      font-size:16px;
       }
       #mission-list,#empire-list,#garage-list{
       flex:1 1 auto;
@@ -412,21 +406,21 @@
       margin-top:0;
       }
       .mission-summary{
-      background:rgba(26,16,48,.88);
+      background:rgba(48,32,86,.88);
       border:2px solid #ffd978;
-      padding:6px;
+      padding:5px;
       margin-bottom:8px;
       text-align:center;
-      font-size:15px;
+      font-size:14px;
       font-weight:bold;
       letter-spacing:2px;
       color:#ffd978;
       }
       .mission-row{
-      background:rgba(26,16,48,.88);
+      background:rgba(48,32,86,.88);
       border:2px solid #fff3;
-      padding:5px 14px;
-      margin-bottom:6px;
+      padding:4px 14px;
+      margin-bottom:5px;
       }
       .mission-row.active{
       border-color:#7affc4;
@@ -485,7 +479,7 @@
       right:0;
       bottom:0;
       height:45%;
-      background:linear-gradient(180deg,transparent,rgba(26,16,48,.78));
+      background:linear-gradient(180deg,transparent,rgba(48,32,86,.78));
       pointer-events:none;
       z-index:0;
       }
@@ -494,10 +488,10 @@
       }
       .feature-line{
       margin-top:12px;
-      font-size:13px;
+      font-size:12px;
       letter-spacing:1px;
       color:#ffd978;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
       max-width:92vw;
       text-align:center;
       }
@@ -524,19 +518,22 @@
       .overlay.hidden,.hidden{
       display:none !important;
       }
+      #pause-screen,#down-screen,#passed-screen{
+      background:linear-gradient(180deg,#3b2a6b,#ff7e6b 60%,#ffb347);
+      }
       .game-title{
       font-size:84px;
       font-weight:bold;
       letter-spacing:10px;
       color:#ffd978;
-      text-shadow:4px 4px 0 #7a2a5e,8px 8px 0 rgba(26,16,48,.6);
+      text-shadow:4px 4px 0 #7a2a5e,8px 8px 0 rgba(48,32,86,.6);
       }
       .game-subtitle{
       margin-top:10px;
       font-size:20px;
       letter-spacing:4px;
       color:#fff;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
       }
       .menu-button{
       pointer-events:auto;
@@ -557,7 +554,7 @@
       }
       .menu-button:active{
       transform:translate(3px,3px);
-      box-shadow:2px 2px 0 #1a1030;
+      box-shadow:1px 1px 2px #1a1030;
       }
       .custom-row{
       display:flex;
@@ -572,7 +569,7 @@
       font-weight:bold;
       letter-spacing:2px;
       color:#fff;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
       }
       .swatches{
       display:flex;
@@ -591,10 +588,11 @@
       }
       .controls{
       margin-top:34px;
+      max-width:92vw;
       font-size:15px;
       line-height:1.9;
       color:#fff;
-      text-shadow:2px 2px 0 #1a1030,-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030;
+      text-shadow:2px 2px 3px rgba(10,5,25,.8);
       }
       .controls b{
       color:#ffd978;
@@ -605,7 +603,7 @@
       font-size:12px;
       line-height:1.5;
       color:#ffdcb0;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:1px 1px 2px #1a1030;
       }
       #load-error{
       position:fixed;
@@ -690,12 +688,10 @@
   </div>
 </div>
 <div class="hud" id="hud-top-right">
-  <div id="hud-clock">DAY 1 18:50</div>
-  <div id="hud-weather">☀ CLEAR</div>
+  <div id="hud-clock">DAY 1 18:50 · ☀ CLEAR</div>
   <div id="hud-money">$1,250</div>
   <div id="hud-stars">☆☆☆☆☆</div>
-  <div id="hud-rep">REP LV 1</div>
-  <div id="hud-tapes">TAPES 0/20</div>
+  <div id="hud-rep">REP LV 1 · TAPES 0/20</div>
   <div id="hud-hiding" class="hidden">HIDING… stay out of sight</div>
 </div>
 <div class="hud hidden" id="hud-police">
@@ -757,11 +753,11 @@
 </div>
 </div>
 </div>
-<div class="hud" id="hud-hint">WASD&nbsp;move· F&nbsp;enter&nbsp;car· SHIFT&nbsp;run· CLICK&nbsp;punch&nbsp;/&nbsp;shoot· SPACE&nbsp;jump· 1&#8209;4&nbsp;weapons· H&nbsp;horn· R&nbsp;radio· M&nbsp;missions· B&nbsp;business· N&nbsp;map· ESC&nbsp;pause</div>
+<div class="hud" id="hud-hint">WASD&nbsp;move· F&nbsp;enter&nbsp;car· CLICK&nbsp;punch&nbsp;/&nbsp;shoot· SPACE&nbsp;jump· M&nbsp;missions· B&nbsp;business· N&nbsp;map</div>
 <div class="overlay" id="title-screen">
 <div class="game-title">VICE ROYALE</div>
 <div class="game-subtitle">START WITH NOTHING. TAKE THE WHOLE ISLAND.</div>
-<div class="feature-line">8 STORY JOBS • 3 BUSINESSES WITH PASSIVE INCOME • GARAGE UPGRADES • SIDE JOBS • BANK ROBBERIES • CHARACTER CUSTOMIZATION</div>
+<div class="feature-line">8 STORY JOBS • 3 BUSINESSES • GARAGE UPGRADES • SIDE JOBS • BANK ROBBERIES • CHARACTER CUSTOMIZATION</div>
 <button class="menu-button" id="start-button">NEW GAME</button>
 <button class="menu-button hidden" id="continue-button">CONTINUE</button>
 <button class="menu-button" id="options-button">OPTIONS</button>
@@ -822,7 +818,7 @@
   </svg>
 <div>
   <div class="game-title" style="font-size:38px">STORY JOBS — MARA · JUNO · OTTO</div>
-  <div class="mission-subtitle">8 jobs · green crates restock ammo + armour · Pay'n'Spray in Harbor Lights: press E for the garage (repair $200 · upgrades)</div>
+  <div class="mission-subtitle">8 jobs · green crates restock ammo + armour · Pay'n'Spray garage: press E (repair $200 · upgrades)</div>
 </div>
 </div>
 <div id="mission-list">

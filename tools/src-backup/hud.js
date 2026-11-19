@@ -16,13 +16,12 @@ export class Hud {
       objective: $('hud-objective'),
       next: $('hud-next'),
       clock: $('hud-clock'),
-      weather: $('hud-weather'),
       money: $('hud-money'),
       stars: $('hud-stars'),
       rep: $('hud-rep'),
-      tapes: $('hud-tapes'),
       hiding: $('hud-hiding'),
       speed: $('hud-speed'),
+      speedRow: $('hud-speed-row'),
       carName: $('hud-car'),
       condition: $('hud-condition'),
       health: $('hud-health-fill'),
@@ -56,7 +55,7 @@ export class Hud {
     this.lastPoliceSig = '';
     this.lastWeaponSig = '';
   }
-  showMessage(text, seconds = 2.5, sticky = false) {
+  showMessage(text, seconds = 3.5, sticky = false) {
     if (this.messageSticky && performance.now() < this.messageUntil && !sticky) return;
     this.el.message.textContent = text;
     this.el.message.classList.add('visible');
@@ -150,8 +149,8 @@ export class Hud {
       for (const d of districtLabels()) {
         const p = this.toMap(d.x, d.z, w, h);
         const tw = ctx.measureText(d.name).width;
-        const x = Math.min(Math.max(p.x, tw / 2 + 6), w - tw / 2 - 6);
-        const y = Math.min(Math.max(p.y, fs + 4), h - 6);
+        const x = Math.min(Math.max(p.x, tw / 2 + 24), w - tw / 2 - 24);
+        const y = Math.min(Math.max(p.y, fs + 10), h - 12);
         ctx.strokeText(d.name, x, y);
         ctx.fillText(d.name, x, y);
       }
@@ -191,7 +190,7 @@ export class Hud {
         ? '<div class="mission-reward">CAR IS CLEAN — nothing to fix</div>'
         : money >= 200
           ? '<button class="menu-button mission-accept garage-buy" data-action="repair">REPAIR — $200</button>'
-          : '<div class="mission-reward">REPAIR NEEDS $200</div>';
+          : '';
     const upgrades = [
       { id: 'engine', name: 'ENGINE TUNE', desc: '+15% top speed & acceleration — every car you drive', price: 4000 },
       { id: 'armour', name: 'ARMOUR PLATING', desc: '200 HP on every car you drive', price: 3000 },
@@ -204,7 +203,7 @@ export class Hud {
           ? '<div class="mission-reward">INSTALLED</div>'
           : money >= u.price
             ? `<button class="menu-button mission-accept garage-buy" data-action="${u.id}">BUY — $${fmt(u.price)}</button>`
-            : `<div class="mission-reward">NEEDS $${fmt(u.price)}</div>`;
+            : '';
         return `<div class="mission-row ${owned ? 'active' : 'pending'}"><div class="mission-head"><span>${u.name}</span><span>$${fmt(u.price)}</span></div><div class="mission-reward">${u.desc}</div>${action}</div>`;
       })
       .join('');
@@ -238,15 +237,16 @@ export class Hud {
     this.lastWeaponSig = signature;
     this.el.weapons.innerHTML = weapons
       .map((weapon, index) => {
-        const label = weapon.locked ? 'LOCKED' : weapon.reloading ? 'RELOADING' : weapon.name === 'FISTS' ? 'MELEE' : `${weapon.mag}/${weapon.reserve}`;
-        return `<div class="weapon-slot${weapon.active ? ' active' : ''}${weapon.locked ? ' locked' : ''}">${index + 1} ${weapon.name} ${label}</div>`;
+        if (weapon.locked) return '';
+        const label = weapon.reloading ? 'RELOADING' : weapon.name === 'FISTS' ? 'MELEE' : `${weapon.mag}/${weapon.reserve}`;
+        return `<div class="weapon-slot${weapon.active ? ' active' : ''}">${index + 1} ${weapon.name} ${label}</div>`;
       })
       .join('');
   }
   showBriefing(mission, index) {
     const key = mission.giver === 'Juno Reyes' ? 'juno' : mission.giver === 'Otto Kane' ? 'otto' : 'mara';
     this.el.phoneFace.setAttribute('href', `#${key}-portrait`);
-    this.el.phoneGiver.textContent = `${mission.giver.toUpperCase()} CALLING · MISSION ${index + 1}/${MISSIONS_IN_STORY}`;
+    this.el.phoneGiver.textContent = `${mission.giver.toUpperCase()} · MISSION ${index + 1}/${MISSIONS_IN_STORY}`;
     this.el.phoneText.textContent = mission.briefing;
     this.el.phone.classList.remove('hidden');
   }
@@ -267,7 +267,7 @@ export class Hud {
       })
       .join('');
     this.el.missionList.innerHTML =
-      `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · ${pct}% COMPLETE · ${playTime} · total story payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
+      `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · ${pct}% COMPLETE · ${playTime} · payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
   }
   showPassed(title, missionName, rewards) {
     this.el.passedTitle.textContent = title;
@@ -282,7 +282,7 @@ export class Hud {
   hideMissionScreen() {
     this.el.missionScreen.classList.add('hidden');
   }
-  renderEmpireScreen(biz, stats, achievements, unlocked, money, repLevel, pct = 0, playTime = '') {
+  renderEmpireScreen(biz, stats, achievements, unlocked, money, repLevel, pct = 0) {
     const fmt = (n) => n.toLocaleString('en-US');
     const rows = biz.defs
       .map((def, i) => {
@@ -294,7 +294,7 @@ export class Hud {
           action =
             why === 'ok'
               ? `<button class="menu-button mission-accept empire-buy" data-index="${i}">BUY — $${fmt(def.price)}</button>`
-              : `<div class="mission-reward">${why === 'rep' ? `NEEDS REP ${def.repRequired}` : `NEEDS $${fmt(def.price)}`}</div>`;
+              : '';
         } else if (st.level < 2) {
           const cost = biz.upgradeCost(i);
           action =
@@ -329,7 +329,7 @@ export class Hud {
       })
       .join('');
     this.el.empireList.innerHTML =
-      `<div class="mission-summary">${biz.ownedCount()}/3 businesses · $${fmt(biz.totalIncomePerDay())}/day income · $${fmt(Math.floor(biz.totalPending()))} waiting to collect · ${pct}% COMPLETE · ${playTime}</div>` +
+      `<div class="mission-summary">${biz.ownedCount()}/3 businesses · $${fmt(biz.totalIncomePerDay())}/day · $${fmt(Math.floor(biz.totalPending()))} waiting · ${pct}% COMPLETE</div>` +
       rows +
       `<div class="mission-summary">CAREER STATS</div>` +
       statRows +
@@ -381,13 +381,11 @@ export class Hud {
     setText(this.el.mission, missionLine);
     setText(this.el.objective, objective);
     if (nextLine !== undefined) this.el.next.textContent = nextLine ? `NEXT — ${nextLine}` : '';
-    setText(this.el.clock, clockText);
-    setText(this.el.weather, weatherText);
-    if (tapes !== undefined) this.el.tapes.textContent = `TAPES ${tapes}`;
+    if (clockText !== undefined) this.el.clock.textContent = weatherText ? `${clockText} · ${weatherText}` : clockText;
     this.el.money.textContent = `$${money.toLocaleString('en-US')}`;
     this.el.stars.textContent = '★'.repeat(wanted) + '☆'.repeat(5 - wanted);
     this.el.stars.classList.toggle('hot', wanted > 0);
-    setText(this.el.rep, repText);
+    if (repText !== undefined) this.el.rep.textContent = tapes !== undefined ? `${repText} · TAPES ${tapes}` : repText;
     if (hiding !== undefined) {
       this.el.hiding.classList.toggle('hidden', !hiding);
       if (hiding && hideProgress !== undefined) {
@@ -395,6 +393,7 @@ export class Hud {
       }
     }
     this.el.speed.textContent = driving ? String(Math.round(speedKmh)) : '0';
+    this.el.speedRow.classList.toggle('hidden', !driving);
     this.el.carName.textContent = driving ? carName : 'ON FOOT';
     this.el.condition.textContent = driving && state.carClass ? `${state.carClass} · CONDITION ${Math.max(0, Math.round((100 * state.carHp) / (state.carMaxHp || 100)))}%` : '';
     this.el.health.style.width = `${health}%`;

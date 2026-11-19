@@ -247,7 +247,7 @@ function openEmpireScreen() {
   if (mapOpen) closeMapScreen();
   if (garageOpen) closeGarageScreen();
   input.exitLock();
-  hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel(), completionPct(), playTimeLine());
+  hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel(), completionPct());
   hud.showEmpireScreen();
   empireOpen = true;
 }
@@ -798,7 +798,7 @@ function update(dt) {
       damagePlayer(Math.min(25, Math.round(3 + speed)));
       player.knockDown(0.8);
       combat.recoil = Math.min(1, combat.recoil + 0.5);
-      hud.showMessage('HIT BY A CAR!', 2);
+      hud.showMessage('HIT BY A CAR!', 3.5);
     };
     for (const car of cars) hitByCar(car, car.speed);
     for (const npc of traffic.cars) hitByCar(npc.car, npc.speed);
@@ -1163,7 +1163,7 @@ loadTextures()
         }
       },
       onEscaped() {
-        hud.showMessage('THE GETAWAY ESCAPED', 3, true);
+        hud.showMessage('THE GETAWAY ESCAPED', 5, true);
       },
     });
     hud.setObjective('Press ENTER or click NEW GAME to play');

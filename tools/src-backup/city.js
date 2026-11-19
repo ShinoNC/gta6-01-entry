@@ -12,8 +12,8 @@ const BEACH_START_Z = BEACH_ROAD_Z + ROAD_WIDTH / 2;
 const SHORELINE_Z = 96;
 const OCEAN_FAR_Z = 520;
 const DISTRICTS = [
-  { name: 'OLD PORT', west: true, band: 0, lx: -107, lz: -107 },
-  { name: 'HARBOR LIGHTS', west: false, band: 0, lx: 107, lz: -107 },
+  { name: 'OLD PORT', west: true, band: 0, lx: -107, lz: -135 },
+  { name: 'HARBOR LIGHTS', west: false, band: 0, lx: 107, lz: -135 },
   { name: 'LANTERN ROW', west: true, band: 1, lx: -107, lz: -13 },
   { name: 'MARINA DEL SOL', west: false, band: 1, lx: 107, lz: -13 },
   { name: 'PALM ROW', west: true, band: 2, lx: -107, lz: 42 },
