@@ -34,6 +34,8 @@ export class Hud {
       phoneText: $('phone-text'),
       missionScreen: $('mission-screen'),
       missionList: $('mission-list'),
+      empireScreen: $('empire-screen'),
+      empireList: $('empire-list'),
     };
     this.messageUntil = 0;
     this.messageSticky = false;
@@ -54,7 +56,7 @@ export class Hud {
       y: (z - WORLD_MIN_Z) * scale + (MINIMAP_SIZE - WORLD_DEPTH * scale) / 2,
     };
   }
-  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip) {
+  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips) {
     const ctx = this.ctx;
     const band = (a, b, c) => { ctx.fillStyle = c; ctx.fillRect(0, a, MINIMAP_SIZE, b - a); };
     const dot = (x, z, size, color) => { const p = this.toMap(x, z); ctx.fillStyle = color; ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size); };
@@ -95,6 +97,7 @@ export class Hud {
     for (const car of cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 3, '#ffd978');
     if (trafficBlips) for (const b of trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
     if (ammoCrates) for (const c of ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
+    if (businessBlips) for (const b of businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
     if (missionTarget) diamond(missionTarget.x, missionTarget.z, 5 + Math.sin(timeSeconds * 4) * 1.5, '#ffd978');
     if (policeBlips) for (const b of policeBlips) circle(b.x, b.z, 3, Math.floor(timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
     if (sideJobTarget) diamond(sideJobTarget.x, sideJobTarget.z, 4 + Math.sin(timeSeconds * 4), '#7affc4');
@@ -167,6 +170,66 @@ export class Hud {
   hideMissionScreen() {
     this.el.missionScreen.classList.add('hidden');
   }
+  renderEmpireScreen(biz, stats, achievements, unlocked, money, repLevel) {
+    const fmt = (n) => n.toLocaleString('en-US');
+    const rows = biz.defs
+      .map((def, i) => {
+        const st = biz.state[i];
+        const income = biz.incomePerDay(i);
+        let action = '';
+        if (!st.owned) {
+          const why = biz.canBuy(i, money, repLevel);
+          action =
+            why === 'ok'
+              ? `<button class="menu-button mission-accept empire-buy" data-index="${i}">BUY — $${fmt(def.price)}</button>`
+              : `<div class="mission-reward">${why === 'rep' ? `NEEDS REP ${def.repRequired}` : `NEEDS $${fmt(def.price)}`}</div>`;
+        } else if (st.level < 2) {
+          const cost = biz.upgradeCost(i);
+          action =
+            money >= cost
+              ? `<button class="menu-button mission-accept empire-upgrade" data-index="${i}">UPGRADE — $${fmt(cost)} (+50% income)</button>`
+              : `<div class="mission-reward">UPGRADE NEEDS $${fmt(cost)}</div>`;
+        } else {
+          action = '<div class="mission-reward">MAX LEVEL</div>';
+        }
+        const status = st.owned
+          ? `OWNED · LV ${st.level} · $${fmt(income)}/day · $${fmt(Math.floor(st.pending))} waiting — drive there, press E to collect`
+          : `FOR SALE · $${fmt(def.price)} · earns $${fmt(def.incomePerDay)}/day · needs REP ${def.repRequired}`;
+        return `<div class="mission-row ${st.owned ? 'active' : 'pending'}"><div class="mission-head"><span>${def.name} — ${def.kind}</span><span>${def.district}</span></div><div class="mission-reward">${status}</div>${action}</div>`;
+      })
+      .join('');
+    const statRows = [
+      ['CARS STOLEN', stats.carsStolen],
+      ['PEDESTRIANS DOWN', stats.pedsDown],
+      ['MONEY EARNED (CAREER)', `$${fmt(Math.floor(stats.moneyEarned))}`],
+      ['DISTANCE DRIVEN', `${stats.kmDriven.toFixed(1)} km`],
+      ['5-STAR ESCAPES', stats.escapes5],
+      ['HELICOPTERS DOWN', stats.helisDown],
+      ['ROBBERIES STOPPED', stats.robberiesStopped],
+      ['SIDE JOBS DONE', stats.jobsDone],
+    ]
+      .map(([label, value]) => `<div class="mission-row"><div class="mission-head"><span>${label}</span><span>${value}</span></div></div>`)
+      .join('');
+    const achRows = achievements
+      .map((a) => {
+        const done = unlocked.includes(a.id);
+        return `<div class="mission-row ${done ? 'active' : ''}"><div class="mission-head"><span>${a.name}</span><span>${done ? '[DONE]' : `$${fmt(a.reward)}`}</span></div><div class="mission-reward">${a.desc}</div></div>`;
+      })
+      .join('');
+    this.el.empireList.innerHTML =
+      `<div class="mission-summary">${biz.ownedCount()}/3 businesses · $${fmt(biz.totalIncomePerDay())}/day income · $${fmt(Math.floor(biz.totalPending()))} waiting to collect</div>` +
+      rows +
+      `<div class="mission-summary">CAREER STATS</div>` +
+      statRows +
+      `<div class="mission-summary">ACHIEVEMENTS — ${unlocked.length}/${achievements.length}</div>` +
+      achRows;
+  }
+  showEmpireScreen() {
+    this.el.empireScreen.classList.remove('hidden');
+  }
+  hideEmpireScreen() {
+    this.el.empireScreen.classList.add('hidden');
+  }
   update(state) {
     const {
       playerPos,
@@ -196,11 +259,12 @@ export class Hud {
       ammoCrates,
       sideJobTarget,
       eventBlip,
+      businessBlips,
       weatherText,
       timeSeconds,
     } = state;
     const setText = (el, value) => { if (value !== undefined) el.textContent = value; };
-    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0, trafficBlips, ammoCrates, sideJobTarget, eventBlip);
+    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips);
     this.el.district.textContent = districtNameAt(playerPos.x, playerPos.z);
     setText(this.el.mission, missionLine);
     setText(this.el.objective, objective);

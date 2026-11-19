@@ -20,6 +20,7 @@ import { Weather } from './weather.js';
 import { Robbery } from './robbery.js';
 import { GameAudio } from './audio.js';
 import { Effects } from './effects.js';
+import { Businesses, ACHIEVEMENTS, checkAchievements, freshStats } from './business.js';
 import { saveGame, loadGame, saveSlotSummaries, latestSaveSlot, saveLook, loadLook } from './save.js';
 const SPAWN_X = 0;
 const SPAWN_Z = 0;
@@ -55,16 +56,31 @@ const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerH
 const input = new Input();
 const rng = makeRng(seed);
 let state = 'title';
-let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects;
+let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
 let arrestTimer = 0, lastHurtAt = -99, downKind = '';
 let soundOn = true, musicOn = true, titleOrbitAngle = 0, shotTimer = 0, shotReady = false;
-let missionOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
+let missionOpen = false, empireOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
+let stats = freshStats();
+let unlockedAchievements = [];
 let freeObj = 'Explore Solaris Keys — press F near a car to drive it';
 const titleScreen = $('title-screen');
 const pauseScreen = $('pause-screen');
 const optionsScreen = $('options-screen');
 function repLevel() { return 1 + Math.floor(rep / REP_PER_LEVEL); }
+function earn(amount) {
+  money += amount;
+  stats.moneyEarned += amount;
+}
+function awardAchievements() {
+  stats.businessesOwned = businesses ? businesses.ownedCount() : 0;
+  for (const achievement of checkAchievements(stats, unlockedAchievements)) {
+    unlockedAchievements.push(achievement.id);
+    earn(achievement.reward);
+    hud.showMessage(`ACHIEVEMENT — ${achievement.name} +$${achievement.reward.toLocaleString('en-US')}`, 4, true);
+    audio.chime();
+  }
+}
 function clockLine() {
   const total = CLOCK_START_MINUTES + elapsed * CLOCK_MINUTES_PER_SECOND;
   const day = 1 + Math.floor(total / 1440);
@@ -121,6 +137,9 @@ function snapshotSave() {
     look: { ...look },
     playerX: player.position.x,
     playerZ: player.position.z,
+    businesses: businesses.serialize(),
+    stats: { ...stats },
+    achievements: [...unlockedAchievements],
   };
 }
 function applySave(data) {
@@ -136,6 +155,10 @@ function applySave(data) {
   missions.setCompleted(data.missionsDone);
   combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
   tapes.setCollected(data.tapesCollected || 0);
+  businesses.reset();
+  if (data.businesses) businesses.restore(data.businesses);
+  stats = { ...freshStats(), ...(data.stats || {}) };
+  unlockedAchievements = Array.isArray(data.achievements) ? [...data.achievements] : [];
   if (data.look) applyLook(data.look);
   health = 100;
   armour = 0;
@@ -149,6 +172,7 @@ function startGame() {
   pauseScreen.classList.add('hidden');
   optionsScreen.classList.add('hidden');
   optionsOpen = false;
+  if (empireOpen) closeEmpireScreen();
   audio.unlock();
   hud.setObjective(freeObj);
 }
@@ -184,6 +208,15 @@ function openMissionScreen() {
 function closeMissionScreen() {
   hud.hideMissionScreen();
   missionOpen = false;
+}
+function openEmpireScreen() {
+  hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel());
+  hud.showEmpireScreen();
+  empireOpen = true;
+}
+function closeEmpireScreen() {
+  hud.hideEmpireScreen();
+  empireOpen = false;
 }
 function acceptBriefing() {
   const briefing = missions.pendingBriefing;
@@ -227,7 +260,39 @@ on('missions-button', () => {
   startGame();
   openMissionScreen();
 });
+on('empire-button', () => {
+  startGame();
+  openEmpireScreen();
+});
 on('mission-close-button', closeMissionScreen);
+on('empire-close-button', closeEmpireScreen);
+on('empire-list', (event) => {
+  const buyButton = event.target.closest('.empire-buy');
+  const upgradeButton = event.target.closest('.empire-upgrade');
+  if (buyButton) {
+    const index = Number.parseInt(buyButton.dataset.index, 10);
+    const def = businesses.defs[index];
+    if (businesses.canBuy(index, money, repLevel()) !== 'ok') return;
+    money -= def.price;
+    businesses.buy(index);
+    stats.businessesOwned = businesses.ownedCount();
+    hud.showMessage(`${def.name} IS YOURS — income starts now`, 4, true);
+    audio.chime();
+    awardAchievements();
+    openEmpireScreen();
+    saveGame(AUTOSAVE_SLOT, snapshotSave());
+  } else if (upgradeButton) {
+    const index = Number.parseInt(upgradeButton.dataset.index, 10);
+    const def = businesses.defs[index];
+    if (businesses.canUpgrade(index, money) !== 'ok') return;
+    money -= businesses.upgradeCost(index);
+    businesses.upgrade(index);
+    hud.showMessage(`${def.name} UPGRADED — LV ${businesses.state[index].level}`, 4, true);
+    audio.chime();
+    openEmpireScreen();
+    saveGame(AUTOSAVE_SLOT, snapshotSave());
+  }
+});
 on('mission-list', (event) => {
   const button = event.target.closest('.mission-accept');
   if (!button) return;
@@ -275,6 +340,7 @@ function enterCar(car) {
   }
   if (!car.owned) {
     car.owned = true;
+    stats.carsStolen += 1;
     const crime = wanted.commitCrime('steal');
     hud.showMessage(`VEHICLE STOLEN: ${car.name}${crime ? ' — ' + crime : ''}`, 3);
   } else {
@@ -305,6 +371,7 @@ function endRun(kind) {
   hud.hideBriefing();
   phoneVisible = false;
   if (missionOpen) closeMissionScreen();
+  if (empireOpen) closeEmpireScreen();
   dialogue.el.classList.add('hidden');
   dialogue.until = 0;
   $('hud-message').classList.remove('visible');
@@ -445,6 +512,7 @@ function update(dt) {
   if (input.pressed('Escape')) {
     if (optionsOpen) closeOptions();
     else if (missionOpen) closeMissionScreen();
+    else if (empireOpen) closeEmpireScreen();
     else if (state === 'play' || state === 'pause') togglePause();
   }
   if (state === 'title') {
@@ -460,6 +528,10 @@ function update(dt) {
     if (missionOpen) closeMissionScreen();
     else openMissionScreen();
   }
+  if (input.pressed('KeyB') && !phoneVisible) {
+    if (empireOpen) closeEmpireScreen();
+    else openEmpireScreen();
+  }
   if (!shotReady) {
     shotTimer += dt;
     const readyAt =
@@ -469,7 +541,7 @@ function update(dt) {
       window.__shotReady = true;
     }
   }
-  if (missionOpen) return;
+  if (missionOpen || empireOpen) return;
   elapsed += dt;
   if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyR')) {
@@ -505,6 +577,7 @@ function update(dt) {
     : input;
   if (drivenCar) {
     drivenCar.update(dt, drivingInput, city, weather.grip);
+    stats.kmDriven += (Math.abs(drivenCar.speed) * dt) / 1000;
     chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input, combat.recoil, police.helicopter ? 2 : 0);
     if (drivenCar.skidding) {
       const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 1.4;
@@ -524,7 +597,7 @@ function update(dt) {
         skidSeconds = 0;
         driftChain += 1;
         const bonus = 50 * driftChain;
-        money += bonus;
+        earn(bonus);
         hud.showMessage(`DRIFT x${driftChain} +$${bonus}`, 1.2);
       }
     } else {
@@ -574,6 +647,7 @@ function update(dt) {
       const pos = ped.mesh.group.position;
       if (Math.hypot(pos.x - drivenCar.position.x, pos.z - drivenCar.position.z) < PEDESTRIAN_HIT_RANGE) {
         pedestrians.knockDown(ped, drivenCar.position.x, drivenCar.position.z);
+        stats.pedsDown += 1;
         const crime = wanted.commitCrime('hitPedestrian');
         hud.showMessage(crime || 'PEDESTRIAN HIT!');
       }
@@ -587,7 +661,7 @@ function update(dt) {
         drivenCar.speed *= 0.55;
       } else if (gap < 5.5 && Math.abs(drivenCar.speed) > 20 && elapsed - nearMissAt > 3) {
         nearMissAt = elapsed;
-        money += 100;
+        earn(100);
         hud.showMessage('NEAR MISS +$100', 1.2);
       }
     }
@@ -669,6 +743,7 @@ function update(dt) {
   } else arrestTimer = 0;
   wanted.update(dt, police.canSeePlayer(focus.position), police.helicopter !== null);
   if (wanted.stars > prevStars) dialogue.cue('heat');
+  if (prevStars === 5 && wanted.stars === 0) stats.escapes5 += 1;
   prevStars = wanted.stars;
   missions.update(dt, {
     playerPos: focus.position,
@@ -677,10 +752,24 @@ function update(dt) {
     wantedStars: wanted.stars,
   });
   sideJobs.update(dt, { focusPos: focus.position, driving: Boolean(drivenCar) });
+  businesses.update(dt);
+  const collectIndex = businesses.nearestCollectable(focus.position);
+  if (collectIndex >= 0) {
+    const def = businesses.defs[collectIndex];
+    const pending = Math.floor(businesses.state[collectIndex].pending);
+    hud.showMessage(`${def.name} — collect $${pending.toLocaleString('en-US')} (press E)`, 0.6);
+    if (input.pressed('KeyE')) {
+      const amount = businesses.collect(collectIndex);
+      earn(amount);
+      hud.showMessage(`${def.name} — collected $${amount.toLocaleString('en-US')}`, 3);
+      audio.chime();
+    }
+  }
+  awardAchievements();
   weather.update(dt, focus.position);
   robbery.update(dt, { playerPos: focus.position });
   tapes.update(dt, focus.position, (count) => {
-    money += 25;
+    earn(25);
     hud.showMessage(`SUNSET TAPE ${count}/${TAPE_COUNT} +$25`, 2);
   });
   dialogue.update();
@@ -718,6 +807,7 @@ function update(dt) {
     hideProgress: wanted.hideProgress,
     missionTarget: missions.target,
     sideJobTarget: sideJobs.target,
+    businessBlips: businesses.blips(),
     eventBlip: robbery.blip,
     policeBlips: police.allCarPositions(),
     trafficBlips: traffic.cars.map((npc) => ({ x: npc.car.position.x, z: npc.car.position.z })),
@@ -762,7 +852,7 @@ loadTextures()
         audio.click();
       },
       onMissionComplete(mission, index) {
-        money += mission.rewardMoney;
+        earn(mission.rewardMoney);
         rep += mission.rewardRep;
         health = 100;
         if (index === 0) combat.unlockWeapon('pistol');
@@ -785,6 +875,7 @@ loadTextures()
       },
     });
     effects = new Effects(scene);
+    businesses = new Businesses(scene);
     combat = new Combat(scene, {
       onShot() {
         audio.gunshot();
@@ -796,8 +887,10 @@ loadTextures()
         if (crime) hud.showMessage(witness ? `${crime} — witness called it in` : crime, 2);
       },
       onHitPedestrian(ped, lethal) {
-        if (lethal) pedestrians.knockDown(ped, player.position.x, player.position.z, 20);
-        else pedestrians.fleeFrom(ped, player.position.x, player.position.z);
+        if (lethal) {
+          pedestrians.knockDown(ped, player.position.x, player.position.z, 20);
+          stats.pedsDown += 1;
+        } else pedestrians.fleeFrom(ped, player.position.x, player.position.z);
         const crime = wanted.commitCrime('hitPedestrian');
         if (crime) hud.showMessage(crime, 2);
       },
@@ -819,6 +912,7 @@ loadTextures()
           effects.burstSparks(pos.x, 8, pos.z, 24);
           effects.puffSmoke(pos.x, 8, pos.z, 8);
           audio.gunshot();
+          stats.helisDown += 1;
           hud.showMessage('HELICOPTER DOWN!', 4, true);
           wanted.setStars(Math.min(5, wanted.stars + 1));
         }
@@ -842,8 +936,9 @@ loadTextures()
         hud.showMessage(job.type === 'taxi' ? `FARE ON BOARD — drop at ${spot}` : `PACKAGE COLLECTED — deliver to ${spot}`, 3);
       },
       onComplete(job) {
-        money += job.rewardMoney;
+        earn(job.rewardMoney);
         rep += job.rewardRep;
+        stats.jobsDone += 1;
         hud.showMessage(`${job.type === 'taxi' ? 'FARE DELIVERED' : 'DELIVERY COMPLETE'} — $${job.rewardMoney} + ${job.rewardRep} REP`, 4, true);
         audio.chime();
       },
@@ -856,8 +951,9 @@ loadTextures()
       },
       onStopped(byPlayer) {
         if (byPlayer) {
-          money += 500;
+          earn(500);
           rep += 50;
+          stats.robberiesStopped += 1;
           hud.showMessage('GETAWAY STOPPED — $500 REWARD + 50 REP', 5, true);
           audio.chime();
         } else {
@@ -921,6 +1017,15 @@ loadTextures()
       robbery,
       audio,
       effects,
+      businesses,
+      get stats() {
+        return stats;
+      },
+      get achievements() {
+        return unlockedAchievements;
+      },
+      earn,
+      awardAchievements,
       hud,
       save: { saveGame, loadGame },
       snapshotSave,
