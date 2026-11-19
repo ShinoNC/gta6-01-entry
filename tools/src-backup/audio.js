@@ -1,42 +1,24 @@
 const RADIO_STATIONS = [
-  {
-    name: 'WAVE 88.1 · Neon Drive',
-    bpm: 112,
-    melodyMidi: [69, 72, 76, 79, 76, 72, 74, 76, 69, 72, 76, 81, 79, 76, 74, 72],
-    bassMidi: [45, 45, 41, 43],
-    tracks: ['Midnight Run', 'Neon Tide', 'Coastal Static'],
-  },
-  {
-    name: 'RADIO SOL 101.9',
-    bpm: 96,
-    melodyMidi: [72, 76, 79, 76, 74, 77, 81, 77, 72, 76, 79, 84, 81, 79, 76, 74],
-    bassMidi: [48, 55, 53, 50],
-    tracks: ['Solset Boulevard', 'Palm Static', 'Harbor Gold'],
-  },
-  {
-    name: 'KEYS FM 95.5 · Bassline',
-    bpm: 124,
-    melodyMidi: [69, 69, 72, 69, 76, 74, 72, 69, 67, 69, 72, 76, 79, 76, 74, 72],
-    bassMidi: [41, 41, 36, 43],
-    tracks: ['Night Shift', 'Low Tide', 'Getaway Groove'],
-  },
+  // One real MP3 per station, looped. Tracks are Pixabay Content License
+  // music, provided by the user (studiokolomna, sub_clair).
+  { name: 'WAVE 88.1 · Neon Drive', file: './assets/radio-1.mp3', track: 'No Copyright Music' },
+  { name: 'RADIO SOL 101.9', file: './assets/radio-2.mp3', track: 'Energetic Instrumental' },
+  { name: 'KEYS FM 95.5 · Bassline', file: './assets/radio-3.mp3', track: 'Drift Phonk Instrumental' },
 ];
+const RADIO_VOLUME = 0.3;
 const ENGINE_GEAR_COUNT = 4;
 const ENGINE_BASE_HZ = 52;
 const ENGINE_TOP_HZ = 210;
 const SIREN_LOW_HZ = 720;
 const SIREN_HIGH_HZ = 980;
 const SIREN_TONE_SECONDS = 0.32;
-const TRACK_STEPS_PER_TRACK = 32;
-function midiToFrequency(midi) {
-  return 440 * 2 ** ((midi - 69) / 12);
-}
 export class GameAudio {
   constructor() {
     this.ctx = null;
     this.stationIndex = 0;
-    this.radioStep = 0;
-    this.nextNoteTime = 0;
+    this.radioAudio = null;
+    this.radioLoaded = -1;
+    this.radioFailed = false;
     this.engineOsc = null;
     this.engineSubOsc = null;
     this.engineFilter = null;
@@ -53,13 +35,16 @@ export class GameAudio {
   unlock() {
     if (this.ctx) {
       this.ctx.resume().catch(() => {});
+      this.startRadio();
       return;
     }
     try {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
-      if (!AudioContext) return;
+      if (!AudioContext) {
+        this.startRadio();
+        return;
+      }
       this.ctx = new AudioContext();
-      this.nextNoteTime = this.ctx.currentTime + 0.1;
       this.engineOsc = this.ctx.createOscillator();
       this.engineOsc.type = 'sawtooth';
       this.engineOsc.frequency.value = ENGINE_BASE_HZ;
@@ -86,19 +71,52 @@ export class GameAudio {
     } catch {
       this.ctx = null;
     }
+    this.startRadio();
+  }
+  startRadio() {
+    if (this.radioAudio || this.radioFailed) {
+      if (this.radioAudio && this.musicEnabled) {
+        const p = this.radioAudio.play();
+        if (p) p.catch(() => {});
+      }
+      return;
+    }
+    try {
+      const el = new Audio();
+      el.loop = true;
+      el.volume = RADIO_VOLUME;
+      el.preload = 'auto';
+      el.addEventListener('error', () => {
+        this.radioFailed = true;
+        console.warn('Radio MP3 failed to load — continuing silent');
+      });
+      this.radioAudio = el;
+      this.playStation();
+    } catch {
+      this.radioFailed = true;
+    }
+  }
+  playStation() {
+    const el = this.radioAudio;
+    if (!el) return;
+    if (this.radioLoaded !== this.stationIndex) {
+      el.src = RADIO_STATIONS[this.stationIndex].file;
+      this.radioLoaded = this.stationIndex;
+    }
+    if (!this.musicEnabled) return;
+    const p = el.play();
+    if (p) p.catch(() => {});
   }
   radioStationName() {
     return RADIO_STATIONS[this.stationIndex].name;
   }
   nowPlaying() {
     const station = RADIO_STATIONS[this.stationIndex];
-    const track = station.tracks[Math.floor(this.radioStep / TRACK_STEPS_PER_TRACK) % station.tracks.length];
-    return `${station.name} — '${track}'`;
+    return `${station.name} — '${station.track}'`;
   }
   nextStation() {
     this.stationIndex = (this.stationIndex + 1) % RADIO_STATIONS.length;
-    this.radioStep = 0;
-    if (this.ctx) this.nextNoteTime = this.ctx.currentTime + 0.05;
+    this.playStation();
     return this.radioStationName();
   }
   setSoundEnabled(enabled) {
@@ -108,6 +126,13 @@ export class GameAudio {
   }
   setMusicEnabled(enabled) {
     this.musicEnabled = enabled;
+    if (!this.radioAudio) return;
+    if (enabled) {
+      const p = this.radioAudio.play();
+      if (p) p.catch(() => {});
+    } else {
+      this.radioAudio.pause();
+    }
   }
   setEngine(speedNorm, driving) {
     this.engineSpeed = speedNorm;
@@ -160,18 +185,6 @@ export class GameAudio {
   click() {
     this.blip(1400, 0.04, 0.05, 'square');
   }
-  scheduleRadioNote(frequency, startAt, seconds, gainValue, type) {
-    const osc = this.ctx.createOscillator();
-    osc.type = type;
-    osc.frequency.value = frequency;
-    const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(0.0001, startAt);
-    gain.gain.exponentialRampToValueAtTime(gainValue, startAt + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + seconds);
-    osc.connect(gain).connect(this.ctx.destination);
-    osc.start(startAt);
-    osc.stop(startAt + seconds + 0.02);
-  }
   update(dt) {
     this.clock += dt;
     if (!this.ctx) return;
@@ -187,18 +200,5 @@ export class GameAudio {
     const sirenTone = Math.floor(this.clock / SIREN_TONE_SECONDS) % 2 === 0 ? SIREN_LOW_HZ : SIREN_HIGH_HZ;
     this.sirenOsc.frequency.setTargetAtTime(sirenTone, this.ctx.currentTime, 0.03);
     this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045, this.ctx.currentTime, 0.15);
-    if (!this.musicEnabled) return;
-    const station = RADIO_STATIONS[this.stationIndex];
-    const beatSeconds = 60 / station.bpm / 2;
-    while (this.nextNoteTime < this.ctx.currentTime + 0.25) {
-      const step = this.radioStep % station.melodyMidi.length;
-      this.scheduleRadioNote(midiToFrequency(station.melodyMidi[step]), this.nextNoteTime, beatSeconds * 0.9, 0.04, 'triangle');
-      if (step % 4 === 0) {
-        const bar = Math.floor(step / 4) % station.bassMidi.length;
-        this.scheduleRadioNote(midiToFrequency(station.bassMidi[bar]), this.nextNoteTime, beatSeconds * 3.5, 0.05, 'sine');
-      }
-      this.radioStep += 1;
-      this.nextNoteTime += beatSeconds;
-    }
   }
 }
