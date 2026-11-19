@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 const WEAPON_SLOTS = [
-  { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false },
-  { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: true },
-  { id: 'smg', name: 'SMG', range: 45, cooldownSeconds: 0.09, magSize: 30, reserveAmmo: 90, locked: true },
-  { id: 'shotgun', name: 'SHOTGUN', range: 30, cooldownSeconds: 0.7, magSize: 6, reserveAmmo: 24, locked: true },
+  { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false, damage: 10 },
+  { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: true, damage: 12 },
+  { id: 'smg', name: 'SMG', range: 45, cooldownSeconds: 0.09, magSize: 30, reserveAmmo: 90, locked: true, damage: 12 },
+  { id: 'shotgun', name: 'SHOTGUN', range: 30, cooldownSeconds: 0.7, magSize: 6, reserveAmmo: 24, locked: true, damage: 30 },
 ];
 const RELOAD_SECONDS = 1.2;
 const TRACER_LIFE_SECONDS = 0.09;
@@ -17,8 +17,8 @@ const RECOIL_RECOVER_PER_SECOND = 3;
 const AMMO_CRATE_PICKUP_METRES = 3;
 const AMMO_CRATE_RESPAWN_SECONDS = 45;
 const AMMO_CRATE_SPOTS = [
-  { x: 26, z: 26, name: 'Marina Del Sol' },
-  { x: -78, z: -52, name: 'Palm Row' },
+  { x: 26, z: 26, name: 'Pelican Bay' },
+  { x: -78, z: -52, name: 'Old Port' },
   { x: 78, z: -130, name: 'Harbor Lights' },
 ];
 function rayHit(origin, direction, range, targets) {
@@ -145,7 +145,10 @@ export class Combat {
     this.cooldownTimer = weapon.cooldownSeconds;
     if (weapon.id === 'fists') {
       const hit = rayHit(origin, direction, weapon.range, targets.filter((target) => target.kind === 'pedestrian'));
-      if (hit) this.callbacks.onHitPedestrian(hit.ref, false);
+      if (hit) {
+        this.callbacks.onHitPedestrian(hit.ref, false);
+        this.callbacks.onDamage?.({ x: hit.x, y: 1.2, z: hit.z }, weapon.damage);
+      }
       return hit ? 'punch' : 'whiff';
     }
     if (weapon.mag <= 0) {
@@ -173,10 +176,11 @@ export class Combat {
     this.fireTracer(muzzle, end);
     if (hit) {
       this.effects.burstSparks(end.x, end.y, end.z);
+      this.callbacks.onDamage?.(end, weapon.damage);
       if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref, true);
-      if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar?.(hit.ref);
+      if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar?.(hit.ref, weapon.damage);
       if (hit.kind === 'getaway') this.callbacks.onHitGetaway?.(hit.ref);
-      if (hit.kind === 'helicopter') this.callbacks.onHitHelicopter?.(hit.ref);
+      if (hit.kind === 'helicopter') this.callbacks.onHitHelicopter?.(hit.ref, weapon.damage);
     }
     this.callbacks.onShot();
     if (weapon.mag === 0 && weapon.reserve > 0) {

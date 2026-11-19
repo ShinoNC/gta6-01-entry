@@ -1,4 +1,4 @@
-import { districtNameAt, roadLines } from './city.js';
+import { districtNameAt, roadLines, districtLabels } from './city.js';
 import { MISSIONS_IN_STORY } from './missions.js';
 const $ = (id) => document.getElementById(id);
 const MINIMAP_SIZE = 168;
@@ -9,6 +9,7 @@ export class Hud {
     this.city = city;
     this.minimap = $('minimap');
     this.ctx = this.minimap.getContext('2d');
+    this.mapCtx = $('bigmap').getContext('2d');
     this.el = {
       district: $('hud-district'),
       mission: $('hud-mission'),
@@ -23,6 +24,7 @@ export class Hud {
       hiding: $('hud-hiding'),
       speed: $('hud-speed'),
       carName: $('hud-car'),
+      condition: $('hud-condition'),
       health: $('hud-health-fill'),
       armour: $('hud-armour-fill'),
       message: $('hud-message'),
@@ -30,13 +32,25 @@ export class Hud {
       weapons: $('hud-weapons'),
       radio: $('hud-radio'),
       phone: $('phone-panel'),
+      phoneFace: $('phone-face'),
       phoneGiver: $('phone-giver'),
       phoneText: $('phone-text'),
       missionScreen: $('mission-screen'),
       missionList: $('mission-list'),
       empireScreen: $('empire-screen'),
       empireList: $('empire-list'),
+      crosshair: $('crosshair'),
+      passedScreen: $('passed-screen'),
+      passedTitle: $('passed-title'),
+      passedMission: $('passed-mission'),
+      passedRewards: $('passed-rewards'),
+      mapScreen: $('map-screen'),
+      garageScreen: $('garage-screen'),
+      garageList: $('garage-list'),
     };
+    this.dmgPool = null;
+    this.dmgIndex = 0;
+    this.passedUntil = 0;
     this.messageUntil = 0;
     this.messageSticky = false;
     this.lastPoliceSig = '';
@@ -49,64 +63,99 @@ export class Hud {
     this.messageUntil = performance.now() + seconds * 1000;
     this.messageSticky = sticky;
   }
-  toMap(x, z) {
-    const scale = MINIMAP_SIZE / WORLD_WIDTH;
+  spawnDamageNumber(x, y, text) {
+    if (!this.dmgPool) {
+      this.dmgPool = [];
+      const layer = $('dmg-layer');
+      for (let i = 0; i < 8; i += 1) {
+        const el = document.createElement('div');
+        el.className = 'dmg-num';
+        layer.appendChild(el);
+        this.dmgPool.push(el);
+      }
+    }
+    const el = this.dmgPool[this.dmgIndex];
+    this.dmgIndex = (this.dmgIndex + 1) % this.dmgPool.length;
+    el.textContent = text;
+    el.style.left = `${x}px`;
+    el.style.top = `${y}px`;
+    el.classList.remove('play');
+    void el.offsetWidth;
+    el.classList.add('play');
+  }
+  toMap(x, z, w = MINIMAP_SIZE, h = MINIMAP_SIZE) {
+    const scale = w / WORLD_WIDTH;
     return {
       x: (x - WORLD_MIN_X) * scale,
-      y: (z - WORLD_MIN_Z) * scale + (MINIMAP_SIZE - WORLD_DEPTH * scale) / 2,
+      y: (z - WORLD_MIN_Z) * scale + (h - WORLD_DEPTH * scale) / 2,
     };
   }
-  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips) {
-    const ctx = this.ctx;
-    const band = (a, b, c) => { ctx.fillStyle = c; ctx.fillRect(0, a, MINIMAP_SIZE, b - a); };
-    const dot = (x, z, size, color) => { const p = this.toMap(x, z); ctx.fillStyle = color; ctx.fillRect(p.x - size / 2, p.y - size / 2, size, size); };
+  paintMap(ctx, w, h, s) {
+    const k = w / MINIMAP_SIZE;
+    const band = (a, b, c) => { ctx.fillStyle = c; ctx.fillRect(0, a, w, b - a); };
+    const dot = (x, z, size, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.fillRect(p.x - (size * k) / 2, p.y - (size * k) / 2, size * k, size * k); };
     const diamond = (x, z, size, color) => {
-      const p = this.toMap(x, z);
+      const p = this.toMap(x, z, w, h);
+      const r = size * k;
       ctx.fillStyle = color;
       ctx.beginPath();
-      ctx.moveTo(p.x, p.y - size);
-      ctx.lineTo(p.x + size, p.y);
-      ctx.lineTo(p.x, p.y + size);
-      ctx.lineTo(p.x - size, p.y);
+      ctx.moveTo(p.x, p.y - r);
+      ctx.lineTo(p.x + r, p.y);
+      ctx.lineTo(p.x, p.y + r);
+      ctx.lineTo(p.x - r, p.y);
       ctx.closePath();
       ctx.fill();
     };
-    const circle = (x, z, r, color) => { const p = this.toMap(x, z); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2); ctx.fill(); };
+    const circle = (x, z, r, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r * k, 0, Math.PI * 2); ctx.fill(); };
     ctx.fillStyle = '#1a1030';
-    ctx.fillRect(0, 0, MINIMAP_SIZE, MINIMAP_SIZE);
-    const shore = this.toMap(0, 96).y;
-    const beachTop = this.toMap(0, 58).y;
-    const north = this.toMap(0, -162).y;
-    band(shore, MINIMAP_SIZE, '#17789a');
+    ctx.fillRect(0, 0, w, h);
+    const shore = this.toMap(0, 96, w, h).y;
+    const beachTop = this.toMap(0, 58, w, h).y;
+    const north = this.toMap(0, -162, w, h).y;
+    band(shore, h, '#17789a');
     band(beachTop, shore, '#f0cd8c');
     band(north, beachTop, '#3a3348');
     ctx.fillStyle = '#ff7a66';
     for (const box of this.city.buildingBoxes) {
-      const a = this.toMap(box.minX, box.minZ);
-      const b = this.toMap(box.maxX, box.maxZ);
+      const a = this.toMap(box.minX, box.minZ, w, h);
+      const b = this.toMap(box.maxX, box.maxZ, w, h);
       ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
     }
     ctx.strokeStyle = '#8a8296';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = Math.max(2, 2 * k);
     for (const line of roadLines()) {
       ctx.beginPath();
-      if (line.axis === 'z') { const x = this.toMap(line.at, 0).x; ctx.moveTo(x, north); ctx.lineTo(x, beachTop); }
-      else { const y = this.toMap(0, line.at).y; ctx.moveTo(0, y); ctx.lineTo(MINIMAP_SIZE, y); }
+      if (line.axis === 'z') { const x = this.toMap(line.at, 0, w, h).x; ctx.moveTo(x, north); ctx.lineTo(x, beachTop); }
+      else { const y = this.toMap(0, line.at, w, h).y; ctx.moveTo(0, y); ctx.lineTo(w, y); }
       ctx.stroke();
     }
-    for (const car of cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 3, '#ffd978');
-    if (trafficBlips) for (const b of trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
-    if (ammoCrates) for (const c of ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
-    if (businessBlips) for (const b of businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
-    if (missionTarget) diamond(missionTarget.x, missionTarget.z, 5 + Math.sin(timeSeconds * 4) * 1.5, '#ffd978');
-    if (policeBlips) for (const b of policeBlips) circle(b.x, b.z, 3, Math.floor(timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
-    if (sideJobTarget) diamond(sideJobTarget.x, sideJobTarget.z, 4 + Math.sin(timeSeconds * 4), '#7affc4');
-    if (eventBlip) circle(eventBlip.x, eventBlip.z, 4, Math.floor(timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
-    const p = this.toMap(playerPos.x, playerPos.z);
+    for (const car of s.cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 3, '#ffd978');
+    if (s.trafficBlips) for (const b of s.trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
+    if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
+    if (s.sprayPos) diamond(s.sprayPos.x, s.sprayPos.z, 5, '#2ad0c4');
+    if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
+    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 5 + Math.sin(s.timeSeconds * 4) * 1.5, '#ffd978');
+    if (s.policeBlips) for (const b of s.policeBlips) circle(b.x, b.z, 3, Math.floor(s.timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
+    if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 4 + Math.sin(s.timeSeconds * 4), '#7affc4');
+    if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
+    if (s.labels) {
+      ctx.fillStyle = '#ffd978';
+      ctx.font = `bold ${Math.round(13 * k)}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.shadowColor = '#1a1030';
+      ctx.shadowBlur = 4;
+      for (const d of districtLabels()) {
+        const p = this.toMap(d.x, d.z, w, h);
+        ctx.fillText(d.name, p.x, p.y);
+      }
+      ctx.shadowBlur = 0;
+    }
+    const p = this.toMap(s.playerPos.x, s.playerPos.z, w, h);
     ctx.save();
     ctx.translate(p.x, p.y);
-    ctx.rotate(Math.PI - playerHeading);
-    ctx.fillStyle = driving ? '#7affc4' : '#ffffff';
+    ctx.rotate(Math.PI - s.playerHeading);
+    ctx.scale(k, k);
+    ctx.fillStyle = s.driving ? '#7affc4' : '#ffffff';
     ctx.beginPath();
     ctx.moveTo(0, -6);
     ctx.lineTo(4.5, 5);
@@ -115,6 +164,54 @@ export class Hud {
     ctx.closePath();
     ctx.fill();
     ctx.restore();
+  }
+  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips) {
+    this.paintMap(this.ctx, MINIMAP_SIZE, MINIMAP_SIZE, { playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips });
+  }
+  renderMapScreen(s) {
+    this.paintMap(this.mapCtx, 560, 446, { ...s, labels: true });
+  }
+  showMapScreen() {
+    this.el.mapScreen.classList.remove('hidden');
+  }
+  hideMapScreen() {
+    this.el.mapScreen.classList.add('hidden');
+  }
+  renderGarageScreen(garage, money, car, wanted) {
+    const fmt = (n) => n.toLocaleString('en-US');
+    const needsRepair = car.hp < car.maxHp || wanted > 0;
+    const repairAction =
+      !needsRepair
+        ? '<div class="mission-reward">CAR IS CLEAN — nothing to fix</div>'
+        : money >= 200
+          ? '<button class="menu-button mission-accept garage-buy" data-action="repair">REPAIR — $200</button>'
+          : '<div class="mission-reward">REPAIR NEEDS $200</div>';
+    const upgrades = [
+      { id: 'engine', name: 'ENGINE TUNE', desc: '+15% top speed & acceleration — every car you drive', price: 4000 },
+      { id: 'armour', name: 'ARMOUR PLATING', desc: '200 HP on every car you drive', price: 3000 },
+      { id: 'nitro', name: 'NITRO', desc: 'Hold SHIFT while driving for a speed boost', price: 3000 },
+    ];
+    const rows = upgrades
+      .map((u) => {
+        const owned = garage[u.id];
+        const action = owned
+          ? '<div class="mission-reward">INSTALLED</div>'
+          : money >= u.price
+            ? `<button class="menu-button mission-accept garage-buy" data-action="${u.id}">BUY — $${fmt(u.price)}</button>`
+            : `<div class="mission-reward">NEEDS $${fmt(u.price)}</div>`;
+        return `<div class="mission-row ${owned ? 'active' : 'pending'}"><div class="mission-head"><span>${u.name}</span><span>$${fmt(u.price)}</span></div><div class="mission-reward">${u.desc}</div>${action}</div>`;
+      })
+      .join('');
+    this.el.garageList.innerHTML =
+      `<div class="mission-summary">${car.name} · CONDITION ${Math.round((100 * car.hp) / car.maxHp)}% · $${fmt(money)} in pocket</div>` +
+      `<div class="mission-row ${needsRepair ? 'pending' : ''}"><div class="mission-head"><span>REPAIR + CLEAR HEAT</span><span>$200</span></div><div class="mission-reward">Full repair, fire out, wanted stars cleared</div>${repairAction}</div>` +
+      rows;
+  }
+  showGarageScreen() {
+    this.el.garageScreen.classList.remove('hidden');
+  }
+  hideGarageScreen() {
+    this.el.garageScreen.classList.add('hidden');
   }
   renderPolicePanel(units) {
     const signature = units.map((unit) => `${unit.callsign}:${unit.status}:${Math.floor(unit.distanceMetres / 10)}`).join('|');
@@ -141,14 +238,16 @@ export class Hud {
       .join('');
   }
   showBriefing(mission, index) {
-    this.el.phoneGiver.textContent = `MARA SOLIS CALLING · MISSION ${index + 1}/${MISSIONS_IN_STORY}`;
+    const key = mission.giver === 'Juno Reyes' ? 'juno' : mission.giver === 'Otto Kane' ? 'otto' : 'mara';
+    this.el.phoneFace.setAttribute('href', `#${key}-portrait`);
+    this.el.phoneGiver.textContent = `${mission.giver.toUpperCase()} CALLING · MISSION ${index + 1}/${MISSIONS_IN_STORY}`;
     this.el.phoneText.textContent = mission.briefing;
     this.el.phone.classList.remove('hidden');
   }
   hideBriefing() {
     this.el.phone.classList.add('hidden');
   }
-  renderMissionList(entries, activeStageIndex = 0) {
+  renderMissionList(entries, activeStageIndex = 0, pct = 0, playTime = '') {
     const totalPayout = entries.reduce((sum, e) => sum + e.rewardMoney, 0);
     const doneCount = entries.filter((e) => e.status === 'done').length;
     const rows = entries
@@ -162,7 +261,14 @@ export class Hud {
       })
       .join('');
     this.el.missionList.innerHTML =
-      `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · total story payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
+      `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · ${pct}% COMPLETE · ${playTime} · total story payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
+  }
+  showPassed(title, missionName, rewards) {
+    this.el.passedTitle.textContent = title;
+    this.el.passedMission.textContent = missionName;
+    this.el.passedRewards.innerHTML = rewards.filter(Boolean).join('<br>');
+    this.el.passedScreen.classList.remove('hidden');
+    this.passedUntil = performance.now() + 4000;
   }
   showMissionScreen() {
     this.el.missionScreen.classList.remove('hidden');
@@ -170,7 +276,7 @@ export class Hud {
   hideMissionScreen() {
     this.el.missionScreen.classList.add('hidden');
   }
-  renderEmpireScreen(biz, stats, achievements, unlocked, money, repLevel) {
+  renderEmpireScreen(biz, stats, achievements, unlocked, money, repLevel, pct = 0, playTime = '') {
     const fmt = (n) => n.toLocaleString('en-US');
     const rows = biz.defs
       .map((def, i) => {
@@ -217,7 +323,7 @@ export class Hud {
       })
       .join('');
     this.el.empireList.innerHTML =
-      `<div class="mission-summary">${biz.ownedCount()}/3 businesses · $${fmt(biz.totalIncomePerDay())}/day income · $${fmt(Math.floor(biz.totalPending()))} waiting to collect</div>` +
+      `<div class="mission-summary">${biz.ownedCount()}/3 businesses · $${fmt(biz.totalIncomePerDay())}/day income · $${fmt(Math.floor(biz.totalPending()))} waiting to collect · ${pct}% COMPLETE · ${playTime}</div>` +
       rows +
       `<div class="mission-summary">CAREER STATS</div>` +
       statRows +
@@ -284,15 +390,22 @@ export class Hud {
     }
     this.el.speed.textContent = driving ? String(Math.round(speedKmh)) : '0';
     this.el.carName.textContent = driving ? carName : 'ON FOOT';
+    this.el.condition.textContent = driving && state.carClass ? `${state.carClass} · CONDITION ${Math.max(0, Math.round((100 * state.carHp) / (state.carMaxHp || 100)))}%` : '';
     this.el.health.style.width = `${health}%`;
     this.el.armour.style.width = `${armour}%`;
     if (policeUnits) this.renderPolicePanel(policeUnits);
     if (weapons) this.renderWeaponSlots(weapons);
+    const activeWeapon = weapons ? weapons.find((w) => w.active) : null;
+    this.el.crosshair.classList.toggle('hidden', !activeWeapon || activeWeapon.name === 'FISTS' || activeWeapon.locked);
     setText(this.el.radio, radioStation);
     if (this.messageUntil && performance.now() > this.messageUntil) {
       this.el.message.classList.remove('visible');
       this.messageUntil = 0;
       this.messageSticky = false;
+    }
+    if (this.passedUntil && performance.now() > this.passedUntil) {
+      this.el.passedScreen.classList.add('hidden');
+      this.passedUntil = 0;
     }
   }
   setObjective(text) {

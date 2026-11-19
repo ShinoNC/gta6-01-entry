@@ -12,16 +12,21 @@ const BEACH_START_Z = BEACH_ROAD_Z + ROAD_WIDTH / 2;
 const SHORELINE_Z = 96;
 const OCEAN_FAR_Z = 520;
 const DISTRICTS = [
-  { name: 'OLD PORT', west: true, north: true },
-  { name: 'HARBOR LIGHTS', west: false, north: true },
-  { name: 'PALM ROW', west: true, north: false },
-  { name: 'MARINA DEL SOL', west: false, north: false },
+  { name: 'OLD PORT', west: true, band: 0, lx: -107, lz: -107 },
+  { name: 'HARBOR LIGHTS', west: false, band: 0, lx: 107, lz: -107 },
+  { name: 'LANTERN ROW', west: true, band: 1, lx: -107, lz: -13 },
+  { name: 'MARINA DEL SOL', west: false, band: 1, lx: 107, lz: -13 },
+  { name: 'PALM ROW', west: true, band: 2, lx: -107, lz: 42 },
+  { name: 'PELICAN BAY', west: false, band: 2, lx: 107, lz: 42 },
 ];
 export function districtNameAt(x, z) {
   if (z >= BEACH_START_Z) return x < 0 ? 'CORAL STRAND' : 'SUNSET BLUFF';
-  const north = z < -STREET_PITCH;
+  const band = z <= -STREET_PITCH ? 0 : z < 26 ? 1 : 2;
   const west = x < 0;
-  return DISTRICTS.find((d) => d.west === west && d.north === north).name;
+  return DISTRICTS.find((d) => d.west === west && d.band === band).name;
+}
+export function districtLabels() {
+  return [...DISTRICTS.map((d) => ({ name: d.name, x: d.lx, z: d.lz })), { name: 'CORAL STRAND', x: -81, z: 77 }, { name: 'SUNSET BLUFF', x: 81, z: 77 }];
 }
 const blockCentreX = (c) => -HALF_W + ROAD_WIDTH + BLOCK_SIZE / 2 + c * STREET_PITCH;
 const blockCentreZ = (r) => NORTH_EDGE + ROAD_WIDTH + BLOCK_SIZE / 2 + r * STREET_PITCH;
@@ -75,7 +80,11 @@ function resolveCircleAgainstBoxes(position, radius, boxes) {
 export function buildCity(scene, textures, rng) {
   const group = new THREE.Group();
   const buildingBoxes = [];
-  scene.background = skyGradientTexture();
+  const skyTex = skyGradientTexture();
+  const nightSky = new THREE.Color(0x14102a);
+  const daySunCol = new THREE.Color(0xffa050);
+  const nightSunCol = new THREE.Color(0x8090c8);
+  scene.background = skyTex;
   scene.fog = new THREE.Fog(0xff8f6b, 110, 430);
   const sun = new THREE.Mesh(new THREE.CircleGeometry(26, 24), new THREE.MeshBasicMaterial({ color: 0xffe9a8, fog: false }));
   sun.position.set(-180, 42, 420);
@@ -193,7 +202,8 @@ export function buildCity(scene, textures, rng) {
   const sunLight = new THREE.DirectionalLight(0xffa050, 2.2);
   sunLight.position.set(-120, 70, 200);
   scene.add(sunLight);
-  scene.add(new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 1.2));
+  const hemi = new THREE.HemisphereLight(0x8a6fd6, 0x2a1a3a, 1.2);
+  scene.add(hemi);
   scene.add(group);
   return {
     buildingBoxes,
@@ -206,6 +216,13 @@ export function buildCity(scene, textures, rng) {
     update(dt) {
       waterTexture.offset.x += dt * 0.008;
       waterTexture.offset.y += dt * 0.005;
+    },
+    setNight(f) {
+      sunLight.intensity = 2.2 - 1.8 * f;
+      sunLight.color.lerpColors(daySunCol, nightSunCol, f);
+      hemi.intensity = 1.2 - 0.85 * f;
+      sun.visible = f < 0.5;
+      scene.background = f > 0.5 ? nightSky : skyTex;
     },
   };
 }

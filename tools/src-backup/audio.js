@@ -13,6 +13,13 @@ const RADIO_STATIONS = [
     bassMidi: [48, 55, 53, 50],
     tracks: ['Solset Boulevard', 'Palm Static', 'Harbor Gold'],
   },
+  {
+    name: 'KEYS FM 95.5 · Bassline',
+    bpm: 124,
+    melodyMidi: [69, 69, 72, 69, 76, 74, 72, 69, 67, 69, 72, 76, 79, 76, 74, 72],
+    bassMidi: [41, 41, 36, 43],
+    tracks: ['Night Shift', 'Low Tide', 'Getaway Groove'],
+  },
 ];
 const ENGINE_GEAR_COUNT = 4;
 const ENGINE_BASE_HZ = 52;

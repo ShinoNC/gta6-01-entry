@@ -266,7 +266,9 @@ if (!(await page.evaluate(() => Boolean(window.__game.drivenCar)))) {
 await page.waitForTimeout(1000);
 const moneyBeforeSpray = await page.evaluate(() => window.__game.money);
 await page.keyboard.press('KeyE');
-await page.waitForTimeout(1500);
+await page.waitForTimeout(800);
+await page.click('.garage-buy[data-action="repair"]');
+await page.waitForTimeout(800);
 check(
   'chaos run: Pay\'n\'Spray escape clears 5 stars for $200',
   await page.evaluate(
@@ -275,6 +277,8 @@ check(
   ),
   await page.evaluate(() => `stars=${window.__game.wanted.stars} money=$${window.__game.money}`),
 );
+await page.keyboard.press('Escape'); // close the garage screen so later tests can drive
+await page.waitForTimeout(400);
 
 // --- 11. Explorer: the map edges hold (no escaping the world) ---
 await page.keyboard.press('KeyF'); // exit the car, test on foot

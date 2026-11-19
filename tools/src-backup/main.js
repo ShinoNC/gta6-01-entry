@@ -26,8 +26,7 @@ const SPAWN_X = 0;
 const SPAWN_Z = 0;
 const START_MONEY = 1250;
 const ENTER_CAR_RANGE = 5;
-const SHOT_DRIVE_SECONDS = 3.2;
-const SHOT_CHASE_SECONDS = 2.5;
+const SHOT_CHASE_SECONDS = 0.8;
 const SHOT_FOOT_SECONDS = 2;
 const SHOT_MISSION_SECONDS = 0.6;
 const REP_PER_LEVEL = 200;
@@ -58,9 +57,11 @@ const rng = makeRng(seed);
 let state = 'title';
 let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
+let gameMinutes = CLOCK_START_MINUTES;
 let arrestTimer = 0, lastHurtAt = -99, reachedFive = false;
 let soundOn = true, musicOn = true, titleOrbitAngle = 0, shotTimer = 0, shotReady = false;
-let missionOpen = false, empireOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
+let missionOpen = false, empireOpen = false, mapOpen = false, garageOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
+let garage = { engine: false, armour: false, nitro: false };
 let stats = freshStats();
 let unlockedAchievements = [];
 let freeObj = 'Explore Solaris Keys — press F near a car to drive it';
@@ -68,6 +69,19 @@ const titleScreen = $('title-screen');
 const pauseScreen = $('pause-screen');
 const optionsScreen = $('options-screen');
 function repLevel() { return 1 + Math.floor(rep / REP_PER_LEVEL); }
+function completionPct() {
+  return Math.round(
+    (50 * missions.doneCount()) / MISSIONS_IN_STORY +
+      (15 * tapes.collected) / TAPE_COUNT +
+      (20 * businesses.ownedCount()) / 3 +
+      (15 * unlockedAchievements.length) / ACHIEVEMENTS.length,
+  );
+}
+function playTimeLine() {
+  const totalMinutes = Math.floor(elapsed / 60);
+  const hours = Math.floor(totalMinutes / 60);
+  return hours > 0 ? `${hours}h ${totalMinutes % 60}m played` : `${totalMinutes}m played`;
+}
 function earn(amount) {
   money += amount;
   stats.moneyEarned += amount;
@@ -82,11 +96,18 @@ function awardAchievements() {
   }
 }
 function clockLine() {
-  const total = CLOCK_START_MINUTES + elapsed * CLOCK_MINUTES_PER_SECOND;
+  const total = gameMinutes;
   const day = 1 + Math.floor(total / 1440);
   const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
   const mm = String(Math.floor(total % 60)).padStart(2, '0');
   return `DAY ${day} ${hh}:${mm}`;
+}
+function nightFactor() {
+  const mins = gameMinutes % 1440;
+  if (mins >= 1260 || mins < 300) return 1;
+  if (mins < 360) return 1 - (mins - 300) / 60;
+  if (mins < 1200) return 0;
+  return (mins - 1200) / 60;
 }
 function repText() {
   const level = repLevel();
@@ -140,6 +161,8 @@ function snapshotSave() {
     businesses: businesses.serialize(),
     stats: { ...stats },
     achievements: [...unlockedAchievements],
+    playSeconds: Math.floor(elapsed),
+    garage: { ...garage },
   };
 }
 function applySave(data) {
@@ -159,6 +182,8 @@ function applySave(data) {
   if (data.businesses) businesses.restore(data.businesses);
   stats = { ...freshStats(), ...(data.stats || {}) };
   unlockedAchievements = Array.isArray(data.achievements) ? [...data.achievements] : [];
+  elapsed = data.playSeconds || 0;
+  garage = { engine: false, armour: false, nitro: false, ...(data.garage || {}) };
   if (data.look) applyLook(data.look);
   health = 100;
   armour = 0;
@@ -206,8 +231,10 @@ function refreshOptionsLabels() {
 }
 function openMissionScreen() {
   if (empireOpen) closeEmpireScreen();
+  if (mapOpen) closeMapScreen();
+  if (garageOpen) closeGarageScreen();
   input.exitLock();
-  hud.renderMissionList(missions.statusList(), missions.stageIndex);
+  hud.renderMissionList(missions.statusList(), missions.stageIndex, completionPct(), playTimeLine());
   hud.showMissionScreen();
   missionOpen = true;
 }
@@ -217,14 +244,70 @@ function closeMissionScreen() {
 }
 function openEmpireScreen() {
   if (missionOpen) closeMissionScreen();
+  if (mapOpen) closeMapScreen();
+  if (garageOpen) closeGarageScreen();
   input.exitLock();
-  hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel());
+  hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel(), completionPct(), playTimeLine());
   hud.showEmpireScreen();
   empireOpen = true;
 }
 function closeEmpireScreen() {
   hud.hideEmpireScreen();
   empireOpen = false;
+}
+function openMapScreen() {
+  if (missionOpen) closeMissionScreen();
+  if (empireOpen) closeEmpireScreen();
+  if (garageOpen) closeGarageScreen();
+  input.exitLock();
+  const focus = drivenCar || player;
+  hud.renderMapScreen({
+    playerPos: focus.position,
+    playerHeading: drivenCar ? drivenCar.heading : player.heading,
+    cars,
+    driving: Boolean(drivenCar),
+    missionTarget: missions.target,
+    policeBlips: police.allCarPositions(),
+    timeSeconds: performance.now() / 1000,
+    trafficBlips: traffic.cars.map((npc) => ({ x: npc.car.position.x, z: npc.car.position.z })),
+    ammoCrates: combat.ammoCratesForHud(),
+    sideJobTarget: sideJobs.target,
+    eventBlip: robbery.blip,
+    businessBlips: businesses.blips(),
+    sprayPos: { x: SPRAY_X, z: SPRAY_Z },
+  });
+  hud.showMapScreen();
+  mapOpen = true;
+}
+function closeMapScreen() {
+  hud.hideMapScreen();
+  mapOpen = false;
+}
+function openGarageScreen() {
+  if (missionOpen) closeMissionScreen();
+  if (empireOpen) closeEmpireScreen();
+  if (mapOpen) closeMapScreen();
+  input.exitLock();
+  hud.renderGarageScreen(garage, money, drivenCar, wanted.stars);
+  hud.showGarageScreen();
+  garageOpen = true;
+}
+function closeGarageScreen() {
+  hud.hideGarageScreen();
+  garageOpen = false;
+}
+function applyGarageToCar(car) {
+  if (garage.engine && !car._tuned) {
+    car.maxSpeed *= 1.15;
+    car.accel *= 1.15;
+    car._tuned = true;
+  }
+  if (garage.armour && !car._armoured) {
+    car.maxHp = 200;
+    if (car.hp >= 100) car.hp = 200;
+    car._armoured = true;
+  }
+  car.nitro = garage.nitro;
 }
 function acceptBriefing() {
   const briefing = missions.pendingBriefing;
@@ -274,6 +357,36 @@ on('empire-button', () => {
 });
 on('mission-close-button', closeMissionScreen);
 on('empire-close-button', closeEmpireScreen);
+on('map-close-button', closeMapScreen);
+on('garage-close-button', closeGarageScreen);
+on('garage-list', (event) => {
+  const button = event.target.closest('.garage-buy');
+  if (!button || !drivenCar) return;
+  const action = button.dataset.action;
+  if (action === 'repair') {
+    if (money < SPRAY_PRICE) return;
+    money -= SPRAY_PRICE;
+    drivenCar.hp = drivenCar.maxHp;
+    drivenCar.burning = false;
+    drivenCar.warned = false;
+    wanted.setStars(0);
+    hud.showMessage("PAY'N'SPRAY — car repaired, heat cleared ($200)", 3);
+  } else {
+    const prices = { engine: 4000, armour: 3000, nitro: 3000 };
+    if (garage[action] || money < prices[action]) return;
+    money -= prices[action];
+    garage[action] = true;
+    applyGarageToCar(drivenCar);
+    if (action === 'armour') {
+      drivenCar.maxHp = 200;
+      drivenCar.hp = 200;
+    }
+    hud.showMessage(`${action.toUpperCase()} INSTALLED — every car you drive from now on`, 4, true);
+  }
+  audio.chime();
+  openGarageScreen();
+  saveGame(AUTOSAVE_SLOT, snapshotSave());
+});
 on('empire-list', (event) => {
   const buyButton = event.target.closest('.empire-buy');
   const upgradeButton = event.target.closest('.empire-upgrade');
@@ -339,6 +452,7 @@ function nearestCar(position) {
 function enterCar(car) {
   drivenCar = car;
   car.driven = true;
+  applyGarageToCar(car);
   player.jumpY = 0;
   player.jumpV = 0;
   player.group.visible = false;
@@ -382,6 +496,8 @@ function endRun(kind) {
   phoneVisible = false;
   if (missionOpen) closeMissionScreen();
   if (empireOpen) closeEmpireScreen();
+  if (mapOpen) closeMapScreen();
+  if (garageOpen) closeGarageScreen();
   dialogue.el.classList.add('hidden');
   dialogue.until = 0;
   $('hud-message').classList.remove('visible');
@@ -471,11 +587,7 @@ function combatTargets() {
   return targets;
 }
 function stageShot() {
-  if (shotName === 'core') {
-    startGame();
-    enterCar(cars[0]);
-    hud.showMessage('SOLARIS KEYS — free roam', 300, true);
-  } else if (shotName === 'chase') {
+  if (shotName === 'chase') {
     startGame();
     money = 15250;
     rep = 650;
@@ -484,6 +596,7 @@ function stageShot() {
     car.heading = Math.PI / 2;
     car.group.rotation.y = Math.PI / 2;
     enterCar(car);
+    car.speed = 30;
     missions.setCompleted(5);
     missions.forceStart(5);
     combat.setOwnedWeapons(['fists', 'pistol', 'smg', 'shotgun']);
@@ -504,17 +617,50 @@ function stageShot() {
       npc.along = along;
       traffic.placeOnRoad(npc);
     }
-  } else if (shotName === 'foot') {
+  } else if (shotName === 'combat') {
     startGame();
-    player.group.position.set(-52, 0, 78);
-    player.heading = -Math.PI / 6;
-    player.group.rotation.y = -Math.PI / 6;
+    gameMinutes = 22 * 60 + 30;
+    money = 8500;
+    rep = 450;
+    combat.setOwnedWeapons(['fists', 'pistol']);
+    combat.restock();
+    combat.selectWeapon(1);
+    missions.setCompleted(2);
     missions.snoozeBriefing(30);
-  } else if (shotName === 'mission') {
+    player.group.position.set(0, 0, 26);
+    player.heading = Math.PI;
+    player.group.rotation.y = Math.PI;
+    const avenue = traffic.lines.find((line) => line.axis === 'z' && line.at === 0);
+    for (const [i, d, a] of [[0, 1, -10], [1, 1, -30], [2, -1, 70]]) {
+      const npc = traffic.cars[i];
+      npc.line = avenue;
+      npc.direction = d;
+      npc.along = a;
+      traffic.placeOnRoad(npc);
+    }
+    for (const [i, s, a] of [[0, -1, 10], [1, 1, 2], [2, -1, -8], [3, 1, 44]]) {
+      const ped = pedestrians.peds[i];
+      ped.line = avenue;
+      ped.side = s;
+      ped.along = a;
+      pedestrians.placeOnSidewalk(ped);
+    }
+    dialogue.say('juno', 'Night run. Pistol out, eyes open.', 300);
+  } else if (shotName === 'empire') {
     startGame();
-    missions.setCompleted(3);
-    missions.forceStart(3);
-    openMissionScreen();
+    money = 25000;
+    rep = 900;
+    elapsed = 2 * 3600 + 34 * 60;
+    missions.setCompleted(5);
+    businesses.buy(0);
+    businesses.upgrade(0);
+    businesses.buy(1);
+    businesses.state[0].pending = 2400;
+    businesses.state[1].pending = 6000;
+    tapes.setCollected(7);
+    Object.assign(stats, { carsStolen: 12, pedsDown: 4, moneyEarned: 32000, kmDriven: 48.5, escapes5: 1, helisDown: 2, robberiesStopped: 3, jobsDone: 6, businessesOwned: 2 });
+    unlockedAchievements = ['firstWheels', 'carThief', 'ghost'];
+    openEmpireScreen();
   }
 }
 function update(dt) {
@@ -525,6 +671,8 @@ function update(dt) {
     if (optionsOpen) closeOptions();
     else if (missionOpen) closeMissionScreen();
     else if (empireOpen) closeEmpireScreen();
+    else if (mapOpen) closeMapScreen();
+    else if (garageOpen) closeGarageScreen();
     else if (state === 'play' || state === 'pause') togglePause();
   }
   if (state === 'title') {
@@ -544,17 +692,25 @@ function update(dt) {
     if (empireOpen) closeEmpireScreen();
     else openEmpireScreen();
   }
+  if (input.pressed('KeyN') && !phoneVisible) {
+    if (mapOpen) closeMapScreen();
+    else openMapScreen();
+  }
   if (!shotReady) {
     shotTimer += dt;
     const readyAt =
-      shotName === 'core' ? SHOT_DRIVE_SECONDS : shotName === 'chase' ? SHOT_CHASE_SECONDS : shotName === 'foot' ? SHOT_FOOT_SECONDS : shotName === 'mission' ? SHOT_MISSION_SECONDS : Infinity;
+      shotName === 'chase' ? SHOT_CHASE_SECONDS : shotName === 'combat' ? SHOT_FOOT_SECONDS : shotName === 'empire' ? SHOT_MISSION_SECONDS : Infinity;
     if (shotTimer >= readyAt) {
       shotReady = true;
       window.__shotReady = true;
     }
   }
-  if (missionOpen || empireOpen) return;
+  if (missionOpen || empireOpen || mapOpen || garageOpen) return;
   elapsed += dt;
+  const night = nightFactor();
+  gameMinutes += dt * CLOCK_MINUTES_PER_SECOND * (1 + 2 * night);
+  city.setNight(night);
+  weather.night = night;
   if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyR')) {
     hud.showMessage(`RADIO — ${audio.nextStation()}`, 2);
@@ -583,7 +739,7 @@ function update(dt) {
       else hud.showMessage('No car nearby — walk closer to one and press F');
     }
   }
-  const autoDrive = (shotName === 'core' || shotName === 'chase') && drivenCar;
+  const autoDrive = shotName === 'chase' && drivenCar;
   const drivingInput = autoDrive
     ? { moveAxes: () => ({ forward: 1, strafe: 0 }), isDown: () => false }
     : input;
@@ -595,6 +751,11 @@ function update(dt) {
       const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 1.4;
       const backZ = drivenCar.position.z - Math.cos(drivenCar.heading) * 1.4;
       effects.puffSmoke(backX, 0.4, backZ);
+    }
+    if (drivenCar.boosting) {
+      const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 2.2;
+      const backZ = drivenCar.position.z - Math.cos(drivenCar.heading) * 2.2;
+      effects.burstSparks(backX, 0.5, backZ, 3);
     }
     if (drivenCar.impact > 0.7) {
       const noseX = drivenCar.position.x + Math.sin(drivenCar.heading) * 2.1;
@@ -705,20 +866,9 @@ function update(dt) {
     for (const npc of traffic.cars) collideWith(npc.car, true);
     for (const unit of police.roadblock) collideWith(unit.car, true);
     for (const unit of police.pursuit) collideWith(unit.car, false);
-    if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE && (drivenCar.hp < 100 || wanted.stars > 0)) {
-      if (money >= SPRAY_PRICE) {
-        hud.showMessage("PAY'N'SPRAY — press E to repair + clear heat ($200)", 0.6);
-        if (input.pressed('KeyE')) {
-          money -= SPRAY_PRICE;
-          drivenCar.hp = 100;
-          drivenCar.burning = false;
-          drivenCar.warned = false;
-          wanted.setStars(0);
-          hud.showMessage("PAY'N'SPRAY — car repaired, heat cleared ($200)", 3);
-        }
-      } else {
-        hud.showMessage("PAY'N'SPRAY — repairs cost $200", 0.6);
-      }
+    if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE) {
+      hud.showMessage("PAY'N'SPRAY — press E for the garage (repair $200 · upgrades)", 0.6);
+      if (input.pressed('KeyE')) openGarageScreen();
     }
     if (robbery.active && !robbery.getaway.stopped) {
       const getawayPos = robbery.getaway.car.position;
@@ -812,6 +962,9 @@ function update(dt) {
     cars,
     driving: Boolean(drivenCar),
     carName: drivenCar ? drivenCar.name : '',
+    carClass: drivenCar ? (drivenCar.name === 'SOLSTICE GT' ? 'SPORTS' : drivenCar.style.toUpperCase()) : '',
+    carHp: drivenCar ? drivenCar.hp : 0,
+    carMaxHp: drivenCar ? drivenCar.maxHp || 100 : 100,
     missionLine: missions.currentMission() ? missions.progressLine() : sideJobs.statusLine() || missions.progressLine(),
     objective: missions.nextObjectiveLine() || sideJobs.objectiveLine() || freeObj,
     nextLine: missions.nextLine(),
@@ -877,13 +1030,14 @@ loadTextures()
         if (index === 0) combat.unlockWeapon('pistol');
         if (repLevel() >= 3) combat.unlockWeapon('shotgun');
         combat.restock();
+        const rewardLine = `+$${mission.rewardMoney.toLocaleString('en-US')} · +${mission.rewardRep} REP`;
         if (mission.finale) {
-          hud.showMessage(`KING OF THE KEYS — $${mission.rewardMoney.toLocaleString('en-US')} · THE KEYS ARE YOURS, ROOK`, 5, true);
+          hud.showPassed('KING OF THE KEYS', mission.name, [rewardLine, 'THE KEYS ARE YOURS, ROOK']);
         } else if (mission.rewardWeapon) {
           combat.unlockWeapon(mission.rewardWeapon);
-          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + SMG UNLOCKED`, 4, true);
+          hud.showPassed('MISSION PASSED', mission.name, [rewardLine, 'SMG UNLOCKED']);
         } else {
-          hud.showMessage(`MISSION COMPLETE — $${mission.rewardMoney.toLocaleString('en-US')} + ${mission.rewardRep} REP${index === 0 ? ' + PISTOL UNLOCKED' : ''}`, 4, true);
+          hud.showPassed('MISSION PASSED', mission.name, [rewardLine, index === 0 ? 'PISTOL UNLOCKED' : '']);
         }
         audio.chime();
         dialogue.cue('done');
@@ -913,8 +1067,13 @@ loadTextures()
         const crime = wanted.commitCrime('hitPedestrian');
         if (crime) hud.showMessage(crime, 2);
       },
-      onHitCar(car) {
-        damageCar(car, 12);
+      onHitCar(car, damage) {
+        damageCar(car, damage || 12);
+      },
+      onDamage(worldPos, amount) {
+        const v = new THREE.Vector3(worldPos.x, worldPos.y, worldPos.z).project(camera);
+        if (v.z > 1) return;
+        hud.spawnDamageNumber((v.x * 0.5 + 0.5) * window.innerWidth, (-v.y * 0.5 + 0.5) * window.innerHeight, `-${amount}`);
       },
       onAmmoPickup(district) {
         armour = Math.min(100, armour + 50);
@@ -924,10 +1083,10 @@ loadTextures()
       onHitGetaway() {
         robbery.shotByPlayer();
       },
-      onHitHelicopter() {
+      onHitHelicopter(_ref, damage) {
         const heli = police.helicopter;
         const pos = heli ? { x: heli.group.position.x, z: heli.group.position.z } : null;
-        if (police.damageHelicopter(12) && pos) {
+        if (police.damageHelicopter(damage || 12) && pos) {
           effects.burstSparks(pos.x, 8, pos.z, 24);
           effects.puffSmoke(pos.x, 8, pos.z, 8);
           audio.gunshot();
@@ -1044,6 +1203,15 @@ loadTextures()
       chaseCamera,
       get stats() {
         return stats;
+      },
+      get garage() {
+        return garage;
+      },
+      get gameMinutes() {
+        return gameMinutes;
+      },
+      setGameMinutes(v) {
+        gameMinutes = v;
       },
       get achievements() {
         return unlockedAchievements;

@@ -63,6 +63,9 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     driven: false,
     impact: 0,
     hp: 100,
+    maxHp: 100,
+    nitro: false,
+    boosting: false,
     burning: false,
     burnTimer: 0,
     maxSpeed: CAR_MAX_SPEED * tune,
@@ -79,7 +82,9 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
       const { forward, strafe } = input.moveAxes();
       const handbrake = input.isDown('Space');
       this.handbraking = handbrake;
-      if (forward > 0) this.speed += this.accel * dt;
+      this.boosting = Boolean(this.nitro) && input.isDown('ShiftLeft');
+      const cap = this.boosting ? this.maxSpeed * 1.4 : this.maxSpeed;
+      if (forward > 0) this.speed += this.accel * (this.boosting ? 1.6 : 1) * dt;
       else if (forward < 0) {
         this.speed = this.speed > 0.5 ? this.speed - CAR_BRAKE * dt : this.speed - this.accel * 0.6 * dt;
       } else {
@@ -87,7 +92,7 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
         if (Math.abs(this.speed) < 0.05) this.speed = 0;
       }
       if (handbrake) this.speed -= this.speed * dt;
-      this.speed = Math.max(-CAR_MAX_REVERSE, Math.min(this.maxSpeed, this.speed));
+      this.speed = Math.max(-CAR_MAX_REVERSE, Math.min(cap, this.speed));
       const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - Math.abs(this.speed) / this.maxSpeed / 2) * gripMul;
       const steerTarget = -strafe * 0.55 * grip * (handbrake ? 1.7 : 1);
       this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 8);

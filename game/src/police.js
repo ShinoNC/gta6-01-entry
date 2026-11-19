@@ -222,7 +222,7 @@ export class Police {
     const sideX = forwardZ;
     const sideZ = -forwardX;
     for (const side of [1, -1]) {
-      const escort = this.createPoliceCar(playerPos.x + forwardX * 6 + sideX * 4.5 * side, playerPos.z + forwardZ * 6 + sideZ * 4.5 * side, playerHeading, this.nextCallsign());
+      const escort = this.createPoliceCar(playerPos.x + forwardX * 10 + sideX * 3 * side, playerPos.z + forwardZ * 10 + sideZ * 3 * side, playerHeading, this.nextCallsign());
       escort.mode = 'direct';
       escort.escortSide = side;
       escort.turnCooldown = 0;
@@ -321,8 +321,8 @@ export class Police {
           const fz = Math.cos(playerHeading);
           const leftX = fz;
           const leftZ = -fx;
-          const slotX = playerPos.x + fx * 3 + leftX * unit.escortSide * 4.5;
-          const slotZ = playerPos.z + fz * 3 + leftZ * unit.escortSide * 4.5;
+          const slotX = playerPos.x + fx * 10 + leftX * unit.escortSide * 3;
+          const slotZ = playerPos.z + fz * 10 + leftZ * unit.escortSide * 3;
           const relX = slotX - car.position.x;
           const relZ = slotZ - car.position.z;
           const alongErr = relX * fx + relZ * fz;

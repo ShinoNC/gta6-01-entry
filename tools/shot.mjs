@@ -16,6 +16,7 @@ const ENTRY = dirname(dirname(fileURLToPath(import.meta.url)));
 const SHOT = process.argv[2] || 'core';
 const OUT = process.argv[3] || join(ENTRY, 'screenshots', `0-${SHOT}.jpg`);
 const QUALITY = parseInt(process.argv[4] || '72', 10);
+const SEED = process.argv[5] || '1';
 
 const POLICY_PATH = '/var/lib/hatch-browser/rootfs-base/usr/share/hatch/chromium/webgl-allowed-domains.txt';
 const policy = readFileSync(POLICY_PATH);
@@ -39,7 +40,7 @@ page.on('pageerror', (e) => errors.push(`PAGEERROR: ${e.message}`));
 page.on('console', (m) => {
   if (m.type() === 'error') errors.push(`CONSOLE: ${m.text()}`);
 });
-await page.goto(`file://${ENTRY}/game/index.html?shot=${SHOT}&seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
+await page.goto(`file://${ENTRY}/game/index.html?shot=${SHOT}&seed=${SEED}`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 try {
   await page.waitForFunction(() => window.__shotReady === true, null, { timeout: 60000 });
 } catch {

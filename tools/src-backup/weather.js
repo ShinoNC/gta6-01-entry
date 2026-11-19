@@ -2,11 +2,15 @@ import * as THREE from 'three';
 const DROPS = 400, AREA = 70, HEIGHT = 26, FALL = 55, RAIN_GRIP = 0.55;
 const CLEAR_MIN = 60, CLEAR_MAX = 120, RAIN_MIN = 45, RAIN_MAX = 75;
 const CLEAR_FOG = [0xff8f6b, 110, 430], RAIN_FOG = [0x5a6a7a, 40, 190];
+const NIGHT_FOG = 0x14102a;
 export class Weather {
   constructor(scene, rng) {
     this.scene = scene;
     this.rng = rng;
     this.raining = false;
+    this.night = 0;
+    this._fogColor = new THREE.Color();
+    this._nightFog = new THREE.Color(NIGHT_FOG);
     this.timer = CLEAR_MIN + rng() * (CLEAR_MAX - CLEAR_MIN);
     const positions = new Float32Array(DROPS * 3);
     for (let i = 0; i < DROPS; i += 1) {
@@ -62,6 +66,9 @@ export class Weather {
         this.timer = RAIN_MIN + this.rng() * (RAIN_MAX - RAIN_MIN);
       }
     }
+    const base = this.raining ? RAIN_FOG : CLEAR_FOG;
+    this._fogColor.setHex(base[0]).lerp(this._nightFog, this.night);
+    this.scene.fog.color.copy(this._fogColor);
     if (!this.raining) return;
     this.rain.position.set(focusPos.x, 0, focusPos.z);
     const positions = this.positions;

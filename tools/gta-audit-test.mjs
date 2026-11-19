@@ -210,12 +210,20 @@ check(
   `stars=${await page.evaluate(() => window.__game.wanted.stars)} money=$${await page.evaluate(() => window.__game.money)} hp=${await page.evaluate(() => window.__game.drivenCar.hp)}`,
 );
 await page.keyboard.press('KeyE');
-await page.waitForTimeout(1500);
+await page.waitForTimeout(800);
 check(
-  "Pay'n'Spray clears wanted + repairs for $200 on E",
+  "Pay'n'Spray E opens the garage screen (no instant charge)",
+  await page.evaluate(() => !document.getElementById('garage-screen').classList.contains('hidden') && window.__game.money === 500),
+);
+await page.click('.garage-buy[data-action="repair"]');
+await page.waitForTimeout(800);
+check(
+  "Pay'n'Spray clears wanted + repairs for $200 via garage REPAIR",
   await page.evaluate(() => window.__game.wanted.stars === 0 && window.__game.money === 300 && window.__game.drivenCar.hp === 100),
   `stars=${await page.evaluate(() => window.__game.wanted.stars)} money=$${await page.evaluate(() => window.__game.money)} hp=${await page.evaluate(() => window.__game.drivenCar.hp)}`,
 );
+await page.keyboard.press('Escape'); // close the garage screen so later tests can drive
+await page.waitForTimeout(400);
 
 // --- 9. Ped death: shot ped stays down 20s ---
 await page.keyboard.press('KeyF'); // exit car

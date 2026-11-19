@@ -13,9 +13,9 @@ const MISSION_CHAIN = [
   },
   {
     name: 'THE CORAL RUN',
-    giver: 'Mara Solis',
+    giver: 'Juno Reyes',
     briefing:
-      'Juno Reyes needs a lift off Coral Strand, fast. She is a wheelwoman — treat her car like it is your own, because soon it will be.',
+      'Rook. Juno. I am stranded on Coral Strand and my ride is not coming. Come get me, then drop me at Sunset Bluff — and treat the car like it is yours, because soon it will be.',
     rewardMoney: 750,
     rewardRep: 90,
     objectives: [
@@ -39,9 +39,9 @@ const MISSION_CHAIN = [
   },
   {
     name: 'KEYS TO THE CITY',
-    giver: 'Mara Solis',
+    giver: 'Juno Reyes',
     briefing:
-      'A Sunset Coupe is parked in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port.',
+      'Rook. Juno. A Sunset Coupe is sitting in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port — mine.',
     rewardMoney: 1250,
     rewardRep: 140,
     objectives: [
@@ -51,9 +51,9 @@ const MISSION_CHAIN = [
   },
   {
     name: 'SUNSET BLUFF DROP',
-    giver: 'Mara Solis',
+    giver: 'Juno Reyes',
     briefing:
-      'Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then come straight back to Marina Del Sol.',
+      'Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then come straight back to Marina Del Sol.',
     rewardMoney: 1500,
     rewardRep: 160,
     objectives: [
@@ -77,9 +77,9 @@ const MISSION_CHAIN = [
   },
   {
     name: 'HARBOR LIGHTS HEIST',
-    giver: 'Mara Solis',
+    giver: 'Otto Kane',
     briefing:
-      'The crew is waiting at Harbor Lights. Pick them up, crack the vault, and be in Palm Row before the sirens find their pitch.',
+      'Rook. Otto Kane. The crew is waiting at Harbor Lights. Pick them up, crack the vault, and be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.',
     rewardMoney: 2500,
     rewardRep: 240,
     objectives: [
@@ -260,7 +260,7 @@ export class Missions {
     const mission = this.currentMission();
     if (!mission) return '';
     const next = mission.objectives[this.stageIndex + 1];
-    return next ? next.label : 'Finish the job — report to Mara';
+    return next ? next.label : `Finish the job — report to ${mission.giver.split(' ')[0]}`;
   }
   nextObjectiveLine() {
     const objective = this.currentObjective();

@@ -2,12 +2,14 @@ const $ = (id) => document.getElementById(id);
 const SPEAKERS = {
   mara: ['MARA SOLIS', 'FIXER'],
   juno: ['JUNO REYES', 'WHEELWOMAN'],
+  otto: ['OTTO KANE', 'FIXER'],
   pd: ['KEYS PD', 'DISPATCH'],
 };
 const LINES = {
   go: [
     ['mara', 'Drive like you mean it — the Keys are watching.'],
     ['mara', 'Clean and fast, Rook. No heroes on my jobs.'],
+    ['otto', 'My jobs pay. My jobs also end careers. Drive clean.'],
   ],
   heat: [
     ['juno', 'Alarms are back! Lose them before they box you in.'],
@@ -17,6 +19,7 @@ const LINES = {
   done: [
     ['mara', 'Clean work. The money is already moving.'],
     ['mara', 'That is how you earn the Keys, Rook.'],
+    ['otto', 'Vault work like that gets remembered. So do you.'],
   ],
 };
 export class Dialogue {

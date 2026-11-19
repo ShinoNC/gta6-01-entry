@@ -1,7 +1,7 @@
 import { buildBeacon } from './missions.js';
 const BUSINESS_DEFS = [
-  { id: 'taxi', name: 'KEYS CAB CO.', kind: 'TAXI COMPANY', x: 52, z: 52, district: 'MARINA DEL SOL', price: 2000, repRequired: 1, incomePerDay: 1200 },
-  { id: 'club', name: 'NEON PALMS', kind: 'NIGHTCLUB', x: -52, z: -52, district: 'PALM ROW', price: 6000, repRequired: 3, incomePerDay: 3000 },
+  { id: 'taxi', name: 'KEYS CAB CO.', kind: 'TAXI COMPANY', x: 52, z: 52, district: 'PELICAN BAY', price: 2000, repRequired: 1, incomePerDay: 1200 },
+  { id: 'club', name: 'NEON PALMS', kind: 'NIGHTCLUB', x: -52, z: -52, district: 'OLD PORT', price: 6000, repRequired: 3, incomePerDay: 3000 },
   { id: 'dealer', name: 'SOLSTICE MOTORS', kind: 'CAR DEALERSHIP', x: 104, z: -104, district: 'HARBOR LIGHTS', price: 15000, repRequired: 5, incomePerDay: 7500 },
 ];
 const SECONDS_PER_GAME_DAY = 2880;
