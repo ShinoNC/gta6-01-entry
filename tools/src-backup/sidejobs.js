@@ -146,7 +146,7 @@ export class SideJobs {
       if (Math.hypot(focusPos.x - job.pickup.x, focusPos.z - job.pickup.z) < DISCOVER) this.discover();
       return;
     }
-    this.beacon.pillar.material.opacity = 0.55 + 0.2 * Math.sin(this.clock * 3);
+    this.beacon.pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
     if (this.taxiMarker.visible) {
       this.taxiMarker.rotation.y += dt * 2;
       this.taxiMarker.position.y = 3 + Math.sin(this.clock * 2) * 0.15;

@@ -6,24 +6,12 @@ export class ChaseCamera {
   constructor(camera) {
     this.camera = camera;
     this.yaw = 0;
-    this.yawOffset = 0;
     this.currentPosition = new THREE.Vector3(0, 6, 14);
   }
-  update(dt, targetPosition, targetHeading, driving, input, recoil = 0, lift = 0) {
-    this.yawOffset -= input.dragDeltaX * 0.005;
-    this.yawOffset = Math.max(-1.2, Math.min(1.2, this.yawOffset));
-    const axes = input.moveAxes();
-    const walking = !driving && (axes.forward !== 0 || axes.strafe !== 0);
-    // On foot, the walking player snaps heading to cameraYaw + PI every frame.
-    // If the mouse-look offset stayed in the chase target, the camera would
-    // chase a target always `yawOffset` ahead of itself and spin at
-    // yawOffset * STIFFNESS rad/s while the player walked in circles. So
-    // while walking the chase ignores the offset (GTA-style auto-center) and
-    // the offset drains, so no stale swing hits when the player stops.
-    if (walking) this.yawOffset *= Math.max(0, 1 - dt * 3);
-    else if (!input.dragging && !input.locked) this.yawOffset *= Math.max(0, 1 - dt * 1.5);
-    const look = walking ? 0 : this.yawOffset;
-    this.yaw += wrapAngle(targetHeading + Math.PI + look - this.yaw) * Math.min(1, dt * STIFFNESS);
+  update(dt, targetPosition, targetHeading, driving, recoil = 0, lift = 0) {
+    // No mouse-look: the camera always chases directly behind the heading,
+    // on foot and in the car alike.
+    this.yaw += wrapAngle(targetHeading + Math.PI - this.yaw) * Math.min(1, dt * STIFFNESS);
     const distance = driving ? DIST_DRIVE : DIST_FOOT;
     const height = driving ? HEIGHT_DRIVE : HEIGHT_FOOT;
     const wanted = new THREE.Vector3(targetPosition.x + Math.sin(this.yaw) * distance, targetPosition.y + height, targetPosition.z + Math.cos(this.yaw) * distance);
@@ -52,10 +40,13 @@ export class ChaseCamera {
         if (t0 <= t1 && t0 < pull) pull = t0;
       }
       // Unblocked (pull 1): full distance. Blocked: stop just short of the
-      // wall (x0.9), never closer than 0.6m to the player.
+      // wall (x0.9). The height scales with the pull so the look-down angle
+      // stays a chase angle instead of going top-down as the camera closes
+      // in — a minimum distance here would push the camera THROUGH the wall.
       const k = pull >= 1 ? 1 : Math.max(0.08, pull * 0.9);
       wanted.x = fx + dx * k;
       wanted.z = fz + dz * k;
+      wanted.y = targetPosition.y + 1.6 + (height - 1.6) * k;
     }
     this.currentPosition.lerp(wanted, Math.min(1, dt * STIFFNESS));
     this.currentPosition.y = Math.max(1.6, this.currentPosition.y);

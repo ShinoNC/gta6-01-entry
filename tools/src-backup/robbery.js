@@ -2,8 +2,8 @@ import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
 import { headingFor } from './traffic.js';
 import { pick } from './random.js';
-const GETAWAY_SPEED = 30, GETAWAY_HEALTH = 100, RAM_DAMAGE = 25, SHOT_DAMAGE = 12, POLICE_RAM_DAMAGE = 3;
-const RAM_CD = 0.8, TIMEOUT = 100, FIRST_MIN = 90, FIRST_MAX = 150, NEXT_MIN = 120, NEXT_MAX = 240;
+const GETAWAY_SPEED = 26, GETAWAY_HEALTH = 100, RAM_DAMAGE = 25, SHOT_DAMAGE = 12, POLICE_RAM_DAMAGE = 2;
+const RAM_CD = 0.8, TIMEOUT = 120, FIRST_MIN = 90, FIRST_MAX = 150, NEXT_MIN = 120, NEXT_MAX = 240;
 const ESCAPE_RADIUS = 18, CHASER_SPEED = 34, CHASER_ACCEL = 16, RAM_RANGE = 4.5, FOLLOW_RANGE = 8;
 export class Robbery {
   constructor(scene, textures, city, rng, police, callbacks) {
@@ -54,7 +54,7 @@ export class Robbery {
       const candidateX = candidate.axis === 'z' ? candidate.at : candidateAlong;
       const candidateZ = candidate.axis === 'z' ? candidateAlong : candidate.at;
       const dist = Math.hypot(candidateX - playerPos.x, candidateZ - playerPos.z);
-      if (dist > 60 && dist < 110) {
+      if (dist > 45 && dist < 90) {
         line = candidate;
         along = candidateAlong;
         break;

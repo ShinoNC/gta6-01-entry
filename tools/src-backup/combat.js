@@ -21,7 +21,7 @@ const AMMO_CRATE_SPOTS = [
   { x: -78, z: -52, name: 'Old Port' },
   { x: 78, z: -130, name: 'Harbor Lights' },
 ];
-function rayHit(origin, direction, range, targets) {
+function rayHit(origin, direction, range, targets, los) {
   let best = null;
   for (const target of targets) {
     const dx = target.x - origin.x;
@@ -30,6 +30,7 @@ function rayHit(origin, direction, range, targets) {
     if (along < 0 || along > range) continue;
     const perpendicular = Math.abs(dx * direction.z - dz * direction.x);
     if (perpendicular > target.radius) continue;
+    if (los && !los(origin, target)) continue;
     if (!best || along < best.along) best = { ...target, along };
   }
   return best;
@@ -144,7 +145,7 @@ export class Combat {
     const direction = { x: -Math.sin(aimYaw + aimError), z: -Math.cos(aimYaw + aimError) };
     this.cooldownTimer = weapon.cooldownSeconds;
     if (weapon.id === 'fists') {
-      const hit = rayHit(origin, direction, weapon.range, targets.filter((target) => target.kind === 'pedestrian'));
+      const hit = rayHit(origin, direction, weapon.range, targets.filter((target) => target.kind === 'pedestrian'), this.callbacks.los);
       if (hit) {
         this.callbacks.onHitPedestrian(hit.ref, false);
         this.callbacks.onDamage?.({ x: hit.x, y: 1.2, z: hit.z }, weapon.damage);
@@ -170,7 +171,7 @@ export class Combat {
     this.muzzle.scale.set(flashScale, flashScale, 1);
     this.muzzle.visible = true;
     this.muzzleTimer = MUZZLE_FLASH_SECONDS;
-    const hit = rayHit(origin, direction, weapon.range, targets);
+    const hit = rayHit(origin, direction, weapon.range, targets, this.callbacks.los);
     const end = hit
       ? { x: origin.x + direction.x * hit.along, y: 1.2, z: origin.z + direction.z * hit.along }
       : { x: origin.x + direction.x * weapon.range, y: 1.2, z: origin.z + direction.z * weapon.range };

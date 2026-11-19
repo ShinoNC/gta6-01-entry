@@ -77,9 +77,46 @@ const pickNpc = (speed, mark) => page.evaluate(([s, m]) => {
 // and the player gets in.
 const npc1 = await pickNpc(15, 'yank');
 note('yank test car', `at (${npc1.x.toFixed(1)},${npc1.z.toFixed(1)}) speed ${npc1.speed} m/s`);
+// GTA rule: the yank only earns a star when witnessed — stage a pedestrian
+// on the nearest sidewalk to the yank point BEFORE the player teleports
+// there. The witness only needs to be within 20m of the steal, so the
+// pick-time position is fine even though the car keeps moving.
 await page.evaluate((n) => {
-  window.__game.player.group.position.set(n.x + n.fx * 4, 0, n.z + n.fz * 4);
+  const g = window.__game;
+  const peds = g.pedestrians;
+  const ped = peds.peds.find((p) => p.knockedTimer <= 0);
+  const px = n.x + n.fx * 4;
+  const pz = n.z + n.fz * 4;
+  let best = null;
+  let bestD = Infinity;
+  for (const line of peds.lines) {
+    const lat = line.axis === 'z' ? px : pz;
+    const d = Math.abs(lat - line.at);
+    if (d < bestD) {
+      bestD = d;
+      best = line;
+    }
+  }
+  ped.line = best;
+  ped.along = best.axis === 'z' ? pz : px;
+  ped.along = Math.max(best.from, Math.min(best.to, ped.along));
+  ped.side = (best.axis === 'z' ? px : pz) >= best.at ? 1 : -1;
+  ped.knockedTimer = 0;
+  ped.fleeTimer = 0;
+  ped.walkSpeed = 0;
 }, npc1);
+// Read the car's LIVE position and teleport the player 4m ahead of it in
+// ONE evaluate, then press F at once: at 15 m/s the car covers the 4m in
+// ~0.27s of game time, so any evaluate between the teleport and F lets it
+// hit the player — and a press while downTimer > 0 is swallowed.
+await page.evaluate((idx) => {
+  const g = window.__game;
+  const npc = g.traffic.cars[idx];
+  const p = npc.car.position;
+  const fx = Math.sin(npc.car.heading);
+  const fz = Math.cos(npc.car.heading);
+  g.player.group.position.set(p.x + fx * 4, 0, p.z + fz * 4);
+}, npc1.idx);
 await page.keyboard.press('KeyF');
 // The steal message can be overwritten within a second by the FIRST WHEELS
 // achievement toast, so poll for either.
@@ -122,11 +159,27 @@ for (let i = 0; i < 30 && stoppedSpeed > 2; i += 1) {
 }
 note('braked flow', `car speed ${stoppedSpeed.toFixed(1)} m/s`);
 check('traffic brakes to a stop for a player ahead', stoppedSpeed < 2, `speed ${stoppedSpeed.toFixed(1)} m/s`);
-await page.evaluate((idx) => {
-  const g = window.__game;
-  const p = g.traffic.cars[idx].car.position;
-  g.player.group.position.set(p.x + 2, 0, p.z);
-}, npc2.idx);
+// Walk up to the stopped car: try road-relative offsets from the car's live
+// heading (ahead first — the player ahead keeps the car stopped). A blind
+// +2 in x can land inside a building, and the push-out then shoves the
+// player out of F range.
+let brakedInRange = false;
+for (const [along, side] of [[2.5, 0], [-2.5, 0], [0, 2.5], [0, -2.5]]) {
+  await page.evaluate(([idx, a, s]) => {
+    const g = window.__game;
+    const car = g.traffic.cars[idx].car;
+    const fx = Math.sin(car.heading);
+    const fz = Math.cos(car.heading);
+    g.player.group.position.set(car.position.x + fx * a + fz * s, 0, car.position.z + fz * a - fx * s);
+  }, [npc2.idx, along, side]);
+  await page.waitForTimeout(300);
+  brakedInRange = await page.evaluate((idx) => {
+    const g = window.__game;
+    const car = g.traffic.cars[idx].car;
+    return Math.hypot(g.player.position.x - car.position.x, g.player.position.z - car.position.z) < 4;
+  }, npc2.idx);
+  if (brakedInRange) break;
+}
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(1000);
 const braked = await page.evaluate(() => ({

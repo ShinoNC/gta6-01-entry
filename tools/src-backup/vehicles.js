@@ -71,6 +71,7 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
     maxSpeed: CAR_MAX_SPEED * tune,
     accel: CAR_ACCEL * tune,
     wheels,
+    lampMat: light,
     get position() {
       return group.position;
     },

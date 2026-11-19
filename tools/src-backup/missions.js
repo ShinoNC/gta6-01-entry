@@ -8,10 +8,14 @@ const MISSION_CHAIN = [
     giver: 'Mara Solis',
     start: [52, 0],
     briefing:
-      'Rook. Mara Solis. Word is you can drive. Prove it — pick up my client at Marina Del Sol. Do not keep them waiting.',
+      'Rook. Mara Solis. Word is you can drive. Prove it — my client is waiting at the east pier. Pick them up, then drop them at Palm Row. Do not keep them waiting.',
     rewardMoney: 500,
     rewardRep: 60,
-    objectives: [{ kind: 'driveTo', x: 52, z: 0, label: 'Drive to the Marina Del Sol pickup' }],
+    objectives: [
+      { kind: 'driveTo', x: 104, z: 0, label: 'Pick up the client at the east pier' },
+      { kind: 'waitAt', x: 104, z: 0, seconds: 2, label: 'Wait for the client to get in' },
+      { kind: 'driveTo', x: -52, z: 52, label: 'Drop the client at Palm Row' },
+    ],
   },
   {
     name: 'THE CORAL RUN',
@@ -49,6 +53,7 @@ const MISSION_CHAIN = [
       'Rook. Juno. A Sunset Coupe is sitting in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port — mine.',
     rewardMoney: 1250,
     rewardRep: 140,
+    scriptedHeat: 1,
     objectives: [
       { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe in Harbor Lights' },
       { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to the Old Port garage' },
@@ -113,12 +118,15 @@ const MISSION_CHAIN = [
     ],
   },
 ];
-export function buildBeacon(scene, color = 0xffd978) {
+export function buildBeacon(scene, color = 0xffe600) {
   const group = new THREE.Group();
-  const pillarMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.FrontSide, depthWrite: false });
-  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 45, 12, 1, true), pillarMaterial);
+  // Near-solid saturated yellow, fog-proof: the pillar reads against the
+  // sunset sky from 100m out. The diamond shares this material, so it reads
+  // as solid gold too.
+  const pillarMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.FrontSide, depthWrite: false, fog: false });
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2.5, 2.5, 45, 12, 1, true), pillarMaterial);
   pillar.position.y = 22.5;
-  const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
+  const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false, fog: false });
   const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.2, 24), ringMaterial);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
@@ -225,7 +233,7 @@ export class Missions {
   }
   animateBeacon(dt) {
     const b = this.beacon;
-    b.pillar.material.opacity = 0.55 + 0.2 * Math.sin(this.clock * 3);
+    b.pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
     const s = 1 + 0.07 * Math.sin(this.clock * 3);
     b.ring.scale.set(s, s, 1);
     b.diamond.rotation.y += dt * 1.5;

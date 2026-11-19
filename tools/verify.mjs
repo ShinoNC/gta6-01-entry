@@ -30,19 +30,14 @@ const results = [];
 function check(name, ok, detail = '') {
   results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
 }
-// Shooting is click-only now (Space = jump / handbrake). The first canvas
-// click engages pointer lock and is NOT a shot, so lock first if needed.
-// A mission briefing exits pointer lock when it pops up, which would turn
-// the shot click into a re-lock click — dismiss it before shooting.
+// Shooting is click-only now (Space = jump / handbrake). A click on the
+// canvas is a shot immediately — there is no pointer lock to engage.
+// Dismiss a mission briefing first: the phone panel covers the canvas
+// centre, so a click there would hit the panel, not the canvas.
 async function shoot() {
   if (await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'))) {
     await page.click('#phone-later');
     await page.waitForTimeout(300);
-  }
-  const locked = await page.evaluate(() => document.pointerLockElement !== null);
-  if (!locked) {
-    await page.mouse.click(640, 360);
-    await page.waitForTimeout(500);
   }
   await page.mouse.click(640, 360);
 }
@@ -198,7 +193,24 @@ await page.evaluate(() => {
   const target = window.__game.missions.target;
   window.__game.player.group.position.set(target.x, 0, target.z);
 });
-await page.waitForTimeout(4000);
+// M1 has 3 stages now (pier pickup, 2s wait, Palm Row drop). The waitAt
+// stage needs 2s of GAME time, and headless runs ~0.15x real time, so poll
+// for the stage to advance instead of sleeping a fixed amount.
+for (let i = 0; i < 40; i += 1) {
+  if (await page.evaluate(() => {
+    const m = window.__game.missions;
+    return !m.currentMission() || m.stageIndex >= 2;
+  })) break;
+  await page.waitForTimeout(1000);
+}
+await page.evaluate(() => {
+  const target = window.__game.missions.target;
+  if (target) window.__game.player.group.position.set(target.x, 0, target.z);
+});
+for (let i = 0; i < 12; i += 1) {
+  if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
+  await page.waitForTimeout(1000);
+}
 check(
   'mission 1 completable, pays $500',
   await page.evaluate(() => window.__game.missions.doneCount() === 1 && window.__game.money === 1750),
@@ -238,24 +250,52 @@ await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);
 check('M closes the mission list', await page.evaluate(() => document.getElementById('mission-screen').classList.contains('hidden')));
 
-// Stealing a parked car (not the starter) raises the wanted level.
+// Stealing a parked car (not the starter) raises the wanted level — but
+// only when witnessed (GTA rule): stage a pedestrian next to the car first,
+// or the steal is free and no police come.
 await page.evaluate(() => {
   const car = window.__game.cars[3];
   window.__game.player.group.position.set(car.position.x + 2, 0, car.position.z);
+});
+await page.evaluate(() => {
+  const g = window.__game;
+  const peds = g.pedestrians;
+  const ped = peds.peds.find((p) => p.knockedTimer <= 0);
+  const p = g.player.position;
+  let best = null;
+  let bestD = Infinity;
+  for (const line of peds.lines) {
+    const lat = line.axis === 'z' ? p.x : p.z;
+    const d = Math.abs(lat - line.at);
+    if (d < bestD) {
+      bestD = d;
+      best = line;
+    }
+  }
+  ped.line = best;
+  ped.along = best.axis === 'z' ? p.z : p.x;
+  ped.along = Math.max(best.from, Math.min(best.to, ped.along));
+  ped.side = (best.axis === 'z' ? p.x : p.z) >= best.at ? 1 : -1;
+  ped.knockedTimer = 0;
+  ped.fleeTimer = 0;
+  ped.walkSpeed = 0;
 });
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(500);
 check('stealing a parked car gives 1 star', await page.evaluate(() => window.__game.wanted.stars >= 1));
 // The steal toast shows for one frame, then the sticky FIRST WHEELS
 // achievement (unlocked by this very steal) overwrites it — either text
-// proves the steal feedback fired.
-check(
-  'steal toast shows',
-  await page.evaluate(() => {
+// proves the steal feedback fired. Poll: the toast queue holds the steal
+// behind the 6s 'has a job for you' message from game start.
+let sawStealToast = false;
+for (let i = 0; i < 16 && !sawStealToast; i += 1) {
+  await page.waitForTimeout(500);
+  sawStealToast = await page.evaluate(() => {
     const text = document.getElementById('hud-message').textContent;
     return text.includes('STOLEN') || text.includes('FIRST WHEELS');
-  }),
-);
+  });
+}
+check('steal toast shows', sawStealToast);
 
 // Police spawn and pursue.
 await page.waitForTimeout(5000);
@@ -309,7 +349,7 @@ await page.waitForTimeout(300);
 await shoot();
 await page.waitForTimeout(1000);
 if (await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag === 12)) {
-  // A briefing may have popped mid-shot and stolen the lock; retry once.
+  // The shot may have been swallowed by a briefing popup; retry once.
   await shoot();
   await page.waitForTimeout(1000);
 }
@@ -320,8 +360,14 @@ check(
 );
 check('shooting raises wanted', await page.evaluate(() => window.__game.wanted.stars >= 1));
 await page.keyboard.press('Digit3');
-await page.waitForTimeout(300);
-check('SMG locked before mission 3', await page.evaluate(() => document.getElementById('hud-message').textContent.includes('locked')));
+// The 'locked' toast queues behind the witness message from the shot above
+// (toast queue: one message at a time) — poll instead of reading once.
+let sawLocked = false;
+for (let i = 0; i < 12 && !sawLocked; i += 1) {
+  await page.waitForTimeout(500);
+  sawLocked = await page.evaluate(() => document.getElementById('hud-message').textContent.includes('locked'));
+}
+check('SMG locked before mission 3', sawLocked);
 
 // Ammo crate: walk into the Marina crate and the pistol refills to a full mag.
 await page.evaluate(() => window.__game.player.group.position.set(26, 0, 26));

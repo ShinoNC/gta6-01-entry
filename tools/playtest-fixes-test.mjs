@@ -48,7 +48,7 @@ async function titleChecks(width) {
   await page.setViewportSize({ width, height: 720 });
   await page.waitForTimeout(800);
   const r = await page.evaluate(() => {
-    const strip = [...document.querySelectorAll('#title-screen .controls')].find((el) => el.textContent.includes('WASD'));
+    const strip = [...document.querySelectorAll('#title-screen .controls')].find((el) => el.textContent.includes('W/S'));
     const out = { pairs: [], featureColor: '', savesColor: '', noteColor: '', controlsBg: '' };
     for (const b of strip.querySelectorAll('b')) {
       const textNode = b.nextSibling;
@@ -108,8 +108,8 @@ const beacon = await page.evaluate(() => {
 });
 note('beacon', JSON.stringify(beacon));
 check('beacon visible in free roam', beacon.visible);
-check('beacon pillar opacity is bright (0.35-0.75)', beacon.pillarOpacity >= 0.35 && beacon.pillarOpacity <= 0.75, `opacity ${beacon.pillarOpacity.toFixed(2)}`);
-check('beacon pillar is tall + wide (45m x r2)', beacon.pillarH === 45 && beacon.pillarR === 2, `${beacon.pillarH}m r${beacon.pillarR}`);
+check('beacon pillar opacity is near-solid (0.75-0.95)', beacon.pillarOpacity >= 0.75 && beacon.pillarOpacity <= 0.95, `opacity ${beacon.pillarOpacity.toFixed(2)}`);
+check('beacon pillar is tall + wide (45m x r2.5)', beacon.pillarH === 45 && beacon.pillarR === 2.5, `${beacon.pillarH}m r${beacon.pillarR}`);
 check('beacon has floating diamond', beacon.hasDiamond, `diamond y=${beacon.diamondY}`);
 
 // Beacon visible from spawn: project the marker to screen space and shoot it.
@@ -188,11 +188,21 @@ const distCheck = await page.evaluate(() => {
 check('distance matches actual player-to-marker distance', distCheck.shown !== null && Math.abs(distCheck.shown - distCheck.actual) <= 1, `shown ${distCheck.shown}m, actual ${distCheck.actual}m`);
 
 // --- 2. F prompt + measured F range ---
-// Pick a parked car with no other car within 12m so measurements are clean.
+// Pick a parked car the sweep can measure cleanly: no other car within 12m,
+// open ground east of it, and no traffic line crossing the sweep. Traffic
+// only drives on roads, so the sweep line (z = car.z) must clear every
+// E-W road corridor, and the car must face along a N-S road (heading ~0
+// or ~PI) so its door side points off-road too. (The cruiser at (104,0)
+// failed both: E-W traffic on z=0 crossed the sweep and N-S traffic on
+// x=104 crossed the door side.)
 const parked = await page.evaluate(() => {
   const g = window.__game;
+  const boxes = g.hud.city.buildingBoxes;
+  const ewRoadZ = g.traffic.lines.filter((l) => l.axis === 'x').map((l) => l.at);
   let best = null;
   let bestGap = -1;
+  let fallback = null;
+  let fallbackGap = -1;
   for (const car of g.cars) {
     if (car.destroyed || car.driven) continue;
     let gap = Infinity;
@@ -201,11 +211,23 @@ const parked = await page.evaluate(() => {
       gap = Math.min(gap, Math.hypot(other.position.x - car.position.x, other.position.z - car.position.z));
     }
     for (const npc of g.traffic.cars) gap = Math.min(gap, Math.hypot(npc.car.position.x - car.position.x, npc.car.position.z - car.position.z));
+    if (gap > fallbackGap) { fallbackGap = gap; fallback = car; }
+    // The +x range sweep needs genuinely open ground east of the car: if
+    // the 9m point is inside a building, resolveCircle pushes the player
+    // back toward the car (the roadster at the map edge pushed 9m -> 6.3m,
+    // inside the 8m latch range) and the sweep measures nothing.
+    const clearEast = [3, 6, 9].every((d) => !boxes.some((b) =>
+      car.position.x + d > b.minX && car.position.x + d < b.maxX &&
+      car.position.z > b.minZ && car.position.z < b.maxZ));
+    const clearOfTraffic = ewRoadZ.every((z) => Math.abs(car.position.z - z) > 6);
+    const facesNorthSouth = Math.abs(Math.sin(car.heading)) < 0.2;
+    if (!clearEast || !clearOfTraffic || !facesNorthSouth || car.position.x + 10 > 156) continue;
     if (gap > bestGap) { bestGap = gap; best = car; }
   }
-  return { x: best.position.x, z: best.position.z, name: best.name, heading: best.heading, gap: bestGap };
+  const pick = best || fallback;
+  return { x: pick.position.x, z: pick.position.z, name: pick.name, heading: pick.heading, gap: best ? bestGap : fallbackGap, ideal: Boolean(best) };
 });
-note('parked car for F test', `${parked.name} at (${parked.x.toFixed(1)},${parked.z.toFixed(1)}) heading ${parked.heading.toFixed(2)}, nearest neighbour ${parked.gap.toFixed(1)}m`);
+note('parked car for F test', `${parked.name} at (${parked.x.toFixed(1)},${parked.z.toFixed(1)}) heading ${parked.heading.toFixed(2)}, nearest neighbour ${parked.gap.toFixed(1)}m${parked.ideal ? '' : ' (no ideal car — sweep may be noisy)'}`);
 async function ensureOnFoot() {
   if (await page.evaluate(() => window.__game.drivenCar !== null)) {
     await page.keyboard.press('KeyF');
@@ -245,9 +267,11 @@ async function tryFAt(x, z) {
 const near = await tryFAt(parked.x + 2, parked.z);
 check('F prompt shows near a car', near.prompt.visible && /Press F to (drive|steal)/.test(near.prompt.text), `${near.prompt.visible ? near.prompt.text : '(hidden)'}`);
 check('F enters the car at 2m from centre', Boolean(near.entered) && !near.entered.startsWith('WRONG'), near.entered || 'not entered');
-// Range sweep from the car CENTRE along +x.
+// Range sweep from the car CENTRE along +x. The carjack latch (a car that
+// just showed its prompt stays grabbable at 8m for 1.5s) means 5.1m/6m now
+// succeed right after the closer steps; 9m is past the latch range.
 const sweep = [];
-for (const d of [3, 4, 4.9, 5.1, 6]) {
+for (const d of [3, 4, 4.9, 5.1, 6, 9]) {
   const r = await tryFAt(parked.x + d, parked.z);
   sweep.push(`${d}m:${!r.entered ? 'no' : r.entered.startsWith('WRONG') ? 'WRONG' : 'IN'}`);
 }
@@ -262,7 +286,8 @@ for (const d of [1.5, 2.5, 3.5, 4.5]) {
 }
 note('F range from door side', doorSweep.join(' '));
 check('F works at 4m from centre', sweep[1].endsWith('IN'), sweep.join(' '));
-check('F fails past 5m from centre', sweep[3].endsWith('no') && sweep[4].endsWith('no'), sweep.join(' '));
+check('F latch: a car that just showed its prompt stays grabbable at 6m', sweep[4].endsWith('IN'), sweep.join(' '));
+check('F fails past the 8m latch range (9m)', sweep[5].endsWith('no'), sweep.join(' '));
 // The door sweep's last step (4.5m) SUCCEEDS, so the player is still IN the
 // car here. Exit it first: while driving, the traffic obstacles list holds
 // the driven car instead of the player, so a teleported player group would

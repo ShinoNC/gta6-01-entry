@@ -1,8 +1,8 @@
 // Punch test for SOLARIS KEYS (bug 4: left click did not punch, only
-// rotated the camera). Covers: click while pointer-locked attacks
-// immediately (fists: cooldown + arm swing + sound), the lock-engaging
-// click does not attack, punching a ped knocks them down, and dragging
-// without a lock rotates the camera without attacking.
+// rotated the camera). Covers: the first click attacks immediately —
+// there is no pointer lock to engage and no lock click to swallow it
+// (fists: cooldown + arm swing + sound), punching a ped makes them flee,
+// and moving the mouse does not rotate the camera.
 // Run: node tools/punch-test.mjs
 import { chromium } from '/home/hatch/workspace/tools/pw/node_modules/playwright-core/index.mjs';
 import { readFileSync } from 'node:fs';
@@ -66,20 +66,14 @@ const waitCooldown = async () => {
 
 check('fists selected by default', (await combatState()).weapon === 'fists');
 
-// --- 1. The lock-engaging click must NOT attack ---
-await page.mouse.click(640, 360); // engages pointer lock
-await page.waitForTimeout(600);
-let s = await combatState();
-check('pointer locked', await page.evaluate(() => window.__game.input.locked === true));
-check('lock click does not punch', s.cooldown <= 0 && s.punchTimer <= 0, `cooldown=${s.cooldown.toFixed(2)} punchTimer=${s.punchTimer.toFixed(2)}`);
-
-// --- 2. Click while locked punches immediately (whiff: no ped in range) ---
+// --- 1. The first click punches immediately (whiff: no ped in range).
+// There is no pointer lock any more, so no click is swallowed.
 await page.mouse.click(640, 360);
 await page.waitForTimeout(600);
-s = await combatState();
-info('after locked click (whiff)', `cooldown=${s.cooldown.toFixed(2)} punchTimer=${s.punchTimer.toFixed(2)} sound=${JSON.stringify(s.punchSound)}`);
-check('locked click triggers tryShoot (fists cooldown)', s.cooldown > 0, `cooldown=${s.cooldown.toFixed(2)}`);
-check('locked click plays the punch sound (whiff)', s.punchSound !== null && s.punchSound.hit === false, JSON.stringify(s.punchSound));
+let s = await combatState();
+info('after first click (whiff)', `cooldown=${s.cooldown.toFixed(2)} punchTimer=${s.punchTimer.toFixed(2)} sound=${JSON.stringify(s.punchSound)}`);
+check('first click triggers tryShoot (fists cooldown)', s.cooldown > 0, `cooldown=${s.cooldown.toFixed(2)}`);
+check('first click plays the punch sound (whiff)', s.punchSound !== null && s.punchSound.hit === false, JSON.stringify(s.punchSound));
 // The arm swing is set by the NEXT player.update after the punch (the tap
 // fires after player.update in the frame), and headless runs few frames per
 // second — poll for the swing instead of reading once.
@@ -90,7 +84,7 @@ for (let i = 0; i < 20; i += 1) {
   if (minArmX < -1) break;
   await page.waitForTimeout(200);
 }
-check('locked click swings the arm', s.punchTimer > 0 && minArmX < -1, `punchTimer=${s.punchTimer.toFixed(2)} minArmRightX=${minArmX.toFixed(2)}`);
+check('first click swings the arm', s.punchTimer > 0 && minArmX < -1, `punchTimer=${s.punchTimer.toFixed(2)} minArmRightX=${minArmX.toFixed(2)}`);
 
 // --- 3. Punching a ped knocks them down ---
 await waitCooldown();
@@ -126,21 +120,29 @@ info('after punching the ped', `fleeTimer=${pedFlee.toFixed(2)} sound=${JSON.str
 check('punch makes the ped flee', pedFlee > 0, `fleeTimer=${pedFlee.toFixed(2)}`);
 check('punch hit plays the impact sound', s.punchSound !== null && s.punchSound.hit === true, JSON.stringify(s.punchSound));
 
-// --- 4. Drag without a lock rotates the camera, does not attack ---
+// --- 4. Moving the mouse (or dragging) does not rotate the camera or
+// attack — there is no mouse-look any more.
 await waitCooldown();
-await page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
-await page.waitForTimeout(500);
-const yawBefore = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
+const yawBefore = await page.evaluate(() => window.__game.chaseCamera.yaw);
 await page.mouse.move(640, 360);
 await page.mouse.down();
+// The punch cooldown is 0.45s of GAME time — at the game's variable headless
+// speed it can elapse during the drag + wait below, so poll for the attack
+// right after the mousedown instead of reading once at the end.
+let attackedOnDown = false;
+for (let i = 0; i < 10 && !attackedOnDown; i += 1) {
+  await page.waitForTimeout(100);
+  attackedOnDown = (await combatState()).cooldown > 0;
+}
 await page.mouse.move(940, 360, { steps: 10 });
 await page.mouse.up();
+await page.mouse.move(340, 360);
 await page.waitForTimeout(600);
-const yawAfter = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
+const yawAfter = await page.evaluate(() => window.__game.chaseCamera.yaw);
 s = await combatState();
-info('after drag (no lock)', `yawOffset ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)} cooldown=${s.cooldown.toFixed(2)}`);
-check('drag without lock rotates the camera', Math.abs(yawAfter - yawBefore) > 0.1, `yawOffset ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)}`);
-check('drag without lock does not attack', s.cooldown <= 0 && s.punchTimer <= 0, `cooldown=${s.cooldown.toFixed(2)}`);
+info('after mouse move + drag', `yaw ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)} cooldown=${s.cooldown.toFixed(2)}`);
+check('mouse move/drag does not rotate the camera', Math.abs(yawAfter - yawBefore) < 0.05, `yaw ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)}`);
+check('drag starts with a mousedown, which attacks (click = attack)', attackedOnDown);
 
 check('zero console/page errors', errors.length === 0, errors.join(' | ').slice(0, 300));
 

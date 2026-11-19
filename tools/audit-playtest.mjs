@@ -207,9 +207,22 @@ if (!inRange) {
 }
 await page.keyboard.press('KeyF');
 await page.waitForFunction(() => window.__game.drivenCar !== null, null, { timeout: 10000 }).catch(() => {});
+// Under load the F press can be swallowed (knockdown, or the enter landing
+// before the teleport settles) — retry next to the car instead of driving
+// on foot into the ped, which never counts.
+for (let r = 0; r < 3 && !(await page.evaluate(() => window.__game.drivenCar !== null)); r += 1) {
+  await page.evaluate(() => {
+    const g = window.__game;
+    const car = g.cars[0];
+    g.player.group.position.set(car.position.x + 2, 0, car.position.z);
+  });
+  await page.waitForTimeout(500);
+  await page.keyboard.press('KeyF');
+  await page.waitForFunction(() => window.__game.drivenCar !== null, null, { timeout: 5000 }).catch(() => {});
+}
 await page.keyboard.down('KeyW');
 let menace = false;
-for (let i = 0; i < 20; i += 1) {
+for (let i = 0; i < 30; i += 1) {
   menace = await page.evaluate(() => window.__game.stats.pedsDown >= 10);
   if (menace) break;
   await page.waitForTimeout(500);
@@ -266,6 +279,31 @@ while ((await page.evaluate(() => window.__game.wanted.stars)) < 5 && attempts <
     });
     continue;
   }
+  // GTA rule: a steal only earns a star when witnessed — stage a pedestrian
+  // on the nearest sidewalk before each steal, or the loop stalls at 0 stars.
+  await page.evaluate(() => {
+    const g = window.__game;
+    const peds = g.pedestrians;
+    const ped = peds.peds.find((p) => p.knockedTimer <= 0);
+    const p = g.player.position;
+    let best = null;
+    let bestD = Infinity;
+    for (const line of peds.lines) {
+      const lat = line.axis === 'z' ? p.x : p.z;
+      const d = Math.abs(lat - line.at);
+      if (d < bestD) {
+        bestD = d;
+        best = line;
+      }
+    }
+    ped.line = best;
+    ped.along = best.axis === 'z' ? p.z : p.x;
+    ped.along = Math.max(best.from, Math.min(best.to, ped.along));
+    ped.side = (best.axis === 'z' ? p.x : p.z) >= best.at ? 1 : -1;
+    ped.knockedTimer = 0;
+    ped.fleeTimer = 0;
+    ped.walkSpeed = 0;
+  });
   await page.keyboard.press('KeyF');
   // Poll for the enter/exit to register — fixed waits desync under load and
   // the exit KeyF can land before the enter is processed.
@@ -302,15 +340,24 @@ if (!(await page.evaluate(() => Boolean(window.__game.drivenCar)))) {
 await page.waitForTimeout(1000);
 const moneyBeforeSpray = await page.evaluate(() => window.__game.money);
 await page.keyboard.press('KeyE');
-await page.waitForTimeout(800);
-await page.click('.garage-buy[data-action="repair"]');
-await page.waitForTimeout(800);
+// Never let a missing garage screen crash the suite (uncaught page.click
+// timeout) — if E did not open it, record the escape as failed and move on.
+let garageOpen = false;
+for (let i = 0; i < 10 && !garageOpen; i += 1) {
+  await page.waitForTimeout(500);
+  garageOpen = await page.evaluate(() => !document.getElementById('garage-screen').classList.contains('hidden'));
+}
+if (garageOpen) {
+  await page.click('.garage-buy[data-action="repair"]');
+  await page.waitForTimeout(800);
+}
 check(
   'chaos run: Pay\'n\'Spray escape clears 5 stars for $200',
-  await page.evaluate(
-    (before) => window.__game.wanted.stars === 0 && window.__game.money === before - 200,
-    moneyBeforeSpray,
-  ),
+  garageOpen &&
+    (await page.evaluate(
+      (before) => window.__game.wanted.stars === 0 && window.__game.money === before - 200,
+      moneyBeforeSpray,
+    )),
   await page.evaluate(() => `stars=${window.__game.wanted.stars} money=$${window.__game.money}`),
 );
 await page.keyboard.press('Escape'); // close the garage screen so later tests can drive

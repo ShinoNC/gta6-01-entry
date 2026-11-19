@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 const WALK_SPEED = 6;
 const RUN_SPEED = 9.5;
+const TURN_RATE = 2.5;
 const PLAYER_RADIUS = 0.7;
 const LEG_SWING = 0.55;
 const JUMP_SPEED = 7.5;
@@ -37,7 +38,7 @@ export function createPlayer(scene, startX, startZ) {
     punchTimer: 0,
     downTimer: 0,
     punch() {
-      this.punchTimer = 0.25;
+      this.punchTimer = 0.45;
     },
     knockDown(seconds) {
       this.downTimer = seconds;
@@ -51,7 +52,7 @@ export function createPlayer(scene, startX, startZ) {
       if (look.hair !== undefined) hair.color.set(look.hair);
       if (look.shirt !== undefined) shirt.color.set(look.shirt);
     },
-    update(dt, input, cameraYaw, city) {
+    update(dt, input, city) {
       if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
       if (this.downTimer > 0) {
         this.downTimer -= dt;
@@ -68,7 +69,15 @@ export function createPlayer(scene, startX, startZ) {
         }
       }
       const { forward, strafe } = input.moveAxes();
-      const moving = forward !== 0 || strafe !== 0;
+      // Tank controls: A/D turn in place (standing still or moving), so the
+      // player can aim without a mouse; W walks the facing direction, S
+      // backpedals at 60% without turning. The camera always sits behind
+      // the heading, so there is no camera-relative movement at all.
+      if (strafe !== 0) {
+        this.heading -= strafe * TURN_RATE * dt;
+        group.rotation.y = this.heading;
+      }
+      const moving = forward !== 0;
       city.resolveCircle(group.position, PLAYER_RADIUS);
       if (!moving) {
         legLeft.rotation.x = 0;
@@ -79,17 +88,12 @@ export function createPlayer(scene, startX, startZ) {
         return;
       }
       const running = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
-      const speed = running ? RUN_SPEED : WALK_SPEED;
-      const sin = Math.sin(cameraYaw);
-      const cos = Math.cos(cameraYaw);
-      const dx = (-sin * forward + cos * strafe) * speed * dt;
-      const dz = (-cos * forward - sin * strafe) * speed * dt;
+      let speed = running ? RUN_SPEED : WALK_SPEED;
+      if (forward < 0) speed *= 0.6;
+      const dx = Math.sin(this.heading) * forward * speed * dt;
+      const dz = Math.cos(this.heading) * forward * speed * dt;
       group.position.x += dx;
       group.position.z += dz;
-      if (strafe === 0) {
-        this.heading = Math.atan2(dx, dz);
-        group.rotation.y = this.heading;
-      }
       this.walkPhase += dt * speed * 1.4;
       const swing = Math.sin(this.walkPhase) * LEG_SWING;
       legLeft.rotation.x = swing;

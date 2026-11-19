@@ -1,5 +1,5 @@
-// Controls test for SOLARIS KEYS: pointer lock, jump, handbrake, click-only
-// shooting, HUD bars next to the minimap, screens exiting pointer lock.
+// Controls test for SOLARIS KEYS: tank controls (A/D turn, camera behind),
+// click-only shooting, jump, handbrake, HUD bars next to the minimap.
 // Run: node tools/controls-test.mjs
 import { chromium } from '/home/hatch/workspace/tools/pw/node_modules/playwright-core/index.mjs';
 import { readFileSync } from 'node:fs';
@@ -25,8 +25,12 @@ function check(name, ok, detail = '') {
   results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
   console.log(results[results.length - 1]);
 }
-const isLocked = () => page.evaluate(() => document.pointerLockElement === document.getElementById('game-canvas'));
-const unlock = () => page.evaluate(() => document.exitPointerLock && document.exitPointerLock());
+const wrap = (a) => {
+  let w = a;
+  while (w > Math.PI) w -= Math.PI * 2;
+  while (w < -Math.PI) w += Math.PI * 2;
+  return w;
+};
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
@@ -35,37 +39,47 @@ await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
 
-// --- 1. Pointer lock engages on canvas click ---
+// --- 1. No pointer lock: a canvas click never locks, and the mouse does
+// not rotate the camera ---
 await page.mouse.click(640, 360);
 await page.waitForTimeout(500);
-check('canvas click engages pointer lock', await isLocked());
-check('input.locked tracks the lock', await page.evaluate(() => window.__game.input.locked === true));
-
-// --- 2. Mouse move while locked rotates the camera (free look, no button held) ---
-const yawBefore = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
+check('canvas click does not engage pointer lock', await page.evaluate(() => document.pointerLockElement === null));
+const yawBeforeMouse = await page.evaluate(() => window.__game.chaseCamera.yaw);
 await page.mouse.move(840, 360);
+await page.mouse.move(340, 360);
 await page.waitForTimeout(800);
-const yawAfter = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
-check('mouse move while locked swings the camera', yawAfter < yawBefore - 0.2, `yawOffset ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)} (mouse right = negative offset = view turns right)`);
+const yawAfterMouse = await page.evaluate(() => window.__game.chaseCamera.yaw);
+check('mouse move does not rotate the camera', Math.abs(yawAfterMouse - yawBeforeMouse) < 0.05, `yaw ${yawBeforeMouse.toFixed(2)} -> ${yawAfterMouse.toFixed(2)}`);
 
-// --- 3. The lock click is not a shot; the next click shoots ---
+// --- 2. A/D turn the player in place (tank controls); the camera follows
+// behind the heading ---
+const headBefore = await page.evaluate(() => window.__game.player.heading);
+const posBeforeTurn = await page.evaluate(() => ({ x: window.__game.player.position.x, z: window.__game.player.position.z }));
+await page.keyboard.down('KeyD');
+await page.waitForTimeout(4000);
+await page.keyboard.up('KeyD');
+const headAfterD = await page.evaluate(() => window.__game.player.heading);
+const posAfterTurn = await page.evaluate(() => ({ x: window.__game.player.position.x, z: window.__game.player.position.z }));
+const turned = wrap(headAfterD - headBefore);
+check('D turns the player right in place (heading decreases, no displacement)', turned < -0.3 && Math.hypot(posAfterTurn.x - posBeforeTurn.x, posAfterTurn.z - posBeforeTurn.z) < 0.5, `heading ${headBefore.toFixed(2)} -> ${headAfterD.toFixed(2)} (Δ ${turned.toFixed(2)}) moved ${Math.hypot(posAfterTurn.x - posBeforeTurn.x, posAfterTurn.z - posBeforeTurn.z).toFixed(2)}m`);
+// The camera chases heading+PI: after settling, yaw - (heading+PI) ~ 0.
+await page.waitForTimeout(3000);
+const camTrack = await page.evaluate(() => ({ yaw: window.__game.chaseCamera.yaw, heading: window.__game.player.heading }));
+const trackErr = Math.abs(wrap(camTrack.yaw - (camTrack.heading + Math.PI)));
+check('camera sits behind the heading after turning', trackErr < 0.3, `yaw=${camTrack.yaw.toFixed(2)} heading+PI=${(camTrack.heading + Math.PI).toFixed(2)} err=${trackErr.toFixed(2)}`);
+
+// --- 3. The first click fires the pistol (no lock click to swallow it) ---
 await page.evaluate(() => {
   window.__game.combat.unlockWeapon('pistol');
   window.__game.combat.restock();
 });
 await page.keyboard.press('Digit2');
 await page.waitForTimeout(300);
-await unlock();
-await page.waitForTimeout(400);
 const magBefore = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-await page.mouse.click(640, 360); // lock click — must NOT shoot
-await page.waitForTimeout(800);
-const magAfterLockClick = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-check('lock click does not fire', magAfterLockClick === magBefore, `mag ${magBefore} -> ${magAfterLockClick}`);
-await page.mouse.click(640, 360); // real shot
+await page.mouse.click(640, 360);
 await page.waitForTimeout(800);
 const magAfterShot = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-check('click while locked fires the pistol', magAfterShot === magBefore - 1, `mag ${magBefore} -> ${magAfterShot}`);
+check('first click fires the pistol', magAfterShot === magBefore - 1, `mag ${magBefore} -> ${magAfterShot}`);
 
 // --- 4. Space no longer shoots; Space jumps on foot ---
 const magBeforeSpace = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
@@ -102,7 +116,28 @@ await page.evaluate(() => {
   window.__game.player.group.position.set(car.position.x + 2, 0, car.position.z);
 });
 await page.keyboard.press('KeyF');
-await page.waitForTimeout(500);
+// Poll for the car entry, RETRYING the press: a fixed 500ms wait is too
+// short when a headless frame stalls, and a single press is lost entirely
+// if the player is knocked down (downTimer > 0) at that moment — the
+// pistol shot in section 3 draws a pursuit car that may ram the player
+// while they stand at spawn. Each retry re-presses F until the car is
+// entered (F toggles, so the loop breaks as soon as it succeeds).
+let entered = false;
+let lastState = '';
+for (let i = 0; i < 10 && !entered; i += 1) {
+  if (i > 0) await page.keyboard.press('KeyF');
+  await page.waitForTimeout(1000);
+  const st = await page.evaluate(() => ({
+    driven: window.__game.drivenCar !== null,
+    state: window.__game.state,
+    down: +window.__game.player.downTimer.toFixed(2),
+    stars: window.__game.wanted.stars,
+  }));
+  entered = st.driven;
+  lastState = `state=${st.state} downTimer=${st.down} stars=${st.stars}`;
+}
+check('F enters the starter car', entered, lastState);
+if (!entered) { await browser.close(); process.exit(1); }
 await page.evaluate(() => {
   const car = window.__game.drivenCar;
   car.group.position.set(0, 0, 80);
@@ -190,35 +225,28 @@ check(
   `bars left=${barsRect.barsLeft} bottom=${barsRect.barsBottom} minimap top=${barsRect.mapTop}`,
 );
 
-// --- 9. Opening a screen exits pointer lock (mouse free for UI) ---
-await page.mouse.click(640, 360);
-await page.waitForTimeout(400);
-check('re-locked before screen test', await isLocked());
+// --- 9. Screens open and close; there is no pointer lock to exit ---
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(400);
 check(
-  'mission screen exits pointer lock',
-  (await isLocked()) === false && (await page.evaluate(() => !document.getElementById('mission-screen').classList.contains('hidden'))),
+  'mission screen opens (no lock involved)',
+  (await page.evaluate(() => document.pointerLockElement === null)) && (await page.evaluate(() => !document.getElementById('mission-screen').classList.contains('hidden'))),
 );
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);
-await page.mouse.click(640, 360);
-await page.waitForTimeout(400);
-check('re-locked after closing mission screen', await isLocked());
+check('closing mission screen returns to play', await page.evaluate(() => window.__game.state === 'play'));
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(400);
 check(
-  'empire screen exits pointer lock',
-  (await isLocked()) === false && (await page.evaluate(() => !document.getElementById('empire-screen').classList.contains('hidden'))),
+  'empire screen opens (no lock involved)',
+  (await page.evaluate(() => document.pointerLockElement === null)) && (await page.evaluate(() => !document.getElementById('empire-screen').classList.contains('hidden'))),
 );
 await page.keyboard.press('KeyB');
 await page.waitForTimeout(300);
 
-// --- 10. Phone briefing exits pointer lock ---
+// --- 10. Phone briefing appears at the gold marker ---
 // The briefing now needs the player at the gold marker (52,0); the player is
 // driving here, so move the car (the mission focus) to the marker.
-await page.mouse.click(640, 360);
-await page.waitForTimeout(400);
 await page.evaluate(() => {
   const car = window.__game.drivenCar;
   if (car) { car.position.set(52, 0, 0); car.speed = 0; }
@@ -230,47 +258,17 @@ for (let i = 0; i < 10 && !phoneVisible; i += 1) {
   await page.waitForTimeout(1000);
   phoneVisible = await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'));
 }
-check(
-  'phone briefing exits pointer lock',
-  phoneVisible && (await isLocked()) === false,
-  `phone visible=${phoneVisible} locked=${await isLocked()}`,
-);
+check('phone briefing appears at the marker', phoneVisible, `phone visible=${phoneVisible}`);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
 
-// --- 11. No pointer lock API: no crash, drag-to-look fallback still works ---
-await page.evaluate(() => {
-  const canvas = document.getElementById('game-canvas');
-  Object.defineProperty(canvas, 'requestPointerLock', { value: undefined, configurable: true });
-});
-await page.mouse.click(640, 360);
-await page.waitForTimeout(400);
-check('click with no pointer-lock API does not lock (and does not crash)', (await isLocked()) === false);
-const yawBeforeDrag = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
-await page.mouse.move(640, 360);
-await page.mouse.down();
-await page.mouse.move(840, 360, { steps: 10 });
-await page.mouse.up();
-await page.waitForTimeout(500);
-const yawAfterDrag = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
-check('drag-to-look fallback still rotates the camera', Math.abs(yawAfterDrag - yawBeforeDrag) > 0.1, `yawOffset ${yawBeforeDrag.toFixed(2)} -> ${yawAfterDrag.toFixed(2)}`);
-await page.evaluate(() => {
-  delete document.getElementById('game-canvas').requestPointerLock;
-});
-
-// --- 12. Esc exits the lock; the game stays playable ---
-await page.mouse.click(640, 360);
-await page.waitForTimeout(400);
-check('locked before Esc test', await isLocked());
+// --- 11. Esc pauses; Esc resumes; the game stays playable ---
 await page.keyboard.press('Escape');
 await page.waitForTimeout(500);
-const afterEsc = await page.evaluate(() => ({ locked: document.pointerLockElement !== null, state: window.__game.state }));
-check('Esc exits pointer lock', afterEsc.locked === false, `locked=${afterEsc.locked} state=${afterEsc.state}`);
-if (afterEsc.state === 'pause') {
-  await page.keyboard.press('Escape');
-  await page.waitForTimeout(300);
-}
-check('game returns to play after Esc handling', await page.evaluate(() => window.__game.state === 'play'));
+check('Esc pauses the game', await page.evaluate(() => window.__game.state === 'pause'), `state=${await page.evaluate(() => window.__game.state)}`);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(500);
+check('Esc again returns to play', await page.evaluate(() => window.__game.state === 'play'));
 
 check('zero console/page errors', errors.length === 0, errors.length ? errors.join(' | ').slice(0, 400) : '');
 

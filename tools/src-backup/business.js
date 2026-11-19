@@ -12,7 +12,7 @@ export class Businesses {
   constructor(scene) {
     this.state = BUSINESS_DEFS.map(() => ({ owned: false, level: 0, pending: 0 }));
     this.beacons = BUSINESS_DEFS.map((def) => {
-      const beacon = buildBeacon(scene, 0xffd978);
+      const beacon = buildBeacon(scene, 0xc86bff);
       beacon.group.position.set(def.x, 0, def.z);
       beacon.group.visible = true;
       return beacon;
@@ -40,7 +40,7 @@ export class Businesses {
   update(dt) {
     this.clock += dt;
     for (let i = 0; i < BUSINESS_DEFS.length; i += 1) {
-      this.beacons[i].pillar.material.opacity = 0.55 + 0.2 * Math.sin(this.clock * 3);
+      this.beacons[i].pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
       if (!this.state[i].owned) continue;
       const cap = this.incomePerDay(i) * PENDING_CAP_DAYS;
       this.state[i].pending = Math.min(cap, this.state[i].pending + (this.incomePerDay(i) / SECONDS_PER_GAME_DAY) * dt);
@@ -96,7 +96,7 @@ export class Businesses {
   }
   reset() {
     this.state = BUSINESS_DEFS.map(() => ({ owned: false, level: 0, pending: 0 }));
-    for (const beacon of this.beacons) beacon.pillar.material.color.setHex(0xffd978);
+    for (const beacon of this.beacons) beacon.pillar.material.color.setHex(0xc86bff);
   }
 }
 export const ACHIEVEMENTS = [

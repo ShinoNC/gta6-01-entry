@@ -1,12 +1,13 @@
 import * as THREE from 'three';
 import { createCar } from './vehicles.js';
+import { buildWalkerMesh } from './pedestrians.js';
 import { roadLines } from './city.js';
 import { headingFor } from './traffic.js';
 import { pick, wrapAngle } from './random.js';
 const CALLSIGNS = ['IBIS-43', 'GULL-1', 'TARPON-10', 'OSPREY-7', 'PELICAN-22', 'HERON-5', 'EGRET-9', 'TERN-3', 'STORK-8', 'CRANE-12'];
 const HELI_CALLSIGN = 'HELI-1';
 const SEE_RANGE = 45, TOP_SPEED = 38, TOP_SPEED_HOT = 41, TOP_SPEED_MAX = 44, TURN_RATE = 2.8, ACCEL = 16;
-const RAM_DIST = 4.2, RAM_BACKOFF = 0.9, RAM_SLOW = 3.0, DIRECT_RANGE = 22, SNAP_RANGE = 35;
+const RAM_DIST = 4.2, RAM_BACKOFF = 0.9, RAM_SLOW = 3.0, DIRECT_RANGE = 22, SNAP_RANGE = 35, OFFICER_SPEED = 5;
 const RB_AHEAD = 45, RB_REPOSITION_S = 25, DESPAWN_S = 3, HELI_AHEAD = 22, HELI_SWEEP = 5;
 const HELI_H = 14, HELI_SWEEP_S = 5, HELI_HP = 60, HELI_RESPAWN_S = 60;
 function pursuitCarsForStars(stars) {
@@ -79,10 +80,11 @@ export class Police {
       light.position.set(x, 1.52, -0.2);
       car.group.add(light);
     }
-    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, shootCooldown: 1 + Math.random() * 2, redMaterial, blueMaterial, escortSide: 0 };
+    return { car, callsign, status: 'PURSUIT', ramCooldown: 0, shootCooldown: 1 + Math.random() * 2, redMaterial, blueMaterial, escortSide: 0, officer: null };
   }
   removeUnit(unit) {
     this.scene.remove(unit.car.group);
+    if (unit.officer) this.scene.remove(unit.officer.group);
   }
   // Drop every unit + helicopter at once (BUSTED/WASTED, heat cooled off).
   clearAll() {
@@ -247,6 +249,7 @@ export class Police {
   update(dt, context) {
     this.clock += dt;
     const { playerPos, playerHeading, driving, drivenCar, wantedStars } = context;
+    for (const unit of this.pursuit) if (unit.car.destroyed && unit.officer) this.scene.remove(unit.officer.group);
     this.pursuit = this.pursuit.filter((unit) => !unit.car.destroyed);
     this.roadblock = this.roadblock.filter((unit) => !unit.car.destroyed);
     if (wantedStars === 0) {
@@ -359,12 +362,50 @@ export class Police {
         if (car.group.position.x !== beforeX || car.group.position.z !== beforeZ) car.speed *= 0.4;
         car.group.rotation.y = car.heading;
       }
-      if (wantedStars >= 3 && dist < 42 && this.hasLineOfSight(car.position, playerPos)) {
+      if (!driving && wantedStars >= 1 && !unit.officer && car.speed === 0 && dist < 3.5) {
+        const mesh = buildWalkerMesh(0x24457e, 0x14141c, 0xd9a077, 0x201510, 'none', 1);
+        mesh.group.position.set(car.position.x + Math.cos(car.heading) * 1.8, 0, car.position.z - Math.sin(car.heading) * 1.8);
+        this.city.resolveCircle(mesh.group.position, 0.5);
+        mesh.returning = false;
+        mesh.walkPhase = 0;
+        this.scene.add(mesh.group);
+        unit.officer = mesh;
+      }
+      const officer = unit.officer;
+      if (officer) {
+        const op = officer.group.position;
+        const odist = Math.hypot(playerPos.x - op.x, playerPos.z - op.z);
+        if (driving || wantedStars === 0 || odist > 18) officer.returning = true;
+        else if (odist < 12) officer.returning = false;
+        const tx = officer.returning ? car.position.x : playerPos.x;
+        const tz = officer.returning ? car.position.z : playerPos.z;
+        const tdx = tx - op.x;
+        const tdz = tz - op.z;
+        const tdist = Math.hypot(tdx, tdz);
+        if (officer.returning && (tdist < 1.5 || tdist > 25)) {
+          this.scene.remove(officer.group);
+          unit.officer = null;
+        } else if (tdist > 0.4) {
+          const step = Math.min(OFFICER_SPEED * dt, tdist);
+          op.x += (tdx / tdist) * step;
+          op.z += (tdz / tdist) * step;
+          this.city.resolveCircle(op, 0.5);
+          officer.group.rotation.y = Math.atan2(tdx, tdz);
+          officer.walkPhase += dt * 9;
+          const swing = Math.sin(officer.walkPhase) * 0.5;
+          officer.legLeft.rotation.x = swing;
+          officer.legRight.rotation.x = -swing;
+          officer.armLeft.rotation.x = -swing;
+          officer.armRight.rotation.x = swing;
+        }
+      }
+      const shooter = unit.officer ? unit.officer.group : car;
+      if (wantedStars >= 3 && dist < 42 && this.hasLineOfSight(shooter.position, playerPos)) {
         unit.shootCooldown -= dt;
         if (unit.shootCooldown <= 0) {
           unit.shootCooldown = 1.1 + Math.random() * 0.9;
           unit.status = 'SHOOTING';
-          context.onPoliceShot?.(car.position, playerPos);
+          context.onPoliceShot?.(shooter.position, playerPos);
         }
       } else if (unit.status === 'SHOOTING') unit.status = 'PURSUIT';
       for (const wheel of car.wheels) {
@@ -418,7 +459,13 @@ export class Police {
     });
   }
   nearestDistance(playerPos) {
-    return this.pursuit.reduce((n, u) => Math.min(n, Math.hypot(u.car.position.x - playerPos.x, u.car.position.z - playerPos.z)), Infinity);
+    let n = Infinity;
+    for (const unit of this.pursuit) {
+      n = Math.min(n, Math.hypot(unit.car.position.x - playerPos.x, unit.car.position.z - playerPos.z));
+      const op = unit.officer?.group.position;
+      if (op) n = Math.min(n, Math.hypot(op.x - playerPos.x, op.z - playerPos.z));
+    }
+    return n;
   }
   allCarPositions() {
     return [...this.pursuit, ...this.roadblock].map((unit) => ({ x: unit.car.position.x, z: unit.car.position.z }));

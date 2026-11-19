@@ -72,18 +72,32 @@ check('briefing appears at the gold marker', up);
 const giver = await page.evaluate(() => document.getElementById('phone-giver').textContent);
 check('briefing is from Mara Solis', giver.toUpperCase().includes('MARA'), giver);
 
-// 4. ACCEPT starts mission 1; the player is already at the target, so it
-// completes quickly and pays $500.
-// The player is already AT the target, so the mission may start AND complete
-// within the first frames after ACCEPT — accept either state as proof it started.
+// 4. ACCEPT starts mission 1 with real gameplay: the target moves to the
+// east pier (104,0), then the client waits 2s, then the drop is Palm Row.
 await page.click('#phone-accept');
 let started = false;
 for (let i = 0; i < 6 && !started; i += 1) {
   await page.waitForTimeout(500);
-  started = await page.evaluate(() => window.__game.missions.currentMission()?.name === 'FIRST FARE' || window.__game.missions.doneCount() === 1);
+  started = await page.evaluate(() => window.__game.missions.currentMission()?.name === 'FIRST FARE');
 }
 check('mission 1 starts on ACCEPT', started);
-await page.waitForTimeout(5000);
+const m1Target = await page.evaluate(() => window.__game.missions.target);
+check('M1 target after ACCEPT is the east pier (104,0)', m1Target?.x === 104 && m1Target?.z === 0, JSON.stringify(m1Target));
+check('M1 does NOT auto-complete on ACCEPT', await page.evaluate(() => window.__game.missions.doneCount() === 0));
+await page.evaluate(() => { window.__game.player.group.position.set(104, 0, 0); });
+// The 2s waitAt needs 2s of GAME time; headless runs ~0.15x real time,
+// so poll for the stage to advance instead of sleeping a fixed amount.
+for (let i = 0; i < 40; i += 1) {
+  if (await page.evaluate(() => window.__game.missions.stageIndex >= 2)) break;
+  await page.waitForTimeout(1000);
+}
+check('M1 pickup + wait advances to stage 3', await page.evaluate(() => window.__game.missions.stageIndex === 2),
+  `stageIndex=${await page.evaluate(() => window.__game.missions.stageIndex)}`);
+await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 52); });
+for (let i = 0; i < 12; i += 1) {
+  if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
+  await page.waitForTimeout(1000);
+}
 const afterM1 = await page.evaluate(() => ({
   done: window.__game.missions.doneCount(),
   money: window.__game.money,
@@ -94,7 +108,7 @@ const afterM1 = await page.evaluate(() => ({
   beaconZ: +window.__game.missions.beacon.group.position.z.toFixed(0),
 }));
 note('after M1', JSON.stringify(afterM1));
-check('mission 1 completes at the marker, pays $500', afterM1.done === 1 && afterM1.money === 1750,
+check('mission 1 completes at the Palm Row drop, pays $500', afterM1.done === 1 && afterM1.money === 1750,
   `done=${afterM1.done} money=$${afterM1.money}`);
 
 // 5. M2 marker appears at (-52,70) with the next giver.

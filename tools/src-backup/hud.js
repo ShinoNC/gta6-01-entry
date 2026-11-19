@@ -52,11 +52,23 @@ export class Hud {
     this.passedUntil = 0;
     this.messageUntil = 0;
     this.messageSticky = false;
+    this.pendingMessages = [];
     this.lastPoliceSig = '';
     this.lastWeaponSig = '';
   }
   showMessage(text, seconds = 3.5, sticky = false) {
-    if (this.messageSticky && performance.now() < this.messageUntil && !sticky) return;
+    // FIFO queue: a message arriving while another is up waits its turn
+    // instead of clobbering it (or being dropped). Without this the FIRST
+    // WHEELS achievement, fired the same frame as a first steal, erased
+    // the VEHICLE STOLEN / witness message before it ever showed. A repeat
+    // of the queued tail is skipped, so a per-frame toast (arrest warning)
+    // cannot flood the queue. Sticky-over-sticky still overwrites at once.
+    const showing = this.messageUntil && performance.now() < this.messageUntil;
+    if (showing && (!sticky || !this.messageSticky)) {
+      const q = this.pendingMessages;
+      if (!q.length || q[q.length - 1].text !== text) q.push({ text, seconds, sticky });
+      return;
+    }
     this.el.message.textContent = text;
     this.el.message.classList.add('visible');
     this.messageUntil = performance.now() + seconds * 1000;
@@ -91,11 +103,15 @@ export class Hud {
   }
   paintMap(ctx, w, h, s) {
     const k = w / MINIMAP_SIZE;
+    // Markers scale with sqrt(k): on the 168px minimap m = 1 (unchanged),
+    // on the 1024px map they stay in one consistent family instead of
+    // blowing up 6x (the mission diamond was 86px across).
+    const m = Math.sqrt(k);
     const band = (a, b, c) => { ctx.fillStyle = c; ctx.fillRect(0, a, w, b - a); };
-    const dot = (x, z, size, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.fillRect(p.x - (size * k) / 2, p.y - (size * k) / 2, size * k, size * k); };
+    const dot = (x, z, size, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.fillRect(p.x - (size * m) / 2, p.y - (size * m) / 2, size * m, size * m); };
     const diamond = (x, z, size, color) => {
       const p = this.toMap(x, z, w, h);
-      const r = size * k;
+      const r = size * m;
       ctx.fillStyle = color;
       ctx.beginPath();
       ctx.moveTo(p.x, p.y - r);
@@ -105,7 +121,7 @@ export class Hud {
       ctx.closePath();
       ctx.fill();
     };
-    const circle = (x, z, r, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r * k, 0, Math.PI * 2); ctx.fill(); };
+    const circle = (x, z, r, color) => { const p = this.toMap(x, z, w, h); ctx.fillStyle = color; ctx.beginPath(); ctx.arc(p.x, p.y, r * m, 0, Math.PI * 2); ctx.fill(); };
     ctx.fillStyle = '#1a1030';
     ctx.fillRect(0, 0, w, h);
     const shore = this.toMap(0, 96, w, h).y;
@@ -113,34 +129,47 @@ export class Hud {
     const north = this.toMap(0, -162, w, h).y;
     band(shore, h, '#17789a');
     band(beachTop, shore, '#f0cd8c');
-    band(north, beachTop, '#3a3348');
+    band(north, beachTop, '#2a2436');
+    // Roads read as roads: full-width asphalt bands with a dashed centre
+    // line, over the darker block ground. Buildings sit inset inside their
+    // blocks with a sidewalk margin, so the road grid is the structure.
+    const rw = 12 * w / WORLD_WIDTH;
+    ctx.fillStyle = '#5a5468';
+    ctx.strokeStyle = '#8a8296';
+    ctx.lineWidth = Math.max(1, m);
+    ctx.setLineDash([6 * m, 6 * m]);
+    for (const line of roadLines()) {
+      if (line.axis === 'z') {
+        const x = this.toMap(line.at, 0, w, h).x;
+        ctx.fillRect(x - rw / 2, north, rw, beachTop - north);
+        ctx.beginPath(); ctx.moveTo(x, north); ctx.lineTo(x, beachTop); ctx.stroke();
+      } else {
+        const y = this.toMap(0, line.at, w, h).y;
+        ctx.fillRect(0, y - rw / 2, w, rw);
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+      }
+    }
+    ctx.setLineDash([]);
     ctx.fillStyle = '#ff7a66';
     for (const box of this.city.buildingBoxes) {
       const a = this.toMap(box.minX, box.minZ, w, h);
       const b = this.toMap(box.maxX, box.maxZ, w, h);
-      ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
-    }
-    ctx.strokeStyle = '#8a8296';
-    ctx.lineWidth = Math.max(2, 2 * k);
-    for (const line of roadLines()) {
-      ctx.beginPath();
-      if (line.axis === 'z') { const x = this.toMap(line.at, 0, w, h).x; ctx.moveTo(x, north); ctx.lineTo(x, beachTop); }
-      else { const y = this.toMap(0, line.at, w, h).y; ctx.moveTo(0, y); ctx.lineTo(w, y); }
-      ctx.stroke();
+      const bw = b.x - a.x, bh = b.y - a.y;
+      ctx.fillRect(a.x + bw * 0.08, a.y + bh * 0.08, bw * 0.84, bh * 0.84);
     }
     for (const car of s.cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 3, '#ffd978');
     if (s.trafficBlips) for (const b of s.trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
     if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
     if (s.sprayPos) diamond(s.sprayPos.x, s.sprayPos.z, 5, '#2ad0c4');
     if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
-    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 7 + Math.sin(s.timeSeconds * 4) * 1.5, '#ffffff');
+    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 5 + Math.sin(s.timeSeconds * 4), '#ffffff');
     if (s.policeBlips) for (const b of s.policeBlips) circle(b.x, b.z, 3, Math.floor(s.timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
     if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 4 + Math.sin(s.timeSeconds * 4), '#7affc4');
     if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
     if (s.labels) {
       // Small outlined labels, clamped inside the canvas so no name is cut
       // off at an edge or runs into its neighbour.
-      const fs = Math.round(8 * k);
+      const fs = Math.round(9 * m);
       ctx.font = `bold ${fs}px "Courier New", monospace`;
       ctx.textAlign = 'center';
       ctx.lineWidth = Math.round(fs / 6);
@@ -159,7 +188,7 @@ export class Hud {
     ctx.save();
     ctx.translate(p.x, p.y);
     ctx.rotate(Math.PI - s.playerHeading);
-    ctx.scale(k, k);
+    ctx.scale(m, m);
     ctx.fillStyle = s.driving ? '#7affc4' : '#ffffff';
     ctx.beginPath();
     ctx.moveTo(0, -6);
@@ -314,7 +343,7 @@ export class Hud {
       ['CARS STOLEN', stats.carsStolen],
       ['PEDESTRIANS DOWN', stats.pedsDown],
       ['MONEY EARNED (CAREER)', `$${fmt(Math.floor(stats.moneyEarned))}`],
-      ['DISTANCE DRIVEN', `${stats.kmDriven.toFixed(1)} km`],
+      ['DISTANCE DRIVEN', stats.kmDriven < 1 ? `${Math.round(stats.kmDriven * 1000)} m` : `${stats.kmDriven.toFixed(1)} km`],
       ['5-STAR ESCAPES', stats.escapes5],
       ['HELICOPTERS DOWN', stats.helisDown],
       ['ROBBERIES STOPPED', stats.robberiesStopped],
@@ -407,6 +436,8 @@ export class Hud {
       this.el.message.classList.remove('visible');
       this.messageUntil = 0;
       this.messageSticky = false;
+      const p = this.pendingMessages.shift();
+      if (p) this.showMessage(p.text, p.seconds, p.sticky);
     }
     if (this.passedUntil && performance.now() > this.passedUntil) {
       this.el.passedScreen.classList.add('hidden');

@@ -85,21 +85,39 @@ check('M1: a player hugging the nearest building face can get within trigger ran
 // 3. REAL WALK: walk on foot from spawn toward the target along the direct
 // line (like the browser player did). The gold marker sits AT the target
 // (52,0), so the phone briefing appears when the player gets within 6m of it.
-// Run east along the z=0 road — the target (52,0) is ON this road, the
-// natural route from spawn. Hold Shift+D (strafe right = +x when facing -z).
-// 37m to the trigger edge at ~0.6 m/s headless run speed needs ~62s; allow 80s.
+// Tank controls: turn right to face east (+x), then run east along the z=0
+// road. Poll the heading while turning and the distance while running, so
+// the run stops AT the marker instead of overshooting past it (the old
+// fixed 80s hold ended 49.4m past the target).
 await page.click('#start-button');
 await page.waitForTimeout(400);
-await page.keyboard.down('ShiftLeft');
+const wrap = (a) => {
+  let w = a;
+  while (w > Math.PI) w -= Math.PI * 2;
+  while (w < -Math.PI) w += Math.PI * 2;
+  return w;
+};
 await page.keyboard.down('KeyD');
-await page.waitForTimeout(80000);
+let facedEast = false;
+for (let i = 0; i < 20 && !facedEast; i += 1) {
+  await page.waitForTimeout(500);
+  facedEast = Math.abs(wrap(await page.evaluate(() => window.__game.player.heading) - Math.PI / 2)) < 0.15;
+}
 await page.keyboard.up('KeyD');
+note('turned east', `heading=${(await page.evaluate(() => window.__game.player.heading)).toFixed(2)} (want ~1.57)`);
+await page.keyboard.down('ShiftLeft');
+await page.keyboard.down('KeyW');
+let leg1 = { x: 0, z: 0, dist: 99 };
+for (let i = 0; i < 40 && leg1.dist > 10; i += 1) {
+  await page.waitForTimeout(2000);
+  leg1 = await page.evaluate(() => ({
+    x: +window.__game.player.position.x.toFixed(1), z: +window.__game.player.position.z.toFixed(1),
+    dist: +Math.hypot(window.__game.player.position.x - 52, window.__game.player.position.z - 0).toFixed(1),
+  }));
+}
+await page.keyboard.up('KeyW');
 await page.keyboard.up('ShiftLeft');
-const leg1 = await page.evaluate(() => ({
-  x: +window.__game.player.position.x.toFixed(1), z: +window.__game.player.position.z.toFixed(1),
-  dist: +Math.hypot(window.__game.player.position.x - 52, window.__game.player.position.z - 0).toFixed(1),
-}));
-note(`M1 walk: after running east 80s -> (${leg1.x}, ${leg1.z}), ${leg1.dist}m from target`);
+note(`M1 walk: after running east -> (${leg1.x}, ${leg1.z}), ${leg1.dist}m from target`);
 check('M1: running the road route on foot gets within trigger range', leg1.dist < 15, `ended ${leg1.dist}m from target`);
 // The phone appears only within 6m of the marker; if the walk stopped short,
 // step to the marker itself (the walk already proved the route is reachable).
@@ -116,31 +134,37 @@ if (!phoneUp) { await browser.close(); process.exit(1); }
 await page.click('#phone-accept');
 await page.waitForTimeout(400);
 const missionActive = await page.evaluate(() => window.__game.missions.currentMission()?.name);
-note(`M1 walk test: mission active = ${missionActive}, target = ${JSON.stringify(await page.evaluate(() => window.__game.missions.target))}`);
-await page.waitForTimeout(4000);
+const targetAfterAccept = await page.evaluate(() => window.__game.missions.target);
+note(`M1 walk test: mission active = ${missionActive}, target = ${JSON.stringify(targetAfterAccept)}`);
+check('M1: ACCEPT starts the mission (no instant pass)', missionActive === 'FIRST FARE', `active=${missionActive}`);
+check('M1: after ACCEPT the target moves to the east pier (104,0)', targetAfterAccept?.x === 104 && targetAfterAccept?.z === 0, JSON.stringify(targetAfterAccept));
+// Drive the new M1: pickup at the pier, hold 2s for the client, deliver to Palm Row.
+await page.evaluate(() => { window.__game.player.group.position.set(104, 0, 0); });
+// The 2s waitAt needs 2s of GAME time; headless runs ~0.15x real time,
+// so poll for the stage to advance instead of sleeping a fixed amount.
+for (let i = 0; i < 40; i += 1) {
+  if (await page.evaluate(() => window.__game.missions.stageIndex >= 2)) break;
+  await page.waitForTimeout(1000);
+}
+const stageAfterPickup = await page.evaluate(() => window.__game.missions.stageIndex);
+check('M1: pickup + 2s wait advances to the delivery stage', stageAfterPickup === 2, `stageIndex=${stageAfterPickup}`);
+await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 52); });
+for (let i = 0; i < 12; i += 1) {
+  if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
+  await page.waitForTimeout(1000);
+}
 const leg2 = await page.evaluate(() => ({
   done: window.__game.missions.doneCount(),
-  dist: +Math.hypot(window.__game.player.position.x - 52, window.__game.player.position.z - 0).toFixed(1),
+  money: window.__game.money,
 }));
-check('M1: accepting at the marker completes the pickup', leg2.done === 1, `ended ${leg2.dist}m from target, done=${leg2.done}`);
-
-// 4. Stand exactly at the closest building-face approach point and check the trigger.
-if (leg2.done !== 1) {
-  const face = approach[0];
-  await page.evaluate((at) => {
-    window.__game.player.group.position.set(at[0], 0, at[1]);
-  }, face.at);
-  await page.waitForTimeout(2000);
-  const faceDone = await page.evaluate(() => window.__game.missions.doneCount());
-  check('M1: standing at the closest building-face point triggers the pickup', faceDone === 1, `stood at (${face.at[0]},${face.at[1]}), ${face.dist}m from target, done=${faceDone}`);
-}
+check('M1: delivery to Palm Row completes the mission, pays $500', leg2.done === 1 && leg2.money === 1750, `done=${leg2.done} money=$${leg2.money}`);
 
 // 5. All mission targets: is each within trigger range of a road/beach point?
 const allTargets = await page.evaluate(() => {
   const hud = window.__game.hud;
   const boxes = hud.city.buildingBoxes;
   const targets = [
-    ['M1', 52, 0], ['M2a', -52, 70], ['M2b', 104, 70], ['M3b', -104, -104],
+    ['M1', 52, 0], ['M1a', 104, 0], ['M1c', -52, 52], ['M2a', -52, 70], ['M2b', 104, 70], ['M3b', -104, -104],
     ['M5a', 130, 70], ['M5c', 52, 0], ['M6b', 104, -104], ['M7a', 104, -104],
     ['M7b', -52, -104], ['M7c', -104, 26], ['M8a', -52, 70], ['M8c', 130, 52],
   ];

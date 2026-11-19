@@ -26,14 +26,9 @@ function check(name, ok, detail = '') {
   results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
   console.log(results[results.length - 1]);
 }
-// Shooting is click-only now (Space = jump / handbrake). The first canvas
-// click engages pointer lock and is NOT a shot, so lock first if needed.
+// Shooting is click-only now (Space = jump / handbrake). A click on the
+// canvas is a shot immediately — there is no pointer lock to engage.
 async function shoot() {
-  const locked = await page.evaluate(() => document.pointerLockElement !== null);
-  if (!locked) {
-    await page.mouse.click(640, 360);
-    await page.waitForTimeout(500);
-  }
   await page.mouse.click(640, 360);
 }
 
@@ -289,8 +284,26 @@ for (let i = 0; i < 15; i += 1) {
 // Re-place the witness: it flees after shot 1 and may leave the 20m radius
 // during the cooldown wait.
 await placeWitness();
+// A traffic car (or the pursuit car from shot 1) can knock the player down
+// during the wait — a click while downTimer > 0 is swallowed, so wait it out.
+for (let i = 0; i < 20; i += 1) {
+  const down = await page.evaluate(() => window.__game.player.downTimer > 0);
+  if (!down) break;
+  await page.waitForTimeout(1000);
+}
+const magBefore2 = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
 await shoot(); // shot 2 within 4s cooldown, witness nearby
-await page.waitForTimeout(3000);
+await page.waitForTimeout(1500);
+const magAfter2 = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
+if (magAfter2 === magBefore2) {
+  // Shot 2 was swallowed (knockdown or briefing popup) — re-place the
+  // witness and retry once. The witness bypasses the shoot-star cooldown,
+  // so the retry still counts even if it lands later in game-time.
+  await placeWitness();
+  await shoot();
+  await page.waitForTimeout(1500);
+}
+await page.waitForTimeout(1500);
 const stars2 = await page.evaluate(() => window.__game.wanted.stars);
 check('witness calls in second shot despite cooldown', stars1 === 1 && stars2 === 2, `stars ${stars1} -> ${stars2}`);
 

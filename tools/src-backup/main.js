@@ -33,7 +33,9 @@ const REP_PER_LEVEL = 200;
 const REP_RANKS = ['ROOKIE', 'HUSTLER', 'WHEELMAN', 'BAY HUSTLER', 'KINGPIN'];
 const CLOCK_START_MINUTES = 18 * 60 + 50;
 const CLOCK_MINUTES_PER_SECOND = 0.5;
-const AUTOSAVE_SLOT = 1;
+let activeSlot = 1;
+let overwriteArmed = false;
+let promptAt = -99;
 const PEDESTRIAN_HIT_RANGE = 2.1;
 const PEDESTRIAN_HIT_MIN_SPEED = 2;
 const SPRAY_X = 104, SPRAY_Z = -52, SPRAY_PRICE = 200, SPRAY_RANGE = 9;
@@ -52,6 +54,12 @@ renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
+// One real headlight for the player's car only (no shadow: perf). It
+// follows whichever car is driven and switches off on foot / by day.
+const headlight = new THREE.SpotLight(0xfff2cc, 300, 35, 0.5, 0.4);
+headlight.visible = false;
+scene.add(headlight);
+scene.add(headlight.target);
 const input = new Input();
 const rng = makeRng(seed);
 let state = 'title';
@@ -156,8 +164,9 @@ function snapshotSave() {
     weaponsOwned: combat.ownedWeaponIds(),
     tapesCollected: tapes.collected,
     look: { ...look },
-    playerX: player.position.x,
-    playerZ: player.position.z,
+    playerX: drivenCar ? drivenCar.position.x : player.position.x,
+    playerZ: drivenCar ? drivenCar.position.z : player.position.z,
+    gameMinutes,
     businesses: businesses.serialize(),
     stats: { ...stats },
     achievements: [...unlockedAchievements],
@@ -183,6 +192,7 @@ function applySave(data) {
   stats = { ...freshStats(), ...(data.stats || {}) };
   unlockedAchievements = Array.isArray(data.achievements) ? [...data.achievements] : [];
   elapsed = data.playSeconds || 0;
+  gameMinutes = data.gameMinutes || CLOCK_START_MINUTES;
   garage = { engine: false, armour: false, nitro: false, ...(data.garage || {}) };
   if (data.look) applyLook(data.look);
   health = 100;
@@ -207,7 +217,6 @@ function startGame() {
 function togglePause() {
   if (state === 'play') {
     state = 'pause';
-    input.exitLock();
     pauseScreen.classList.remove('hidden');
   } else if (state === 'pause') {
     startGame();
@@ -233,7 +242,6 @@ function openMissionScreen() {
   if (empireOpen) closeEmpireScreen();
   if (mapOpen) closeMapScreen();
   if (garageOpen) closeGarageScreen();
-  input.exitLock();
   hud.renderMissionList(missions.statusList(), missions.stageIndex, completionPct(), playTimeLine());
   hud.showMissionScreen();
   missionOpen = true;
@@ -246,7 +254,6 @@ function openEmpireScreen() {
   if (missionOpen) closeMissionScreen();
   if (mapOpen) closeMapScreen();
   if (garageOpen) closeGarageScreen();
-  input.exitLock();
   hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel(), completionPct());
   hud.showEmpireScreen();
   empireOpen = true;
@@ -259,7 +266,6 @@ function openMapScreen() {
   if (missionOpen) closeMissionScreen();
   if (empireOpen) closeEmpireScreen();
   if (garageOpen) closeGarageScreen();
-  input.exitLock();
   const focus = drivenCar || player;
   hud.renderMapScreen({
     playerPos: focus.position,
@@ -287,7 +293,6 @@ function openGarageScreen() {
   if (missionOpen) closeMissionScreen();
   if (empireOpen) closeEmpireScreen();
   if (mapOpen) closeMapScreen();
-  input.exitLock();
   hud.renderGarageScreen(garage, money, drivenCar, wanted.stars);
   hud.showGarageScreen();
   garageOpen = true;
@@ -317,7 +322,28 @@ function acceptBriefing() {
   missions.startMission(briefing.index);
 }
 buildSwatches();
-on('start-button', startGame);
+function refreshTitleSaves() {
+  const summaries = saveSlotSummaries();
+  $('continue-summary').textContent = `SAVES — ${summaries.map((s) => `${s.slot === activeSlot ? '▸' : ''}${s.slot}: ${s.empty ? 'EMPTY' : `$${s.money.toLocaleString('en-US')} · ${s.missionsDone}/${MISSIONS_IN_STORY} jobs`}`).join(' · ')}`;
+  $('slot-button').textContent = `SAVE SLOT ${activeSlot}`;
+  if (summaries.some((s) => !s.empty)) $('continue-button').classList.remove('hidden');
+}
+on('start-button', () => {
+  if (loadGame(activeSlot) && !overwriteArmed) {
+    overwriteArmed = true;
+    $('start-button').textContent = `OVERWRITE SLOT ${activeSlot}? CLICK AGAIN`;
+    return;
+  }
+  overwriteArmed = false;
+  $('start-button').textContent = 'NEW GAME';
+  startGame();
+});
+on('slot-button', () => {
+  activeSlot = (activeSlot % 3) + 1;
+  overwriteArmed = false;
+  $('start-button').textContent = 'NEW GAME';
+  refreshTitleSaves();
+});
 on('down-button', recoverFromDown);
 on('resume-button', startGame);
 on('restart-button', () => window.location.reload());
@@ -338,14 +364,17 @@ on('radio-option', () => {
   refreshOptionsLabels();
 });
 on('continue-button', () => {
-  const slot = latestSaveSlot() || AUTOSAVE_SLOT;
+  const slot = loadGame(activeSlot) ? activeSlot : latestSaveSlot() || activeSlot;
   const data = loadGame(slot);
-  if (data) applySave(data);
+  if (data) {
+    activeSlot = slot;
+    applySave(data);
+  }
   startGame();
 });
 on('save-button', () => {
-  saveGame(AUTOSAVE_SLOT, snapshotSave());
-  hud.showMessage('GAME SAVED — SLOT 1');
+  saveGame(activeSlot, snapshotSave());
+  hud.showMessage(`GAME SAVED — SLOT ${activeSlot}`);
 });
 on('missions-button', () => {
   startGame();
@@ -385,7 +414,7 @@ on('garage-list', (event) => {
   }
   audio.chime();
   openGarageScreen();
-  saveGame(AUTOSAVE_SLOT, snapshotSave());
+  saveGame(activeSlot, snapshotSave());
 });
 on('empire-list', (event) => {
   const buyButton = event.target.closest('.empire-buy');
@@ -401,7 +430,7 @@ on('empire-list', (event) => {
     audio.chime();
     awardAchievements();
     openEmpireScreen();
-    saveGame(AUTOSAVE_SLOT, snapshotSave());
+    saveGame(activeSlot, snapshotSave());
   } else if (upgradeButton) {
     const index = Number.parseInt(upgradeButton.dataset.index, 10);
     const def = businesses.defs[index];
@@ -411,7 +440,7 @@ on('empire-list', (event) => {
     hud.showMessage(`${def.name} UPGRADED — LV ${businesses.state[index].level}`, 4, true);
     audio.chime();
     openEmpireScreen();
-    saveGame(AUTOSAVE_SLOT, snapshotSave());
+    saveGame(activeSlot, snapshotSave());
   }
 });
 on('phone-accept', acceptBriefing);
@@ -425,9 +454,9 @@ window.addEventListener('resize', () => {
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
-function nearestCar(position) {
+function nearestCar(position, range = ENTER_CAR_RANGE) {
   let best = null;
-  let bestDist = ENTER_CAR_RANGE;
+  let bestDist = range;
   const consider = (car) => {
     if (car.destroyed) return;
     const dist = Math.hypot(car.position.x - position.x, car.position.z - position.z);
@@ -457,20 +486,30 @@ function enterCar(car) {
   }
   // Stealing a police car: drop the unit (the force spawns a replacement),
   // keep the car — lightbar and all — and yank it to a stop.
+  let wasPolice = false;
   for (const list of [police.pursuit, police.roadblock]) {
     const unitIndex = list.findIndex((unit) => unit.car === car);
     if (unitIndex >= 0) {
+      if (list[unitIndex].officer) scene.remove(list[unitIndex].officer.group);
       list.splice(unitIndex, 1);
       cars.push(car);
       car.speed = 0;
+      wasPolice = true;
       break;
     }
   }
   if (!car.owned) {
     car.owned = true;
     stats.carsStolen += 1;
-    const crime = wanted.commitCrime('steal');
-    hud.showMessage(`VEHICLE STOLEN: ${car.name}${crime ? ' — ' + crime : ''}`, 3);
+    // GTA-style: the theft only earns a star when someone sees it — a cop
+    // with line of sight, or a pedestrian within 20m (same witness check
+    // as a gunshot). Stealing a police car is always known. Unseen, the
+    // steal is free — just the message, no heat.
+    const seen = wasPolice || police.canSeePlayer(player.position) || pedestrians.peds.some((ped) => ped.knockedTimer <= 0 && Math.hypot(ped.mesh.group.position.x - player.position.x, ped.mesh.group.position.z - player.position.z) < 20);
+    const crime = seen ? wanted.commitCrime('steal') : '';
+    let msg = `VEHICLE STOLEN: ${car.name}`;
+    if (crime) msg += ` — ${crime}${wasPolice ? '' : ' — witness called it in'}`;
+    hud.showMessage(msg, 3);
   } else {
     hud.showMessage(`ENTERED ${car.name} — W to drive, S to brake`);
   }
@@ -495,7 +534,6 @@ function damagePlayer(amount) {
 function endRun(kind) {
   if (state !== 'play') return;
   state = 'down';
-  input.exitLock();
   hud.hideBriefing();
   phoneVisible = false;
   if (missionOpen) closeMissionScreen();
@@ -527,7 +565,7 @@ function endRun(kind) {
   player.downTimer = 0;
   player.group.rotation.x = 0;
   $('down-title').textContent = kind;
-  $('down-sub').textContent = wasted ? `Hospital bill $${fine.toLocaleString('en-US')} — the Keys PD lost your trail` : `Fine $${fine.toLocaleString('en-US')} — the Keys PD lost your trail`;
+  $('down-sub').textContent = wasted ? `Hospital bill $${fine.toLocaleString('en-US')}` : `Fine $${fine.toLocaleString('en-US')}`;
   $('down-screen').classList.remove('hidden');
 }
 function recoverFromDown() {
@@ -718,6 +756,14 @@ function update(dt) {
   gameMinutes += dt * CLOCK_MINUTES_PER_SECOND * (1 + 2 * night);
   city.setNight(night);
   weather.night = night;
+  const headOn = Boolean(drivenCar) && night > 0.5;
+  headlight.visible = headOn;
+  if (headOn) {
+    const fx = Math.sin(drivenCar.heading), fz = Math.cos(drivenCar.heading);
+    headlight.position.set(drivenCar.position.x + fx * 2, 1.2, drivenCar.position.z + fz * 2);
+    headlight.target.position.set(drivenCar.position.x + fx * 20, 0, drivenCar.position.z + fz * 20);
+  }
+  for (const car of cars) car.lampMat.color.setHex(car === drivenCar && headOn ? 0xffffff : 0xfff2a8);
   if (wanted.stars === 0 && health < 50 && elapsed - lastHurtAt > 5) health = Math.min(50, health + dt * 3);
   if (input.pressed('KeyR')) {
     hud.showMessage(`RADIO — ${audio.nextStation()}`, 2);
@@ -741,7 +787,9 @@ function update(dt) {
   if (input.pressed('KeyF') && player.downTimer <= 0) {
     if (drivenCar) exitCar();
     else {
-      const car = nearestCar(player.position);
+      // A car that just showed its prompt stays grabbable for 1.5s at 8m —
+      // a moving car leaves the 5m ring before the player can react.
+      const car = nearestCar(player.position, elapsed - promptAt < 1.5 ? 8 : ENTER_CAR_RANGE);
       if (car) enterCar(car);
       else hud.showMessage('No car nearby — walk closer to one and press F');
     }
@@ -750,6 +798,7 @@ function update(dt) {
   // toasts (achievements, hits) are never overwritten.
   if (!drivenCar && player.downTimer <= 0) {
     const near = nearestCar(player.position);
+    if (near) promptAt = elapsed;
     if (near && !$('hud-message').classList.contains('visible')) {
       hud.showMessage(`Press F to ${near.owned ? 'drive' : 'steal'} ${near.name}`, 0.6);
     }
@@ -761,7 +810,7 @@ function update(dt) {
   if (drivenCar) {
     drivenCar.update(dt, drivingInput, city, weather.grip);
     stats.kmDriven += (Math.abs(drivenCar.speed) * dt) / 1000;
-    chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, input, combat.recoil, police.helicopter ? 2 : 0);
+    chaseCamera.update(dt, drivenCar.position, drivenCar.heading, true, combat.recoil, police.helicopter ? 2 : 0);
     if (drivenCar.skidding) {
       const backX = drivenCar.position.x - Math.sin(drivenCar.heading) * 1.4;
       const backZ = drivenCar.position.z - Math.cos(drivenCar.heading) * 1.4;
@@ -793,8 +842,8 @@ function update(dt) {
       driftChain = 0;
     }
   } else {
-    player.update(dt, input, chaseCamera.yaw, city);
-    chaseCamera.update(dt, player.position, player.heading, false, input, combat.recoil, police.helicopter ? 2 : 0);
+    player.update(dt, input, city);
+    chaseCamera.update(dt, player.position, player.heading, false, combat.recoil, police.helicopter ? 2 : 0);
     const hitByCar = (car, speed) => {
       if (!car || car.destroyed) return;
       const dx = player.position.x - car.position.x;
@@ -819,12 +868,10 @@ function update(dt) {
   city.update(dt);
   effects.update(dt);
   if (input.tap && player.downTimer <= 0) {
-    if (!drivenCar) {
-      player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
-      player.group.rotation.y = player.heading;
-    }
     const origin = drivenCar ? drivenCar.position : player.position;
-    const aim = drivenCar ? drivenCar.heading + Math.PI : chaseCamera.yaw;
+    // Aim is the facing direction: the on-foot heading, the car heading
+    // while driving. tryShoot points along -aim, hence the +PI.
+    const aim = (drivenCar ? drivenCar.heading : player.heading) + Math.PI;
     const result = combat.tryShoot(origin, aim, combatTargets());
     if (result === 'empty') hud.showMessage('NO AMMO — finish a mission to restock');
     else if (result === 'reloading') hud.showMessage('RELOADING…');
@@ -983,7 +1030,6 @@ function update(dt) {
   if (briefing && !phoneVisible && !missionOpen) {
     hud.showBriefing(briefing.mission, briefing.index);
     phoneVisible = true;
-    input.exitLock();
     audio.click();
   }
   audio.setEngine(drivenCar ? Math.abs(drivenCar.speed) / 38 : 0, Boolean(drivenCar));
@@ -1009,7 +1055,7 @@ function update(dt) {
     clockText: clockLine(),
     weatherText: weather.label,
     tapes: `${tapes.collected}/${TAPE_COUNT}`,
-    policeUnits: police.units(focus.position),
+    policeUnits: wanted.stars > 0 ? police.units(focus.position) : [],
     weapons: combat.ammoForHud(),
     radioStation: audio.nowPlaying(),
     repText: repText(),
@@ -1050,8 +1096,8 @@ loadTextures()
     police = new Police(scene, textures, city, rng);
     missions = new Missions(scene, {
       onScriptedHeat(stars) {
-        wanted.setStars(stars);
-        hud.showMessage(`THE HEAT IS ON — ${stars} stars on you`, 3);
+        wanted.setStars(Math.max(wanted.stars, stars));
+        hud.showMessage(`THE HEAT IS ON — ${wanted.stars} stars on you`, 3);
       },
       onMissionStarted(mission, index) {
         freeObj = mission.objectives[0].label;
@@ -1079,7 +1125,7 @@ loadTextures()
         }
         audio.chime();
         dialogue.cue('done');
-        saveGame(AUTOSAVE_SLOT, snapshotSave());
+        saveGame(activeSlot, snapshotSave());
         if (index === MISSIONS_IN_STORY - 1) {
           freeObj = 'STORY COMPLETE — the Keys are yours. Free roam!';
         }
@@ -1090,6 +1136,7 @@ loadTextures()
     effects = new Effects(scene);
     businesses = new Businesses(scene);
     combat = new Combat(scene, {
+      los: (from, to) => police.hasLineOfSight(from, to),
       onShot() {
         audio.gunshot();
         gunshotAt = { x: player.position.x, z: player.position.z };
@@ -1184,9 +1231,8 @@ loadTextures()
       },
     });
     hud.setObjective('Press ENTER or click NEW GAME to play');
-    const summaries = saveSlotSummaries();
-    $('continue-summary').textContent = `SAVES — ${summaries.map((s) => (s.empty ? `${s.slot}: EMPTY` : `${s.slot}: $${s.money.toLocaleString('en-US')} · ${s.missionsDone}/${MISSIONS_IN_STORY} jobs`)).join(' · ')}`;
-    if (latestSaveSlot()) $('continue-button').classList.remove('hidden');
+    activeSlot = latestSaveSlot() || 1;
+    refreshTitleSaves();
     applyLook(loadLook() || {});
     stageShot();
     window.__game = {
@@ -1228,6 +1274,7 @@ loadTextures()
       police,
       missions,
       combat,
+      headlight,
       dialogue,
       tapes,
       sideJobs,
