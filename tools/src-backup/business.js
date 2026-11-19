@@ -40,7 +40,7 @@ export class Businesses {
   update(dt) {
     this.clock += dt;
     for (let i = 0; i < BUSINESS_DEFS.length; i += 1) {
-      this.beacons[i].pillar.material.opacity = 0.2 + 0.1 * Math.sin(this.clock * 3);
+      this.beacons[i].pillar.material.opacity = 0.55 + 0.2 * Math.sin(this.clock * 3);
       if (!this.state[i].owned) continue;
       const cap = this.incomePerDay(i) * PENDING_CAP_DAYS;
       this.state[i].pending = Math.min(cap, this.state[i].pending + (this.incomePerDay(i) / SECONDS_PER_GAME_DAY) * dt);

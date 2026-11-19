@@ -53,12 +53,15 @@ export class Traffic {
       cruiseSpeed: intBetween(rng, minSpeed, maxSpeed),
       speed: 0,
       stoppedTimer: 0,
+      blockedTimer: 0,
+      overtakeTimer: 0,
+      overtake: 0,
     };
     this.placeOnRoad(npc);
     return npc;
   }
   placeOnRoad(npc) {
-    const offset = laneOffsetFor(npc.line.axis, npc.direction);
+    const offset = laneOffsetFor(npc.line.axis, npc.direction) * (1 - 2 * npc.overtake);
     if (npc.line.axis === 'z') {
       npc.car.group.position.set(npc.line.at + offset, 0, npc.along);
     } else {
@@ -72,6 +75,9 @@ export class Traffic {
     npc.direction = this.rng() < 0.5 ? -1 : 1;
     npc.along = npc.direction > 0 ? npc.line.from : npc.line.to;
     npc.cruiseSpeed = intBetween(this.rng, npc.speedBand[0], npc.speedBand[1]);
+    npc.blockedTimer = 0;
+    npc.overtakeTimer = 0;
+    npc.overtake = 0;
     this.placeOnRoad(npc);
   }
   blockedAhead(npc, obstacles) {
@@ -100,9 +106,17 @@ export class Traffic {
         npc.speed = 0;
       } else if (this.blockedAhead(npc, obstacles)) {
         npc.speed = Math.max(0, npc.speed - 30 * dt);
+        npc.blockedTimer += dt;
+        // Blocked too long (a player standing in the road, a pile-up):
+        // swing into the opposite lane and go around instead of queuing
+        // behind the obstacle forever.
+        if (npc.blockedTimer > 3) npc.overtakeTimer = 5;
       } else {
         npc.speed = Math.min(npc.cruiseSpeed, npc.speed + 8 * dt);
+        npc.blockedTimer = 0;
       }
+      npc.overtakeTimer = Math.max(0, npc.overtakeTimer - dt);
+      npc.overtake += ((npc.overtakeTimer > 0 ? 1 : 0) - npc.overtake) * Math.min(1, dt * 2);
       npc.along += npc.direction * npc.speed * dt;
       if (npc.along < npc.line.from - 2 || npc.along > npc.line.to + 2) this.respawnAtEdge(npc);
       this.placeOnRoad(npc);

@@ -115,17 +115,19 @@ const MISSION_CHAIN = [
 ];
 export function buildBeacon(scene, color = 0xffd978) {
   const group = new THREE.Group();
-  const pillarMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.25, blending: THREE.AdditiveBlending, side: THREE.DoubleSide, depthWrite: false });
-  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, 30, 12, 1, true), pillarMaterial);
-  pillar.position.y = 15;
-  const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85, side: THREE.DoubleSide, depthWrite: false });
-  const ring = new THREE.Mesh(new THREE.RingGeometry(2.2, 3.1, 24), ringMaterial);
+  const pillarMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.6, side: THREE.FrontSide, depthWrite: false });
+  const pillar = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 45, 12, 1, true), pillarMaterial);
+  pillar.position.y = 22.5;
+  const ringMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, side: THREE.DoubleSide, depthWrite: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(3, 4.2, 24), ringMaterial);
   ring.rotation.x = -Math.PI / 2;
   ring.position.y = 0.06;
-  group.add(pillar, ring);
+  const diamond = new THREE.Mesh(new THREE.OctahedronGeometry(1.7, 0), pillarMaterial);
+  diamond.position.y = 7;
+  group.add(pillar, ring, diamond);
   group.visible = false;
   scene.add(group);
-  return { group, pillar };
+  return { group, pillar, ring, diamond };
 }
 export class Missions {
   constructor(scene, callbacks) {
@@ -221,6 +223,14 @@ export class Missions {
     }
     this.callbacks.onMissionComplete(mission, finishedIndex);
   }
+  animateBeacon(dt) {
+    const b = this.beacon;
+    b.pillar.material.opacity = 0.55 + 0.2 * Math.sin(this.clock * 3);
+    const s = 1 + 0.07 * Math.sin(this.clock * 3);
+    b.ring.scale.set(s, s, 1);
+    b.diamond.rotation.y += dt * 1.5;
+    b.diamond.position.y = 7 + Math.sin(this.clock * 2) * 0.6;
+  }
   update(dt, context) {
     this.clock += dt;
     this.snooze = Math.max(0, this.snooze - dt);
@@ -232,7 +242,7 @@ export class Missions {
       this.beacon.group.visible = this.target !== null;
       if (this.target) {
         this.beacon.group.position.set(this.target.x, 0, this.target.z);
-        this.beacon.pillar.material.opacity = 0.2 + 0.1 * Math.sin(this.clock * 3);
+        this.animateBeacon(dt);
         this.atMarker = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z) < MARKER_M;
       } else {
         this.atMarker = false;
@@ -253,7 +263,7 @@ export class Missions {
     this.beacon.group.visible = this.target !== null;
     if (this.target) {
       this.beacon.group.position.set(this.target.x, 0, this.target.z);
-      this.beacon.pillar.material.opacity = 0.2 + 0.1 * Math.sin(this.clock * 3);
+      this.animateBeacon(dt);
     }
     if (objective.kind === 'driveTo') {
       if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M) {

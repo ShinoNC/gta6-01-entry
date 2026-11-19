@@ -134,19 +134,20 @@ await page.keyboard.press('KeyM');
 await page.waitForTimeout(800);
 const screen = await page.evaluate(() => ({
   acceptButtons: document.querySelectorAll('#mission-list .mission-accept').length,
-  hint: document.getElementById('mission-list').textContent.includes('gold marker'),
+  hint: document.getElementById('mission-list').textContent.includes('Head to the marker on the map'),
   pendingRow: [...document.querySelectorAll('.mission-row.pending')].length,
 }));
 note('mission screen', JSON.stringify(screen));
 check('mission screen has no ACCEPT button', screen.acceptButtons === 0, `${screen.acceptButtons} buttons`);
-check('mission screen shows the gold-marker hint', screen.hint);
+check('mission screen shows the marker hint', screen.hint);
 check('mission 2 row is pending', screen.pendingRow === 1, `${screen.pendingRow} pending rows`);
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);
 
-// 8. Objective line points at the marker.
+// 8. Objective line guides to the marker: live distance + direction arrow
+// (the old "head to the gold marker" text was replaced by the guidance).
 const obj = await page.evaluate(() => document.getElementById('hud-objective').textContent);
-check('objective line points at the gold marker', obj.includes('gold marker'), obj);
+check('objective line guides to the marker (distance + arrow)', /\d+m [↑→↓←]/.test(obj), obj);
 
 check('0 console/page errors', errors.length === 0, errors.slice(0, 3).join(' | '));
 const fails = results.filter((r) => r.startsWith('FAIL')).length;

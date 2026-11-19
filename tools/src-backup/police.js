@@ -84,6 +84,15 @@ export class Police {
   removeUnit(unit) {
     this.scene.remove(unit.car.group);
   }
+  // Drop every unit + helicopter at once (BUSTED/WASTED, heat cooled off).
+  clearAll() {
+    for (const unit of [...this.pursuit, ...this.roadblock]) this.removeUnit(unit);
+    this.pursuit = [];
+    this.roadblock = [];
+    this.roadblockCentre = null;
+    this.removeHelicopter();
+    this.lostTimer = 0;
+  }
   spawnPursuitCar(playerPos, spawnDistance) {
     let line = pick(this.rng, this.lines);
     let along = line.from + this.rng() * (line.to - line.from);
@@ -242,13 +251,7 @@ export class Police {
     this.roadblock = this.roadblock.filter((unit) => !unit.car.destroyed);
     if (wantedStars === 0) {
       this.lostTimer += dt;
-      if (this.lostTimer > DESPAWN_S) {
-        for (const unit of [...this.pursuit, ...this.roadblock]) this.removeUnit(unit);
-        this.pursuit = [];
-        this.roadblock = [];
-        this.roadblockCentre = null;
-        this.removeHelicopter();
-      }
+      if (this.lostTimer > DESPAWN_S) this.clearAll();
     } else {
       this.lostTimer = 0;
     }

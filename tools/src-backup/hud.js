@@ -133,7 +133,7 @@ export class Hud {
     if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
     if (s.sprayPos) diamond(s.sprayPos.x, s.sprayPos.z, 5, '#2ad0c4');
     if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
-    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 5 + Math.sin(s.timeSeconds * 4) * 1.5, '#ffd978');
+    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 7 + Math.sin(s.timeSeconds * 4) * 1.5, '#ffffff');
     if (s.policeBlips) for (const b of s.policeBlips) circle(b.x, b.z, 3, Math.floor(s.timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
     if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 4 + Math.sin(s.timeSeconds * 4), '#7affc4');
     if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
@@ -143,9 +143,9 @@ export class Hud {
       const fs = Math.round(8 * k);
       ctx.font = `bold ${fs}px "Courier New", monospace`;
       ctx.textAlign = 'center';
-      ctx.lineWidth = Math.round(fs / 8);
+      ctx.lineWidth = Math.round(fs / 6);
       ctx.strokeStyle = '#1a1030';
-      ctx.fillStyle = '#ffd978';
+      ctx.fillStyle = '#ffffff';
       for (const d of districtLabels()) {
         const p = this.toMap(d.x, d.z, w, h);
         const tw = ctx.measureText(d.name).width;
@@ -261,7 +261,7 @@ export class Hud {
         const tag = e.status === 'done' ? '[DONE]' : e.status === 'active' ? '[ACTIVE]' : e.status === 'pending' ? '[AVAILABLE]' : '[LOCKED]';
         const stage = e.status === 'active' ? ` · STAGE ${activeStageIndex + 1}/${e.objectiveCount}` : '';
         const finale = e.finale ? ' · ★ FINALE' : '';
-        const hint = e.status === 'pending' ? '<div class="mission-briefing">Head to the gold marker on the map to start this job.</div>' : '';
+        const hint = e.status === 'pending' ? '<div class="mission-briefing">Head to the marker on the map to start this job.</div>' : '';
         const briefing = e.status === 'active' || e.status === 'pending' ? `<div class="mission-briefing">${e.briefing}</div>` : '';
         return `<div class="mission-row ${e.status}"><div class="mission-head"><span>MISSION ${e.number}/${MISSIONS_IN_STORY} — ${e.name}${finale}</span><span>${tag}${stage}</span></div><div class="mission-reward">Reward $${e.rewardMoney.toLocaleString('en-US')} · ${e.rewardRep} REP · from ${e.giver}</div>${briefing}${hint}</div>`;
       })

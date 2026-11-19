@@ -30,7 +30,7 @@
       position:fixed;
       z-index:10;
       pointer-events:none;
-      text-shadow:2px 2px 3px rgba(10,5,25,.8);
+      text-shadow:-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030,1px 1px 0 #1a1030,2px 2px 3px rgba(10,5,25,.8);
       }
       body.on-title .hud{
       display:none;
@@ -38,6 +38,9 @@
       #hud-top-left{
       top:16px;
       left:18px;
+      background:rgba(26,16,48,.62);
+      padding:8px 12px;
+      border-radius:6px;
       }
       #hud-district{
       font-size:30px;
@@ -99,6 +102,9 @@
       top:16px;
       right:18px;
       text-align:right;
+      background:rgba(26,16,48,.62);
+      padding:8px 12px;
+      border-radius:6px;
       }
       #hud-money{
       font-size:28px;
@@ -175,6 +181,9 @@
       bottom:18px;
       right:18px;
       text-align:right;
+      background:rgba(26,16,48,.62);
+      padding:8px 12px;
+      border-radius:6px;
       }
       #hud-weapons{
       display:flex;
@@ -490,16 +499,17 @@
       margin-top:12px;
       font-size:12px;
       letter-spacing:1px;
-      color:#ffd978;
-      text-shadow:1px 1px 2px #1a1030;
+      color:#fff;
+      text-shadow:-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030,1px 1px 0 #1a1030;
       max-width:92vw;
       text-align:center;
       }
       #continue-summary{
       margin-top:16px;
       font-size:14px;
-      color:#7affc4;
+      color:#fff;
       letter-spacing:2px;
+      text-shadow:-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030,1px 1px 0 #1a1030;
       }
       .menu-button.compact{
       margin-top:14px;
@@ -593,6 +603,9 @@
       line-height:1.9;
       color:#fff;
       text-shadow:2px 2px 3px rgba(10,5,25,.8);
+      background:rgba(26,16,48,.6);
+      padding:6px 16px;
+      border-radius:6px;
       }
       .controls b{
       color:#ffd978;
@@ -602,8 +615,8 @@
       max-width:780px;
       font-size:12px;
       line-height:1.5;
-      color:#ffdcb0;
-      text-shadow:1px 1px 2px #1a1030;
+      color:#fff;
+      text-shadow:-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030,1px 1px 0 #1a1030;
       }
       #load-error{
       position:fixed;
@@ -764,7 +777,7 @@
 <div class="controls" id="continue-summary">
 </div>
 <div class="controls">
-  <b>WASD</b> move · <b>Mouse</b> look · <b>F</b> enter / carjack · <b>Click</b> punch / shoot · <b>SPACE</b> jump / handbrake · <b>M</b> missions · <b>B</b> empire · <b>N</b> map · <b>R</b> radio
+  <b>WASD</b>&nbsp;move · <b>Mouse</b>&nbsp;look · <b>F</b>&nbsp;enter&nbsp;/&nbsp;carjack · <b>Click</b>&nbsp;punch&nbsp;/&nbsp;shoot · <b>SPACE</b>&nbsp;jump&nbsp;/&nbsp;handbrake · <b>M</b>&nbsp;missions · <b>B</b>&nbsp;empire · <b>N</b>&nbsp;map · <b>R</b>&nbsp;radio
 </div>
 <div class="judge-note">For the judge: this is the real game behind the menu — every screenshot is a frame of it being played. VICE ROYALE is an original game: its city, people and story are invented here.</div>
 </div>
@@ -850,7 +863,7 @@
   </div>
   <canvas id="bigmap" width="1024" height="816">
   </canvas>
-  <div class="mission-subtitle">8 districts · gold = mission · green = business / side job · teal = Pay'n'Spray · red = police</div>
+  <div class="mission-subtitle">8 districts · white = mission · gold = business · green = side job · teal = Pay'n'Spray · red = police</div>
 </div>
 <div class="overlay hidden" id="garage-screen">
   <div class="game-title" style="font-size:38px">PAY'N'SPRAY — GARAGE</div>

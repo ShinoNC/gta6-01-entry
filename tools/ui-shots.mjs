@@ -105,14 +105,17 @@ console.log('8-wasted.png');
 await page.evaluate(() => document.getElementById('down-button')?.click());
 await page.waitForTimeout(800);
 
-// 9. Toast (achievement message)
+// 9. Toast (achievement message) — wait 2s: the 250ms fade-in takes ~1s+
+// in the loaded headless browser, and an immediate screenshot misses it.
 await page.evaluate(() => window.__game.hud.showMessage('ACHIEVEMENT — FIRST WHEELS +$100', 4, true));
+await page.waitForTimeout(2000);
 await page.screenshot({ path: `${OUT}/9-toast.png` });
 console.log('9-toast.png');
 
-// 10. MISSION PASSED (auto-hides after 4s — shoot immediately)
+// 10. MISSION PASSED (auto-hides after 4s — shoot after the slow headless
+// fade-in completes, ~1.5s; a 300ms wait missed it entirely)
 await page.evaluate(() => window.__game.hud.showPassed('MISSION PASSED', 'FIRST FARE', ['+$500 · +50 REP', 'PISTOL UNLOCKED']));
-await page.waitForTimeout(300);
+await page.waitForTimeout(1500);
 await page.screenshot({ path: `${OUT}/10-passed.png` });
 console.log('10-passed.png');
 await page.waitForTimeout(4200);

@@ -510,6 +510,7 @@ function endRun(kind) {
   money -= fine;
   missions.failCurrent();
   wanted.setStars(0);
+  police.clearAll();
   reachedFive = false;
   health = 100;
   arrestTimer = 0;
@@ -745,6 +746,14 @@ function update(dt) {
       else hud.showMessage('No car nearby — walk closer to one and press F');
     }
   }
+  // Carjack prompt: show it only while no other message is showing, so
+  // toasts (achievements, hits) are never overwritten.
+  if (!drivenCar && player.downTimer <= 0) {
+    const near = nearestCar(player.position);
+    if (near && !$('hud-message').classList.contains('visible')) {
+      hud.showMessage(`Press F to ${near.owned ? 'drive' : 'steal'} ${near.name}`, 0.6);
+    }
+  }
   const autoDrive = shotName === 'chase' && drivenCar;
   const drivingInput = autoDrive
     ? { moveAxes: () => ({ forward: 1, strafe: 0 }), isDown: () => false }
@@ -960,7 +969,15 @@ function update(dt) {
   dialogue.update();
   const nextMission = missions.pendingMission;
   if (nextMission && !missions.currentMission()) {
-    freeObj = `${nextMission.giver.split(' ')[0]} has a job for you — head to the gold marker`;
+    // Live distance + 4-way arrow to the marker, relative to the camera.
+    const dx = nextMission.start[0] - focus.position.x;
+    const dz = nextMission.start[1] - focus.position.z;
+    const fx = -Math.sin(chaseCamera.yaw);
+    const fz = -Math.cos(chaseCamera.yaw);
+    const ahead = dx * fx + dz * fz;
+    const side = dz * fx - dx * fz;
+    const arrow = Math.abs(ahead) > Math.abs(side) ? (ahead > 0 ? '↑' : '↓') : (side > 0 ? '→' : '←');
+    freeObj = `${nextMission.giver.split(' ')[0]} has a job for you — ${Math.round(Math.hypot(dx, dz))}m ${arrow}`;
   }
   const briefing = missions.pendingBriefing;
   if (briefing && !phoneVisible && !missionOpen) {
