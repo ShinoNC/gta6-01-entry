@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { roadLines } from './city.js';
 import { chance, pick, range } from './random.js';
-export const PEDESTRIAN_COUNT = 20;
+const PEDESTRIAN_COUNT = 20;
 const SIDEWALK_OFFSET = 7.6;
 const WALK_MIN_SPEED = 1.1;
 const WALK_MAX_SPEED = 2.0;

@@ -26,13 +26,23 @@ function check(name, ok, detail = '') {
   results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
   console.log(results[results.length - 1]);
 }
+// Shooting is click-only now (Space = jump / handbrake). The first canvas
+// click engages pointer lock and is NOT a shot, so lock first if needed.
+async function shoot() {
+  const locked = await page.evaluate(() => document.pointerLockElement !== null);
+  if (!locked) {
+    await page.mouse.click(640, 360);
+    await page.waitForTimeout(500);
+  }
+  await page.mouse.click(640, 360);
+}
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
 await page.click('#start-button');
 await page.waitForTimeout(500);
 // Dismiss the mission-1 briefing (LATER) so it does not block the screen.
-await page.evaluate(() => document.getElementById('phone-decline')?.click());
+await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
 
 // --- 1. Pistol locked at start, fists selected ---
@@ -174,12 +184,12 @@ check(
   `stars=${await page.evaluate(() => window.__game.wanted.stars)}`,
 );
 
-// --- 7. Drive-by shooting (unlock pistol via test hook, then Space while driving) ---
+// --- 7. Drive-by shooting (unlock pistol via test hook, then click while driving) ---
 await page.evaluate(() => { window.__game.combat.unlockWeapon('pistol'); window.__game.wanted.setStars(0); });
 await page.keyboard.press('Digit2');
 await page.waitForTimeout(1200);
 const magBefore = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-await page.keyboard.press('Space');
+await shoot();
 await page.waitForTimeout(1500);
 const magAfter = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
 check('drive-by shooting spends pistol ammo while driving', magAfter === magBefore - 1, `mag ${magBefore} -> ${magAfter}`);
@@ -248,7 +258,7 @@ await page.evaluate(() => {
   window.__game.wanted.setStars(0);
   window.__game.wanted.lastShootStarAt = -99;
 });
-await page.keyboard.press('Space'); // shot 1 -> 1 star
+await shoot(); // shot 1 -> 1 star
 await page.waitForTimeout(1000);
 const stars1 = await page.evaluate(() => window.__game.wanted.stars);
 // Wait for the pistol cooldown (0.28s game-time) to actually elapse — poll the
@@ -262,7 +272,7 @@ for (let i = 0; i < 15; i += 1) {
 // Re-place the witness: it flees after shot 1 and may leave the 20m radius
 // during the cooldown wait.
 await placeWitness();
-await page.keyboard.press('Space'); // shot 2 within 4s cooldown, witness nearby
+await shoot(); // shot 2 within 4s cooldown, witness nearby
 await page.waitForTimeout(3000);
 const stars2 = await page.evaluate(() => window.__game.wanted.stars);
 check('witness calls in second shot despite cooldown', stars1 === 1 && stars2 === 2, `stars ${stars1} -> ${stars2}`);

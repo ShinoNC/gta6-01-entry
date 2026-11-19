@@ -76,7 +76,13 @@ check(
 // --- 2. Driving within 40m discovers the job ---
 await page.evaluate(() => {
   const sj = window.__game.sideJobs;
-  window.__game.player.group.position.set(sj.job.pickup.x + 30, 0, sj.job.pickup.z);
+  // Teleport 30m from the pickup TOWARD the map centre: +30 on x can land
+  // outside the map (the player is clamped back to the edge, possibly right
+  // next to the fare, which overwrites the SPOTTED toast with "Get in a car").
+  const dx = 0 - sj.job.pickup.x;
+  const dz = 0 - sj.job.pickup.z;
+  const d = Math.hypot(dx, dz) || 1;
+  window.__game.player.group.position.set(sj.job.pickup.x + (dx / d) * 30, 0, sj.job.pickup.z + (dz / d) * 30);
 });
 await page.waitForTimeout(2000);
 const discoveredState = await page.evaluate(() => {

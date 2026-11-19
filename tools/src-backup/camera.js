@@ -12,7 +12,7 @@ export class ChaseCamera {
   update(dt, targetPosition, targetHeading, driving, input, recoil = 0, lift = 0) {
     this.yawOffset += input.dragDeltaX * 0.005;
     this.yawOffset = Math.max(-1.2, Math.min(1.2, this.yawOffset));
-    if (!input.dragging) this.yawOffset *= Math.max(0, 1 - dt * 1.5);
+    if (!input.dragging && !input.locked) this.yawOffset *= Math.max(0, 1 - dt * 1.5);
     this.yaw += wrapAngle(targetHeading + Math.PI + this.yawOffset - this.yaw) * Math.min(1, dt * STIFFNESS);
     const distance = driving ? DIST_DRIVE : DIST_FOOT;
     const height = driving ? HEIGHT_DRIVE : HEIGHT_FOOT;

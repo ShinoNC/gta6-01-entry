@@ -1,13 +1,13 @@
 import { buildBeacon } from './missions.js';
-export const BUSINESS_DEFS = [
+const BUSINESS_DEFS = [
   { id: 'taxi', name: 'KEYS CAB CO.', kind: 'TAXI COMPANY', x: 52, z: 52, district: 'MARINA DEL SOL', price: 2000, repRequired: 1, incomePerDay: 1200 },
   { id: 'club', name: 'NEON PALMS', kind: 'NIGHTCLUB', x: -52, z: -52, district: 'PALM ROW', price: 6000, repRequired: 3, incomePerDay: 3000 },
   { id: 'dealer', name: 'SOLSTICE MOTORS', kind: 'CAR DEALERSHIP', x: 104, z: -104, district: 'HARBOR LIGHTS', price: 15000, repRequired: 5, incomePerDay: 7500 },
 ];
-export const SECONDS_PER_GAME_DAY = 2880;
-export const MAX_UPGRADE_LEVEL = 2;
+const SECONDS_PER_GAME_DAY = 2880;
+const MAX_UPGRADE_LEVEL = 2;
 const PENDING_CAP_DAYS = 3;
-export const COLLECT_RANGE = 9;
+const COLLECT_RANGE = 9;
 export class Businesses {
   constructor(scene) {
     this.state = BUSINESS_DEFS.map(() => ({ owned: false, level: 0, pending: 0 }));

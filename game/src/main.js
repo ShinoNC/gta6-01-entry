@@ -58,7 +58,7 @@ const rng = makeRng(seed);
 let state = 'title';
 let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
-let arrestTimer = 0, lastHurtAt = -99, downKind = '';
+let arrestTimer = 0, lastHurtAt = -99, reachedFive = false;
 let soundOn = true, musicOn = true, titleOrbitAngle = 0, shotTimer = 0, shotReady = false;
 let missionOpen = false, empireOpen = false, optionsOpen = false, phoneVisible = false, gunshotAt = null;
 let stats = freshStats();
@@ -163,6 +163,9 @@ function applySave(data) {
   health = 100;
   armour = 0;
   wanted.setStars(0);
+  reachedFive = false;
+  player.jumpY = 0;
+  player.jumpV = 0;
   player.group.position.set(data.playerX, 0, data.playerZ);
 }
 function startGame() {
@@ -179,6 +182,7 @@ function startGame() {
 function togglePause() {
   if (state === 'play') {
     state = 'pause';
+    input.exitLock();
     pauseScreen.classList.remove('hidden');
   } else if (state === 'pause') {
     startGame();
@@ -201,6 +205,8 @@ function refreshOptionsLabels() {
   $('radio-option').textContent = `RADIO: ${audio.radioStationName()}`;
 }
 function openMissionScreen() {
+  if (empireOpen) closeEmpireScreen();
+  input.exitLock();
   hud.renderMissionList(missions.statusList(), missions.stageIndex);
   hud.showMissionScreen();
   missionOpen = true;
@@ -210,6 +216,8 @@ function closeMissionScreen() {
   missionOpen = false;
 }
 function openEmpireScreen() {
+  if (missionOpen) closeMissionScreen();
+  input.exitLock();
   hud.renderEmpireScreen(businesses, stats, ACHIEVEMENTS, unlockedAchievements, money, repLevel());
   hud.showEmpireScreen();
   empireOpen = true;
@@ -331,6 +339,8 @@ function nearestCar(position) {
 function enterCar(car) {
   drivenCar = car;
   car.driven = true;
+  player.jumpY = 0;
+  player.jumpV = 0;
   player.group.visible = false;
   const npcIndex = traffic.cars.findIndex((npc) => npc.car === car);
   if (npcIndex >= 0) {
@@ -366,8 +376,8 @@ function damagePlayer(amount) {
 }
 function endRun(kind) {
   if (state !== 'play') return;
-  downKind = kind;
   state = 'down';
+  input.exitLock();
   hud.hideBriefing();
   phoneVisible = false;
   if (missionOpen) closeMissionScreen();
@@ -380,6 +390,7 @@ function endRun(kind) {
   money -= fine;
   missions.failCurrent();
   wanted.setStars(0);
+  reachedFive = false;
   health = 100;
   arrestTimer = 0;
   if (drivenCar) {
@@ -388,6 +399,8 @@ function endRun(kind) {
     drivenCar = null;
   }
   player.group.visible = true;
+  player.jumpY = 0;
+  player.jumpV = 0;
   const wasted = kind === 'WASTED';
   player.group.position.set(wasted ? 52 : -104, 0, wasted ? 26 : -104);
   $('down-title').textContent = kind;
@@ -396,7 +409,6 @@ function endRun(kind) {
 }
 function recoverFromDown() {
   $('down-screen').classList.add('hidden');
-  downKind = '';
   startGame();
 }
 function damageCar(car, amount) {
@@ -624,7 +636,7 @@ function update(dt) {
   }
   city.update(dt);
   effects.update(dt);
-  if (input.pressed('Space') || input.tap) {
+  if (input.tap) {
     if (!drivenCar) {
       player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
       player.group.rotation.y = player.heading;
@@ -654,9 +666,12 @@ function update(dt) {
     }
   }
   if (drivenCar) {
+    const fwdX = Math.sin(drivenCar.heading);
+    const fwdZ = Math.cos(drivenCar.heading);
     for (const npc of traffic.cars) {
       const gap = Math.hypot(npc.car.position.x - drivenCar.position.x, npc.car.position.z - drivenCar.position.z);
-      if (gap < 3) {
+      const lateral = Math.abs((npc.car.position.x - drivenCar.position.x) * fwdZ - (npc.car.position.z - drivenCar.position.z) * fwdX);
+      if (gap < 3 && lateral < 2.2) {
         traffic.shove(npc);
         drivenCar.speed *= 0.55;
       } else if (gap < 5.5 && Math.abs(drivenCar.speed) > 20 && elapsed - nearMissAt > 3) {
@@ -671,6 +686,7 @@ function update(dt) {
       const dz = drivenCar.position.z - other.position.z;
       const dist = Math.hypot(dx, dz);
       if (dist >= 4 || dist < 0.01) return;
+      if (Math.abs(dx * fwdZ - dz * fwdX) > 2.2) return;
       if (push) {
         drivenCar.position.x = other.position.x + (dx / dist) * 4;
         drivenCar.position.z = other.position.z + (dz / dist) * 4;
@@ -743,7 +759,9 @@ function update(dt) {
   } else arrestTimer = 0;
   wanted.update(dt, police.canSeePlayer(focus.position), police.helicopter !== null);
   if (wanted.stars > prevStars) dialogue.cue('heat');
-  if (prevStars === 5 && wanted.stars === 0) stats.escapes5 += 1;
+  if (wanted.stars === 5) reachedFive = true;
+  if (wanted.stars === 0 && reachedFive && prevStars === 1) stats.escapes5 += 1;
+  if (wanted.stars === 0) reachedFive = false;
   prevStars = wanted.stars;
   missions.update(dt, {
     playerPos: focus.position,
@@ -777,6 +795,7 @@ function update(dt) {
   if (briefing && !phoneVisible && !missionOpen) {
     hud.showBriefing(briefing.mission, briefing.index);
     phoneVisible = true;
+    input.exitLock();
     audio.click();
   }
   audio.setEngine(drivenCar ? Math.abs(drivenCar.speed) / 38 : 0, Boolean(drivenCar));
@@ -1004,6 +1023,9 @@ loadTextures()
       setMoney(v) {
         money = v;
       },
+      setRep(v) {
+        rep = v;
+      },
       traffic,
       pedestrians,
       wanted,
@@ -1018,6 +1040,8 @@ loadTextures()
       audio,
       effects,
       businesses,
+      input,
+      chaseCamera,
       get stats() {
         return stats;
       },

@@ -1,5 +1,5 @@
 import { MISSIONS_IN_STORY } from './missions.js';
-export const SAVE_SLOT_COUNT = 3;
+const SAVE_SLOT_COUNT = 3;
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_KEY_PREFIX = 'solaris-keys-save-';
 const LOOK_KEY = 'solaris-keys-look';

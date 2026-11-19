@@ -1,4 +1,4 @@
-export const RADIO_STATIONS = [
+const RADIO_STATIONS = [
   {
     name: 'WAVE 88.1 · Neon Drive',
     bpm: 112,

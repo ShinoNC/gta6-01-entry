@@ -72,11 +72,13 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
       return group.position;
     },
     get skidding() {
-      return Math.abs(this.speed) > SKID_MIN_SPEED && Math.abs(this.steerAngle) > SKID_MIN_STEER * (this.gripMul || 1);
+      return Math.abs(this.speed) > (this.handbraking ? 12 : SKID_MIN_SPEED) && Math.abs(this.steerAngle) > SKID_MIN_STEER * (this.gripMul || 1);
     },
     update(dt, input, city, gripMul = 1) {
       this.gripMul = gripMul;
       const { forward, strafe } = input.moveAxes();
+      const handbrake = input.isDown('Space');
+      this.handbraking = handbrake;
       if (forward > 0) this.speed += this.accel * dt;
       else if (forward < 0) {
         this.speed = this.speed > 0.5 ? this.speed - CAR_BRAKE * dt : this.speed - this.accel * 0.6 * dt;
@@ -84,9 +86,10 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
         this.speed -= this.speed * CAR_DRAG * dt;
         if (Math.abs(this.speed) < 0.05) this.speed = 0;
       }
+      if (handbrake) this.speed -= this.speed * dt;
       this.speed = Math.max(-CAR_MAX_REVERSE, Math.min(this.maxSpeed, this.speed));
       const grip = Math.min(1, Math.abs(this.speed) / 6) * (1 - Math.abs(this.speed) / this.maxSpeed / 2) * gripMul;
-      const steerTarget = -strafe * 0.55 * grip;
+      const steerTarget = -strafe * 0.55 * grip * (handbrake ? 1.7 : 1);
       this.steerAngle += (steerTarget - this.steerAngle) * Math.min(1, dt * 8);
       this.heading += (this.speed / 2.6) * Math.tan(this.steerAngle) * dt * (this.speed < 0 ? -1 : 1);
       const nextX = group.position.x + Math.sin(this.heading) * this.speed * dt;
@@ -113,7 +116,7 @@ export function createCar(scene, textures, name, bodyTexture, paintColour, x, z,
 }
 export function createCars(scene, textures) {
   const cars = [];
-  const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 2, -8, Math.PI);
+  const starter = createCar(scene, textures, 'SOLSTICE GT', textures.carRed, 0xd6303e, 0, -8, Math.PI);
   cars.push(starter);
   const parkedSpots = [
     [-52, -40, 0, 'sedan', 'PALM RUNNER', 0x346edc, 'carBlue'],

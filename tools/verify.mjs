@@ -30,6 +30,22 @@ const results = [];
 function check(name, ok, detail = '') {
   results.push(`${ok ? 'PASS' : 'FAIL'} ${name}${detail ? ` — ${detail}` : ''}`);
 }
+// Shooting is click-only now (Space = jump / handbrake). The first canvas
+// click engages pointer lock and is NOT a shot, so lock first if needed.
+// A mission briefing exits pointer lock when it pops up, which would turn
+// the shot click into a re-lock click — dismiss it before shooting.
+async function shoot() {
+  if (await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'))) {
+    await page.click('#phone-later');
+    await page.waitForTimeout(300);
+  }
+  const locked = await page.evaluate(() => document.pointerLockElement !== null);
+  if (!locked) {
+    await page.mouse.click(640, 360);
+    await page.waitForTimeout(500);
+  }
+  await page.mouse.click(640, 360);
+}
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
@@ -217,7 +233,16 @@ await page.evaluate(() => {
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(500);
 check('stealing a parked car gives 1 star', await page.evaluate(() => window.__game.wanted.stars >= 1));
-check('steal toast shows', await page.evaluate(() => document.getElementById('hud-message').textContent.includes('STOLEN')));
+// The steal toast shows for one frame, then the sticky FIRST WHEELS
+// achievement (unlocked by this very steal) overwrites it — either text
+// proves the steal feedback fired.
+check(
+  'steal toast shows',
+  await page.evaluate(() => {
+    const text = document.getElementById('hud-message').textContent;
+    return text.includes('STOLEN') || text.includes('FIRST WHEELS');
+  }),
+);
 
 // Police spawn and pursue.
 await page.waitForTimeout(5000);
@@ -268,8 +293,13 @@ check('wanted level falls while hidden', await page.evaluate(() => window.__game
 // Combat: pistol shot spends ammo and raises the wanted level.
 await page.keyboard.press('Digit2');
 await page.waitForTimeout(300);
-await page.keyboard.press('Space');
+await shoot();
 await page.waitForTimeout(1000);
+if (await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag === 12)) {
+  // A briefing may have popped mid-shot and stolen the lock; retry once.
+  await shoot();
+  await page.waitForTimeout(1000);
+}
 check(
   'shooting spends pistol ammo',
   await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag === 11),

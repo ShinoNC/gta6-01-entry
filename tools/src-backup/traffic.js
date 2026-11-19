@@ -1,7 +1,7 @@
 import { createCar } from './vehicles.js';
 import { roadLines } from './city.js';
 import { intBetween, pick, weightedPick } from './random.js';
-export const TRAFFIC_CAR_COUNT = 10;
+const TRAFFIC_CAR_COUNT = 10;
 const LANE_OFFSET = 2.5;
 const LOOK_AHEAD_METRES = 9;
 const BLOCKED_LATERAL_METRES = 2.6;
@@ -17,7 +17,7 @@ const STYLE_SPEED_BAND = {
   van: [7, 11],
   taxi: [11, 16],
 };
-export function laneOffsetFor(axis, direction) {
+function laneOffsetFor(axis, direction) {
   if (axis === 'z') return direction > 0 ? -LANE_OFFSET : LANE_OFFSET;
   return direction > 0 ? LANE_OFFSET : -LANE_OFFSET;
 }

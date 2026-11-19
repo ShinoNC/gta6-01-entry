@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 export const MISSIONS_IN_STORY = 8;
 const ARRIVE_M = 15;
-export const MISSION_CHAIN = [
+const MISSION_CHAIN = [
   {
     name: 'FIRST FARE',
     giver: 'Mara Solis',

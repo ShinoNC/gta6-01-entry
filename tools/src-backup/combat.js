@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-export const WEAPON_SLOTS = [
+const WEAPON_SLOTS = [
   { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false },
   { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: true },
   { id: 'smg', name: 'SMG', range: 45, cooldownSeconds: 0.09, magSize: 30, reserveAmmo: 90, locked: true },

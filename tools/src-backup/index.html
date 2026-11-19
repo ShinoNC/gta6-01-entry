@@ -50,7 +50,7 @@
   #hud-car { font-size: 15px; letter-spacing: 2px; color: #ffd978; }
   #hud-speed-row { font-size: 52px; font-weight: bold; line-height: 1; }
   #hud-speed-row small { font-size: 16px; color: #ffb3c4; }
-  #hud-bars { bottom: 18px; left: 50%; transform: translateX(-50%); width: 300px; }
+  #hud-bars { bottom: 200px; left: 18px; width: 168px; }
   .bar-label { font-size: 12px; letter-spacing: 2px; margin: 4px 0 2px; }
   .bar { height: 10px; background: rgba(26,16,48,.8); border: 2px solid #fff3; }
   .bar > div { height: 100%; }
@@ -212,7 +212,7 @@
   <svg class="portrait"><use id="dialogue-face" href="#mara-portrait"/></svg>
   <div><div id="dialogue-name"></div><div id="dialogue-text"></div></div>
 </div>
-<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; SPACE / CLICK shoot &nbsp;·&nbsp; 1-4 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; ESC pause</div>
+<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; SPACE jump / handbrake &nbsp;·&nbsp; 1-4 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; B businesses &nbsp;·&nbsp; ESC pause</div>
 <div class="overlay" id="title-screen">
   <svg id="title-skyline" viewBox="0 0 1280 170" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
     <circle cx="1020" cy="128" r="58" fill="#ffd98a" opacity="0.9"/>
@@ -248,8 +248,8 @@
   <div class="controls" id="continue-summary"></div>
   <div class="controls">
     <b>WASD</b> walk / drive &nbsp;&nbsp; <b>F</b> enter &amp; exit cars &nbsp;&nbsp; <b>SHIFT</b> run<br>
-    <b>SPACE / click</b> shoot &nbsp;&nbsp; <b>1-4 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions<br>
-    <b>Drag mouse</b> look around &nbsp;&nbsp; <b>ESC</b> pause<br>
+    <b>Click</b> shoot &nbsp;&nbsp; <b>SPACE</b> jump / handbrake &nbsp;&nbsp; <b>1-4 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions &nbsp;&nbsp; <b>B</b> businesses<br>
+    <b>Mouse</b> look around (click to lock) &nbsp;&nbsp; <b>ESC</b> pause<br>
     Steal cars, outrun the police, and take over the Keys.
   </div>
 </div>

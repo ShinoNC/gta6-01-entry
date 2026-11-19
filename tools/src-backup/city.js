@@ -1,9 +1,9 @@
 import * as THREE from 'three';
 import { intBetween, pick } from './random.js';
-export const CITY_BLOCK_COLUMNS = 6;
-export const CITY_BLOCK_ROWS = 4;
-export const BLOCK_SIZE = 40;
-export const ROAD_WIDTH = 12;
+const CITY_BLOCK_COLUMNS = 6;
+const CITY_BLOCK_ROWS = 4;
+const BLOCK_SIZE = 40;
+const ROAD_WIDTH = 12;
 const STREET_PITCH = BLOCK_SIZE + ROAD_WIDTH;
 const HALF_W = (CITY_BLOCK_COLUMNS * STREET_PITCH + ROAD_WIDTH) / 2;
 const NORTH_EDGE = -HALF_W;

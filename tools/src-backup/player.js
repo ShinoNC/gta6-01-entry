@@ -3,6 +3,8 @@ const WALK_SPEED = 6;
 const RUN_SPEED = 9.5;
 const PLAYER_RADIUS = 0.7;
 const LEG_SWING = 0.55;
+const JUMP_SPEED = 7.5;
+const GRAVITY = 22;
 export function createPlayer(scene, startX, startZ) {
   const group = new THREE.Group();
   const skin = new THREE.MeshLambertMaterial({ color: 0xe8b07a });
@@ -29,8 +31,9 @@ export function createPlayer(scene, startX, startZ) {
   const player = {
     group,
     heading: Math.PI,
-    moving: false,
     walkPhase: 0,
+    jumpY: 0,
+    jumpV: 0,
     get position() {
       return group.position;
     },
@@ -40,14 +43,24 @@ export function createPlayer(scene, startX, startZ) {
       if (look.shirt !== undefined) shirt.color.set(look.shirt);
     },
     update(dt, input, cameraYaw, city) {
+      if (input.pressed('Space') && this.jumpY <= 0) this.jumpV = JUMP_SPEED;
+      if (this.jumpY > 0 || this.jumpV > 0) {
+        this.jumpV -= GRAVITY * dt;
+        this.jumpY += this.jumpV * dt;
+        if (this.jumpY <= 0) {
+          this.jumpY = 0;
+          this.jumpV = 0;
+        }
+      }
       const { forward, strafe } = input.moveAxes();
       const moving = forward !== 0 || strafe !== 0;
-      this.moving = moving;
+      city.resolveCircle(group.position, PLAYER_RADIUS);
       if (!moving) {
         legLeft.rotation.x = 0;
         legRight.rotation.x = 0;
         armLeft.rotation.x = 0;
         armRight.rotation.x = 0;
+        group.position.y = this.jumpY;
         return;
       }
       const running = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
@@ -58,7 +71,6 @@ export function createPlayer(scene, startX, startZ) {
       const dz = (-cos * forward - sin * strafe) * speed * dt;
       group.position.x += dx;
       group.position.z += dz;
-      city.resolveCircle(group.position, PLAYER_RADIUS);
       if (strafe === 0) {
         this.heading = Math.atan2(dx, dz);
         group.rotation.y = this.heading;
@@ -69,7 +81,7 @@ export function createPlayer(scene, startX, startZ) {
       legRight.rotation.x = -swing;
       armLeft.rotation.x = -swing * 0.8;
       armRight.rotation.x = swing * 0.8;
-      group.position.y = Math.abs(Math.sin(this.walkPhase)) * 0.06;
+      group.position.y = this.jumpY + Math.abs(Math.sin(this.walkPhase)) * 0.06;
     },
   };
   return player;
