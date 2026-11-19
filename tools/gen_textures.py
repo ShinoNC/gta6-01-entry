@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate the chunky 16-bit pixel-art textures for SOLARIS KEYS.
+"""Generate the chunky 16-bit pixel-art textures for VICE ROYALE.
 
 Every texture is drawn pixel by pixel at a small grid (32 or 64 cells) and
 saved as a PNG, so the game loads them as images instead of carrying the art
@@ -299,7 +299,7 @@ def facade_deco():
 
 def billboard():
     """A rooftop billboard: sunset gradient, sun disc, palm silhouettes and
-    the words SOLARIS KEYS in blocky neon lettering."""
+    the words VICE ROYALE in blocky neon lettering."""
     width, height = 128, 64
     im = Image.new("RGB", (width, height))
     px = im.load()
@@ -328,7 +328,7 @@ def billboard():
                 y = int(height - th + math.sin(rad) * t * 0.5 + t * t * 0.08)
                 if 0 <= x < width and 0 <= y < height:
                     px[x, y] = PALETTE["black"]
-    # Blocky lettering: SOLARIS over KEYS, drawn from a 3x5 pixel font.
+    # Blocky lettering: VICE over ROYALE, drawn from a 3x5 pixel font.
     font = {
         "S": ("011", "100", "010", "001", "110"),
         "O": ("010", "101", "101", "101", "010"),
@@ -339,6 +339,8 @@ def billboard():
         "K": ("101", "101", "110", "101", "101"),
         "E": ("111", "100", "110", "100", "111"),
         "Y": ("101", "101", "010", "010", "010"),
+        "V": ("101", "101", "101", "101", "010"),
+        "C": ("011", "100", "100", "100", "011"),
     }
 
     def draw_word(word, x0, y0, scale, colour):
@@ -353,8 +355,8 @@ def billboard():
                                 px[x + col * scale + dx, y0 + row * scale + dy] = PALETTE[colour]
             x += 4 * scale
 
-    draw_word("SOLARIS", 8, 8, 2, "neon_pink")
-    draw_word("KEYS", 8, 26, 3, "neon_cyan")
+    draw_word("VICE", 8, 8, 2, "neon_pink")
+    draw_word("ROYALE", 8, 26, 3, "neon_cyan")
     save(im, "billboard.png")
 
 
