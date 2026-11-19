@@ -139,16 +139,22 @@ export class Hud {
     if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 4 + Math.sin(s.timeSeconds * 4), '#7affc4');
     if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
     if (s.labels) {
-      ctx.fillStyle = '#ffd978';
-      ctx.font = `bold ${Math.round(13 * k)}px "Courier New", monospace`;
+      // Small outlined labels, clamped inside the canvas so no name is cut
+      // off at an edge or runs into its neighbour.
+      const fs = Math.round(8 * k);
+      ctx.font = `bold ${fs}px "Courier New", monospace`;
       ctx.textAlign = 'center';
-      ctx.shadowColor = '#1a1030';
-      ctx.shadowBlur = 4;
+      ctx.lineWidth = Math.round(fs / 8);
+      ctx.strokeStyle = '#1a1030';
+      ctx.fillStyle = '#ffd978';
       for (const d of districtLabels()) {
         const p = this.toMap(d.x, d.z, w, h);
-        ctx.fillText(d.name, p.x, p.y);
+        const tw = ctx.measureText(d.name).width;
+        const x = Math.min(Math.max(p.x, tw / 2 + 6), w - tw / 2 - 6);
+        const y = Math.min(Math.max(p.y, fs + 4), h - 6);
+        ctx.strokeText(d.name, x, y);
+        ctx.fillText(d.name, x, y);
       }
-      ctx.shadowBlur = 0;
     }
     const p = this.toMap(s.playerPos.x, s.playerPos.z, w, h);
     ctx.save();
@@ -169,7 +175,7 @@ export class Hud {
     this.paintMap(this.ctx, MINIMAP_SIZE, MINIMAP_SIZE, { playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips });
   }
   renderMapScreen(s) {
-    this.paintMap(this.mapCtx, 560, 446, { ...s, labels: true });
+    this.paintMap(this.mapCtx, 1024, 816, { ...s, labels: true });
   }
   showMapScreen() {
     this.el.mapScreen.classList.remove('hidden');
@@ -255,9 +261,9 @@ export class Hud {
         const tag = e.status === 'done' ? '[DONE]' : e.status === 'active' ? '[ACTIVE]' : e.status === 'pending' ? '[AVAILABLE]' : '[LOCKED]';
         const stage = e.status === 'active' ? ` · STAGE ${activeStageIndex + 1}/${e.objectiveCount}` : '';
         const finale = e.finale ? ' · ★ FINALE' : '';
-        const accept = e.status === 'pending' ? `<button class="menu-button mission-accept" data-mission="${e.number - 1}">ACCEPT JOB</button>` : '';
+        const hint = e.status === 'pending' ? '<div class="mission-briefing">Head to the gold marker on the map to start this job.</div>' : '';
         const briefing = e.status === 'active' || e.status === 'pending' ? `<div class="mission-briefing">${e.briefing}</div>` : '';
-        return `<div class="mission-row ${e.status}"><div class="mission-head"><span>MISSION ${e.number}/${MISSIONS_IN_STORY} — ${e.name}${finale}</span><span>${tag}${stage}</span></div><div class="mission-reward">Reward $${e.rewardMoney.toLocaleString('en-US')} · ${e.rewardRep} REP · from ${e.giver}</div>${briefing}${accept}</div>`;
+        return `<div class="mission-row ${e.status}"><div class="mission-head"><span>MISSION ${e.number}/${MISSIONS_IN_STORY} — ${e.name}${finale}</span><span>${tag}${stage}</span></div><div class="mission-reward">Reward $${e.rewardMoney.toLocaleString('en-US')} · ${e.rewardRep} REP · from ${e.giver}</div>${briefing}${hint}</div>`;
       })
       .join('');
     this.el.missionList.innerHTML =

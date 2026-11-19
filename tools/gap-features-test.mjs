@@ -68,10 +68,10 @@ await dismissPhone();
 await page.keyboard.press('KeyN');
 await page.waitForTimeout(400);
 check(
-  'N opens the map screen with a 560x446 canvas',
+  'N opens the map screen with a 1024x816 canvas',
   await page.evaluate(() => {
     const c = document.getElementById('bigmap');
-    return !document.getElementById('map-screen').classList.contains('hidden') && c.width === 560 && c.height === 446;
+    return !document.getElementById('map-screen').classList.contains('hidden') && c.width === 1024 && c.height === 816;
   }),
 );
 await page.keyboard.press('KeyN');

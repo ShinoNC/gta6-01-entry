@@ -33,7 +33,11 @@ export class Input {
       this.mouseDownAt = performance.now();
       this.mouseDownX = event.clientX;
       this.mouseDownY = event.clientY;
-      if (!this.locked) this.tryLock();
+      // Click while pointer-locked attacks immediately (GTA-style): the
+      // old quick+still tap test never fired for real players, who move the
+      // mouse while clicking. Only the lock-engaging click is swallowed.
+      if (this.locked) this.tap = true;
+      else this.tryLock();
     });
     window.addEventListener('mouseup', (event) => {
       this.dragging = false;
@@ -41,7 +45,7 @@ export class Input {
       const still = Math.hypot(event.clientX - this.mouseDownX, event.clientY - this.mouseDownY) < 8;
       // The click that engages pointer lock is not a shot.
       const lockClick = !this.lockedAtMouseDown && (this.locked || this.lockPending);
-      if (this.mouseDownAt > 0 && quick && still && !lockClick) this.tap = true;
+      if (this.mouseDownAt > 0 && quick && still && !lockClick && !this.lockedAtMouseDown) this.tap = true;
       this.mouseDownAt = 0;
     });
     window.addEventListener('mousemove', (event) => {

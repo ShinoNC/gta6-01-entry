@@ -160,15 +160,24 @@ check('explosion damages nearby player', hpPostBoom < hpPreBoom, `HP ${hpPreBoom
 await page.evaluate(() => { window.__game.wanted.setStars(0); });
 
 // --- 6. Steal a traffic car ---
+// Stand 4m AHEAD of the car (it brakes for the player and stops nearby),
+// not 1.5m to the side: a car clipping the player knocks them down and
+// the 0.8s stun blocks F, so a side placement races the hit. Retry F once
+// in case the first press lands while the car is still closing in.
 const steal = await page.evaluate(() => {
   const npc = window.__game.traffic.cars[0];
   const carsBefore = window.__game.cars.length;
   const npcBefore = window.__game.traffic.cars.length;
-  window.__game.player.group.position.set(npc.car.position.x + 1.5, 0, npc.car.position.z);
+  const fx = Math.sin(npc.car.heading), fz = Math.cos(npc.car.heading);
+  window.__game.player.group.position.set(npc.car.position.x + fx * 4, 0, npc.car.position.z + fz * 4);
   return { carsBefore, npcBefore, name: npc.car.name };
 });
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(1500);
+if (!(await page.evaluate(() => window.__game.drivenCar !== null))) {
+  await page.keyboard.press('KeyF');
+  await page.waitForTimeout(1500);
+}
 check(
   'F steals a traffic car',
   await page.evaluate(() => window.__game.drivenCar !== null),

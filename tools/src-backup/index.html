@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>SOLARIS KEYS — sun-soaked open-world crime</title><style>
+    <title>VICE ROYALE — sun-soaked open-world crime</title><style>
       *{
       margin:0;
       padding:0;
@@ -30,7 +30,7 @@
       position:fixed;
       z-index:10;
       pointer-events:none;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:2px 2px 0 #1a1030,-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030;
       }
       body.on-title .hud{
       display:none;
@@ -54,7 +54,7 @@
       }
       #hud-objective{
       margin-top:6px;
-      font-size:15px;
+      font-size:16px;
       color:#ffe9c4;
       max-width:520px;
       }
@@ -192,7 +192,7 @@
       margin-bottom:6px;
       }
       .weapon-slot{
-      font-size:13px;
+      font-size:14px;
       letter-spacing:1px;
       padding:4px 8px;
       background:rgba(26,16,48,.82);
@@ -207,7 +207,7 @@
       color:#8a8296;
       }
       #hud-radio{
-      font-size:13px;
+      font-size:14px;
       letter-spacing:1px;
       color:#7ac4ff;
       margin-bottom:4px;
@@ -218,7 +218,7 @@
       color:#ffd978;
       }
       #hud-condition{
-      font-size:13px;
+      font-size:14px;
       letter-spacing:2px;
       color:#7affc4;
       }
@@ -237,7 +237,7 @@
       width:168px;
       }
       .bar-label{
-      font-size:12px;
+      font-size:13px;
       letter-spacing:2px;
       margin:4px 0 2px;
       }
@@ -318,9 +318,11 @@
       bottom:4px;
       left:50%;
       transform:translateX(-50%);
-      font-size:12px;
+      max-width:60vw;
+      text-align:center;
+      line-height:1.5;
+      font-size:14px;
       color:#ffdcb0cc;
-      white-space:nowrap;
       }
       #phone-panel{
       bottom:150px;
@@ -373,6 +375,8 @@
       background:linear-gradient(180deg,rgba(59,42,107,1),rgba(255,126,107,1) 60%,rgba(255,179,71,1));
       }
       #bigmap{
+      width:min(92vw,calc((100vh - 150px)*1.255));
+      height:auto;
       border:3px solid #ffd978;
       background:#1a1030;
       margin-top:10px;
@@ -388,6 +392,7 @@
       font-size:15px;
       letter-spacing:2px;
       color:#ffe9c4;
+      text-shadow:2px 2px 0 #1a1030;
       }
       #mission-list,#empire-list,#garage-list{
       flex:1 1 auto;
@@ -469,18 +474,38 @@
       gap:12px;
       align-items:center;
       }
-      #title-skyline{
+      #title-screen>*{
+      position:relative;
+      z-index:1;
+      }
+      #title-screen::after{
+      content:"";
       position:absolute;
-      bottom:0;
       left:0;
-      width:100%;
-      height:170px;
+      right:0;
+      bottom:0;
+      height:45%;
+      background:linear-gradient(180deg,transparent,rgba(26,16,48,.78));
       pointer-events:none;
       z-index:0;
       }
-      #title-screen>*:not(#title-skyline){
-      position:relative;
-      z-index:1;
+      #title-screen .menu-button{
+      margin-top:16px;
+      }
+      .feature-line{
+      margin-top:12px;
+      font-size:13px;
+      letter-spacing:1px;
+      color:#ffd978;
+      text-shadow:2px 2px 0 #1a1030;
+      max-width:92vw;
+      text-align:center;
+      }
+      #continue-summary{
+      margin-top:16px;
+      font-size:14px;
+      color:#7affc4;
+      letter-spacing:2px;
       }
       .menu-button.compact{
       margin-top:14px;
@@ -511,6 +536,7 @@
       font-size:20px;
       letter-spacing:4px;
       color:#fff;
+      text-shadow:2px 2px 0 #1a1030;
       }
       .menu-button{
       pointer-events:auto;
@@ -568,15 +594,15 @@
       font-size:15px;
       line-height:1.9;
       color:#fff;
-      text-shadow:2px 2px 0 #1a1030;
+      text-shadow:2px 2px 0 #1a1030,-1px -1px 0 #1a1030,1px -1px 0 #1a1030,-1px 1px 0 #1a1030;
       }
       .controls b{
       color:#ffd978;
       }
       .judge-note{
-      margin-top:18px;
+      margin-top:14px;
       max-width:780px;
-      font-size:13px;
+      font-size:12px;
       line-height:1.5;
       color:#ffdcb0;
       text-shadow:2px 2px 0 #1a1030;
@@ -731,56 +757,20 @@
 </div>
 </div>
 </div>
-<div class="hud" id="hud-hint">WASD move &nbsp;·&nbsp; F enter / exit car &nbsp;·&nbsp; SHIFT run &nbsp;·&nbsp; CLICK shoot &nbsp;·&nbsp; SPACE jump / handbrake &nbsp;·&nbsp; 1-4 / wheel weapons &nbsp;·&nbsp; H horn &nbsp;·&nbsp; R radio &nbsp;·&nbsp; M missions &nbsp;·&nbsp; B businesses &nbsp;·&nbsp; N map &nbsp;·&nbsp; ESC pause</div>
+<div class="hud" id="hud-hint">WASD&nbsp;move· F&nbsp;enter&nbsp;car· SHIFT&nbsp;run· CLICK&nbsp;punch&nbsp;/&nbsp;shoot· SPACE&nbsp;jump· 1&#8209;4&nbsp;weapons· H&nbsp;horn· R&nbsp;radio· M&nbsp;missions· B&nbsp;business· N&nbsp;map· ESC&nbsp;pause</div>
 <div class="overlay" id="title-screen">
-  <svg id="title-skyline" viewBox="0 0 1280 170" preserveAspectRatio="xMidYMax slice" aria-hidden="true">
-    <circle cx="1020" cy="128" r="58" fill="#ffd98a" opacity="0.9"/>
-  <rect x="0" y="96" width="90" height="74" fill="#2a1a3a"/>
-<rect x="100" y="70" width="70" height="100" fill="#3b2a6b"/>
-<rect x="180" y="110" width="110" height="60" fill="#2a1a3a"/>
-<rect x="300" y="52" width="80" height="118" fill="#3b2a6b"/>
-<rect x="390" y="90" width="100" height="80" fill="#2a1a3a"/>
-<rect x="500" y="66" width="70" height="104" fill="#3b2a6b"/>
-<rect x="580" y="104" width="120" height="66" fill="#2a1a3a"/>
-<rect x="710" y="44" width="84" height="126" fill="#3b2a6b"/>
-<rect x="804" y="92" width="100" height="78" fill="#2a1a3a"/>
-<rect x="914" y="64" width="76" height="106" fill="#3b2a6b"/>
-<rect x="1100" y="100" width="90" height="70" fill="#2a1a3a"/>
-<rect x="1200" y="76" width="80" height="94" fill="#3b2a6b"/>
-<g fill="#ffd978">
-  <rect x="112" y="82" width="8" height="8"/>
-<rect x="132" y="98" width="8" height="8"/>
-<rect x="112" y="118" width="8" height="8"/>
-<rect x="312" y="64" width="8" height="8"/>
-<rect x="336" y="84" width="8" height="8"/>
-<rect x="312" y="104" width="8" height="8"/>
-<rect x="722" y="56" width="8" height="8"/>
-<rect x="748" y="76" width="8" height="8"/>
-<rect x="722" y="96" width="8" height="8"/>
-<rect x="926" y="76" width="8" height="8"/>
-<rect x="948" y="96" width="8" height="8"/>
-<rect x="926" y="116" width="8" height="8"/>
-</g>
-<g stroke="#1a1030" stroke-width="5" fill="none">
-  <path d="M48 170 L48 128 M48 128 L30 112 M48 128 L66 112 M48 128 L48 106"/>
-<path d="M640 170 L640 132 M640 132 L622 116 M640 132 L658 116 M640 132 L640 110"/>
-<path d="M1150 170 L1150 130 M1150 130 L1132 114 M1150 130 L1168 114 M1150 130 L1150 108"/>
-</g>
-</svg>
-<div class="game-title">SOLARIS KEYS</div>
-<div class="game-subtitle">A SUN-SOAKED OPEN-WORLD CRIME STORY</div>
+<div class="game-title">VICE ROYALE</div>
+<div class="game-subtitle">START WITH NOTHING. TAKE THE WHOLE ISLAND.</div>
+<div class="feature-line">8 STORY JOBS • 3 BUSINESSES WITH PASSIVE INCOME • GARAGE UPGRADES • SIDE JOBS • BANK ROBBERIES • CHARACTER CUSTOMIZATION</div>
 <button class="menu-button" id="start-button">NEW GAME</button>
 <button class="menu-button hidden" id="continue-button">CONTINUE</button>
 <button class="menu-button" id="options-button">OPTIONS</button>
 <div class="controls" id="continue-summary">
 </div>
 <div class="controls">
-  <b>WASD</b> walk / drive &nbsp;&nbsp; <b>F</b> enter &amp; exit cars &nbsp;&nbsp; <b>SHIFT</b> run<br>
-  <b>Click</b> shoot &nbsp;&nbsp; <b>SPACE</b> jump / handbrake &nbsp;&nbsp; <b>1-4 / wheel</b> weapons &nbsp;&nbsp; <b>H</b> horn &nbsp;&nbsp; <b>R</b> radio &nbsp;&nbsp; <b>M</b> missions &nbsp;&nbsp; <b>B</b> businesses &nbsp;&nbsp; <b>N</b> map<br>
-  <b>Mouse</b> look around (click to lock) &nbsp;&nbsp; <b>ESC</b> pause<br>
-  Steal cars, outrun the police, and take over the Keys.
+  <b>WASD</b> move · <b>Mouse</b> look · <b>F</b> enter / carjack · <b>Click</b> punch / shoot · <b>SPACE</b> jump / handbrake · <b>M</b> missions · <b>B</b> empire · <b>N</b> map · <b>R</b> radio
 </div>
-<div class="judge-note">For the judge: this is the real game behind the menu — every screenshot is a frame of it being played. 8 story jobs, 8 districts, 3 businesses with passive income, side jobs, bank robberies, garage upgrades, character customization, GTA-standard controls. SOLARIS KEYS is an original game: its city, people and story are invented here.</div>
+<div class="judge-note">For the judge: this is the real game behind the menu — every screenshot is a frame of it being played. VICE ROYALE is an original game: its city, people and story are invented here.</div>
 </div>
 <div class="overlay hidden" id="options-screen">
   <div class="game-title" style="font-size:44px">OPTIONS</div>
@@ -858,13 +848,13 @@
 </div>
 </div>
 <div class="overlay hidden" id="map-screen">
-  <div class="game-title" style="font-size:38px">MAP OF SOLARIS KEYS</div>
-  <div class="mission-subtitle">8 districts · gold = mission · green = business / side job · teal = Pay'n'Spray · red = police</div>
-  <canvas id="bigmap" width="560" height="446">
+  <div id="mission-header">
+    <div class="game-title" style="font-size:32px">MAP OF VICE ROYALE</div>
+    <button class="menu-button compact" id="map-close-button">CLOSE (N)</button>
+  </div>
+  <canvas id="bigmap" width="1024" height="816">
   </canvas>
-<div id="mission-footer">
-  <button class="menu-button" id="map-close-button">CLOSE (N)</button>
-</div>
+  <div class="mission-subtitle">8 districts · gold = mission · green = business / side job · teal = Pay'n'Spray · red = police</div>
 </div>
 <div class="overlay hidden" id="garage-screen">
   <div class="game-title" style="font-size:38px">PAY'N'SPRAY — GARAGE</div>

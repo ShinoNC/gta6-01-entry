@@ -2,7 +2,7 @@
 
 20 of the 23 files in `game/src/` are MINIFIED with esbuild (to fit the
 163,840 B dossier cap after the GTA-logic fixes). This directory holds the
-readable originals. `main.js`, `police.js`, and `missions.js` are NOT
+readable originals. `main.js` and `police.js` are NOT
 minified — they are edited in place in `game/src/` (copies here are backups).
 
 ## Editing a minified file
@@ -23,7 +23,7 @@ audio, camera, city, combat, dialogue, effects, hud, input, pedestrians,
 player, random, robbery, save, sidejobs, tapes, textures, traffic, vehicles,
 wanted, weather.
 
-## Kept readable (3)
+## Kept readable (2)
 
-main.js, police.js, missions.js (+ game/index.html, whose CSS is minified
+main.js, police.js (+ game/index.html, whose CSS is minified
 but whose markup is intact; its readable copy is index.html here).

@@ -34,6 +34,15 @@ export function createPlayer(scene, startX, startZ) {
     walkPhase: 0,
     jumpY: 0,
     jumpV: 0,
+    punchTimer: 0,
+    downTimer: 0,
+    punch() {
+      this.punchTimer = 0.25;
+    },
+    knockDown(seconds) {
+      this.downTimer = seconds;
+      group.rotation.x = Math.PI / 2;
+    },
     get position() {
       return group.position;
     },
@@ -43,6 +52,12 @@ export function createPlayer(scene, startX, startZ) {
       if (look.shirt !== undefined) shirt.color.set(look.shirt);
     },
     update(dt, input, cameraYaw, city) {
+      if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
+      if (this.downTimer > 0) {
+        this.downTimer -= dt;
+        if (this.downTimer <= 0) group.rotation.x = 0;
+        else { group.position.y = 0.4; return; }
+      }
       if (input.pressed('Space') && this.jumpY <= 0) this.jumpV = JUMP_SPEED;
       if (this.jumpY > 0 || this.jumpV > 0) {
         this.jumpV -= GRAVITY * dt;
@@ -59,7 +74,7 @@ export function createPlayer(scene, startX, startZ) {
         legLeft.rotation.x = 0;
         legRight.rotation.x = 0;
         armLeft.rotation.x = 0;
-        armRight.rotation.x = 0;
+        armRight.rotation.x = this.punchTimer > 0 ? -1.8 : 0;
         group.position.y = this.jumpY;
         return;
       }
@@ -81,6 +96,7 @@ export function createPlayer(scene, startX, startZ) {
       legRight.rotation.x = -swing;
       armLeft.rotation.x = -swing * 0.8;
       armRight.rotation.x = swing * 0.8;
+      if (this.punchTimer > 0) armRight.rotation.x = -1.8;
       group.position.y = this.jumpY + Math.abs(Math.sin(this.walkPhase)) * 0.06;
     },
   };

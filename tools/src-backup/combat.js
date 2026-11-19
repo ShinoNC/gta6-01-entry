@@ -148,6 +148,7 @@ export class Combat {
       if (hit) {
         this.callbacks.onHitPedestrian(hit.ref, false);
         this.callbacks.onDamage?.({ x: hit.x, y: 1.2, z: hit.z }, weapon.damage);
+        this.recoil = Math.min(1, this.recoil + 0.3);
       }
       return hit ? 'punch' : 'whiff';
     }

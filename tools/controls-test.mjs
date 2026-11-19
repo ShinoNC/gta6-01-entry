@@ -46,7 +46,7 @@ const yawBefore = await page.evaluate(() => window.__game.chaseCamera.yawOffset)
 await page.mouse.move(840, 360);
 await page.waitForTimeout(800);
 const yawAfter = await page.evaluate(() => window.__game.chaseCamera.yawOffset);
-check('mouse move while locked swings the camera', yawAfter > yawBefore + 0.2, `yawOffset ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)}`);
+check('mouse move while locked swings the camera', yawAfter < yawBefore - 0.2, `yawOffset ${yawBefore.toFixed(2)} -> ${yawAfter.toFixed(2)} (mouse right = negative offset = view turns right)`);
 
 // --- 3. The lock click is not a shot; the next click shoots ---
 await page.evaluate(() => {
@@ -215,11 +215,21 @@ await page.keyboard.press('KeyB');
 await page.waitForTimeout(300);
 
 // --- 10. Phone briefing exits pointer lock ---
+// The briefing now needs the player at the gold marker (52,0); the player is
+// driving here, so move the car (the mission focus) to the marker.
 await page.mouse.click(640, 360);
 await page.waitForTimeout(400);
-await page.evaluate(() => { window.__game.missions.snooze = 0; });
-await page.waitForTimeout(1500);
-const phoneVisible = await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'));
+await page.evaluate(() => {
+  const car = window.__game.drivenCar;
+  if (car) { car.position.set(52, 0, 0); car.speed = 0; }
+  else window.__game.player.group.position.set(52, 0, 0);
+  window.__game.missions.snooze = 0;
+});
+let phoneVisible = false;
+for (let i = 0; i < 10 && !phoneVisible; i += 1) {
+  await page.waitForTimeout(1000);
+  phoneVisible = await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'));
+}
 check(
   'phone briefing exits pointer lock',
   phoneVisible && (await isLocked()) === false,

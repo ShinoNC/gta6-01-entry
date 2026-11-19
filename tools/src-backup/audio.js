@@ -182,6 +182,11 @@ export class GameAudio {
     this.blip(880, 0.14, 0.08);
     this.blip(1174.66, 0.2, 0.08, 'sine', 0.1);
   }
+  punchSound(hit) {
+    this.blip(500, 0.07, 0.06);
+    this.blip(320, 0.09, 0.05, 'sine', 0.05);
+    if (hit) this.blip(75, 0.16, 0.25, 'sine', 0.08);
+  }
   click() {
     this.blip(1400, 0.04, 0.05, 'square');
   }

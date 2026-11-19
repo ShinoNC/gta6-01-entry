@@ -171,13 +171,14 @@ check(
 );
 
 // --- 9. MENACE: running a ped over counts ---
+// Enter the car FIRST while it stands still 1.5m from a ped, then drive
+// into the ped with W. Rolling the car in (old approach) races the enter:
+// under headless load the car can hit the ped before F registers, and a
+// rolling car clipping the player knocks them down and blocks F.
 await page.evaluate(() => {
   window.__game.stats.pedsDown = 9;
   const ped = window.__game.pedestrians.peds.find((p) => p.knockedTimer <= 0);
   const car = window.__game.cars[0];
-  // Park the car 1.5m from a ped, aimed straight at it, already rolling at
-  // 20 m/s — the hit check (range 2.1m, min speed 2) fires on the first
-  // frame after the player gets in.
   const px = ped.mesh.group.position.x;
   const pz = ped.mesh.group.position.z;
   const dx = px - car.position.x;
@@ -186,17 +187,34 @@ await page.evaluate(() => {
   car.group.position.set(px - (dx / d) * 1.5, 0, pz - (dz / d) * 1.5);
   car.heading = Math.atan2(dx, dz);
   car.group.rotation.y = car.heading;
-  car.speed = 20;
-  window.__game.player.group.position.set(car.position.x + 2, 0, car.position.z);
+  car.speed = 0;
+  window.__game.player.group.position.set(car.position.x - (dx / d) * 2, 0, car.position.z - (dz / d) * 2);
 });
-await page.keyboard.press('KeyF');
 await page.waitForTimeout(500);
+// The building push-out can shove the teleported player out of F range;
+// re-place next to the car if needed.
+let inRange = await page.evaluate(() => {
+  const g = window.__game;
+  return Math.hypot(g.player.group.position.x - g.cars[0].position.x, g.player.group.position.z - g.cars[0].position.z) < 4;
+});
+if (!inRange) {
+  await page.evaluate(() => {
+    const g = window.__game;
+    const car = g.cars[0];
+    g.player.group.position.set(car.position.x + 2, 0, car.position.z);
+  });
+  await page.waitForTimeout(500);
+}
+await page.keyboard.press('KeyF');
+await page.waitForFunction(() => window.__game.drivenCar !== null, null, { timeout: 10000 }).catch(() => {});
+await page.keyboard.down('KeyW');
 let menace = false;
 for (let i = 0; i < 20; i += 1) {
   menace = await page.evaluate(() => window.__game.stats.pedsDown >= 10);
   if (menace) break;
   await page.waitForTimeout(500);
 }
+await page.keyboard.up('KeyW');
 check(
   'MENACE unlocks at 10 pedestrians down',
   menace && (await page.evaluate(() => window.__game.achievements.includes('menace'))),
@@ -210,26 +228,44 @@ await page.evaluate(() => {
   window.__game.wanted.setStars(0);
   window.__game.setMoney(500);
 });
-for (let i = 0; i < 5; i += 1) {
+// Steal until 5 stars, retrying iterations that fail under load: a missed F
+// press desyncs the enter/exit toggle, so verify the star count each time
+// instead of assuming 5 iterations = 5 stars. Unreachable cars (building
+// push-out shoves the player out of range at every offset) are marked and
+// skipped so the loop tries a different car.
+let attempts = 0;
+while ((await page.evaluate(() => window.__game.wanted.stars)) < 5 && attempts < 12) {
+  attempts += 1;
+  // If a previous miss left the player driving, exit first to re-sync.
+  if (await page.evaluate(() => window.__game.drivenCar !== null)) {
+    await page.keyboard.press('KeyF');
+    await page.waitForFunction(() => window.__game.drivenCar === null, null, { timeout: 5000 }).catch(() => {});
+  }
   // Try offsets until the player settles within enter range — the building
   // push-out can shove a teleported player out of the 4m enter range.
   let inRange = false;
   for (const [ox, oz] of [[2, 0], [-2, 0], [0, 2], [0, -2]]) {
     await page.evaluate(([x, z]) => {
       const g = window.__game;
-      const car = g.cars.find((c) => !c.owned && !c.destroyed);
+      const car = g.cars.find((c) => !c.owned && !c.destroyed && !c.__skip);
       if (car) g.player.group.position.set(car.position.x + x, 0, car.position.z + z);
     }, [ox, oz]);
     await page.waitForTimeout(300);
     inRange = await page.evaluate(() => {
       const g = window.__game;
-      const car = g.cars.find((c) => !c.owned && !c.destroyed);
+      const car = g.cars.find((c) => !c.owned && !c.destroyed && !c.__skip);
       if (!car) return false;
       return Math.hypot(g.player.group.position.x - car.position.x, g.player.group.position.z - car.position.z) < 3.5;
     });
     if (inRange) break;
   }
-  if (!inRange) break;
+  if (!inRange) {
+    await page.evaluate(() => {
+      const car = window.__game.cars.find((c) => !c.owned && !c.destroyed && !c.__skip);
+      if (car) car.__skip = true;
+    });
+    continue;
+  }
   await page.keyboard.press('KeyF');
   // Poll for the enter/exit to register — fixed waits desync under load and
   // the exit KeyF can land before the enter is processed.

@@ -52,11 +52,12 @@ await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 6
 await page.waitForTimeout(500);
 check('game loads, title state', await page.evaluate(() => window.__game.state === 'title'));
 check(
-  'title screen has NEW GAME + OPTIONS',
+  'title screen has NEW GAME + OPTIONS + VICE ROYALE title',
   await page.evaluate(() => {
     const start = document.getElementById('start-button');
     const options = document.getElementById('options-button');
-    return start.textContent === 'NEW GAME' && !options.classList.contains('hidden') && document.getElementById('title-skyline') !== null;
+    const title = document.querySelector('#title-screen .game-title');
+    return start.textContent === 'NEW GAME' && !options.classList.contains('hidden') && title && title.textContent === 'VICE ROYALE';
   }),
 );
 await page.click('#options-button');
@@ -168,19 +169,31 @@ const fleeing = await page.evaluate(() => {
 });
 check('pedestrians flee from a scare', fleeing > 0, `${fleeing} fleeing`);
 
-// Mission 1: the fixer calls shortly after the game starts (8s snooze;
-// headless runs ~0.14x, so poll with a generous budget — waitForSelector
-// proved flaky under slow headless).
+// Mission 1: the briefing appears only when the player walks up to the gold
+// marker at (52, 0) — no auto phone call. Teleport to the marker, then poll.
+await page.evaluate(() => {
+  window.__game.player.group.position.set(52, 0, 0);
+});
 let phoneUp = false;
 for (let i = 0; i < 40 && !phoneUp; i += 1) {
   await page.waitForTimeout(5000);
   phoneUp = await page.evaluate(() => !document.getElementById('phone-panel').classList.contains('hidden'));
 }
-check('mission 1 briefing appears after the snooze', phoneUp);
+check('mission 1 briefing appears at the gold marker', phoneUp);
 if (!phoneUp) { await browser.close(); process.exit(1); }
 await page.click('#phone-accept');
-await page.waitForTimeout(500);
-check('mission 1 briefing accepted', await page.evaluate(() => document.getElementById('hud-mission').textContent.includes('MISSION 1/8')));
+// Poll: under headless load a single 500ms read can land before the game
+// loop has run a frame (HUD not yet updated, mission not yet completed —
+// the player stands ON the target, so it completes within the first frames).
+let accepted = false;
+for (let i = 0; i < 12 && !accepted; i += 1) {
+  await page.waitForTimeout(500);
+  // Check mission STATE, not the HUD text: the HUD only refreshes on a game
+  // loop frame, which can lag seconds under headless load, while
+  // startMission sets the state synchronously on the click.
+  accepted = await page.evaluate(() => Boolean(window.__game.missions.currentMission()) || window.__game.missions.doneCount() >= 1);
+}
+check('mission 1 briefing accepted', accepted);
 await page.evaluate(() => {
   const target = window.__game.missions.target;
   window.__game.player.group.position.set(target.x, 0, target.z);

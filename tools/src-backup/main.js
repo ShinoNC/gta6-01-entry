@@ -64,7 +64,7 @@ let missionOpen = false, empireOpen = false, mapOpen = false, garageOpen = false
 let garage = { engine: false, armour: false, nitro: false };
 let stats = freshStats();
 let unlockedAchievements = [];
-let freeObj = 'Explore Solaris Keys — press F near a car to drive it';
+let freeObj = 'Mara has a job for you — head to the gold marker';
 const titleScreen = $('title-screen');
 const pauseScreen = $('pause-screen');
 const optionsScreen = $('options-screen');
@@ -414,15 +414,6 @@ on('empire-list', (event) => {
     saveGame(AUTOSAVE_SLOT, snapshotSave());
   }
 });
-on('mission-list', (event) => {
-  const button = event.target.closest('.mission-accept');
-  if (!button) return;
-  const index = Number.parseInt(button.dataset.mission, 10);
-  closeMissionScreen();
-  hud.hideBriefing();
-  phoneVisible = false;
-  missions.startMission(index);
-});
 on('phone-accept', acceptBriefing);
 on('phone-later', () => {
   hud.hideBriefing();
@@ -447,6 +438,7 @@ function nearestCar(position) {
   };
   for (const car of cars) consider(car);
   for (const npc of traffic.cars) consider(npc.car);
+  for (const unit of [...police.pursuit, ...police.roadblock]) consider(unit.car);
   return best;
 }
 function enterCar(car) {
@@ -461,6 +453,18 @@ function enterCar(car) {
     traffic.cars.splice(npcIndex, 1);
     traffic.cars.push(traffic.buildNpc(scene, rng));
     cars.push(car);
+    car.speed = 0;
+  }
+  // Stealing a police car: drop the unit (the force spawns a replacement),
+  // keep the car — lightbar and all — and yank it to a stop.
+  for (const list of [police.pursuit, police.roadblock]) {
+    const unitIndex = list.findIndex((unit) => unit.car === car);
+    if (unitIndex >= 0) {
+      list.splice(unitIndex, 1);
+      cars.push(car);
+      car.speed = 0;
+      break;
+    }
   }
   if (!car.owned) {
     car.owned = true;
@@ -519,6 +523,8 @@ function endRun(kind) {
   player.jumpV = 0;
   const wasted = kind === 'WASTED';
   player.group.position.set(wasted ? 52 : -104, 0, wasted ? 26 : -104);
+  player.downTimer = 0;
+  player.group.rotation.x = 0;
   $('down-title').textContent = kind;
   $('down-sub').textContent = wasted ? `Hospital bill $${fine.toLocaleString('en-US')} — the Keys PD lost your trail` : `Fine $${fine.toLocaleString('en-US')} — the Keys PD lost your trail`;
   $('down-screen').classList.remove('hidden');
@@ -731,7 +737,7 @@ function update(dt) {
     const weaponName = combat.cycleWeapon(wheelSteps > 0 ? 1 : -1);
     if (weaponName) hud.showMessage(`WEAPON — ${weaponName}`, 1.2);
   }
-  if (input.pressed('KeyF')) {
+  if (input.pressed('KeyF') && player.downTimer <= 0) {
     if (drivenCar) exitCar();
     else {
       const car = nearestCar(player.position);
@@ -780,24 +786,30 @@ function update(dt) {
   } else {
     player.update(dt, input, chaseCamera.yaw, city);
     chaseCamera.update(dt, player.position, player.heading, false, input, combat.recoil, police.helicopter ? 2 : 0);
-    const pushOut = (car) => {
+    const hitByCar = (car, speed) => {
       if (!car || car.destroyed) return;
       const dx = player.position.x - car.position.x;
       const dz = player.position.z - car.position.z;
       const dist = Math.hypot(dx, dz);
       if (dist >= 2.6 || dist < 0.01) return;
       player.group.position.set(car.position.x + (dx / dist) * 2.6, 0, car.position.z + (dz / dist) * 2.6);
+      if (speed < 2 || elapsed - (car._hitAt || -99) < 1) return;
+      car._hitAt = elapsed;
+      damagePlayer(Math.min(25, Math.round(3 + speed)));
+      player.knockDown(0.8);
+      combat.recoil = Math.min(1, combat.recoil + 0.5);
+      hud.showMessage('HIT BY A CAR!', 2);
     };
-    for (const car of cars) pushOut(car);
-    for (const npc of traffic.cars) pushOut(npc.car);
-    for (const unit of [...police.pursuit, ...police.roadblock]) pushOut(unit.car);
+    for (const car of cars) hitByCar(car, car.speed);
+    for (const npc of traffic.cars) hitByCar(npc.car, npc.speed);
+    for (const unit of [...police.pursuit, ...police.roadblock]) hitByCar(unit.car, unit.car.speed);
   }
   for (const car of cars) {
     if (!car.driven && !car.destroyed && Math.abs(car.speed) > 0.05) car.update(dt, NO_INPUT, city, 1);
   }
   city.update(dt);
   effects.update(dt);
-  if (input.tap) {
+  if (input.tap && player.downTimer <= 0) {
     if (!drivenCar) {
       player.heading = Math.atan2(-Math.sin(chaseCamera.yaw), -Math.cos(chaseCamera.yaw));
       player.group.rotation.y = player.heading;
@@ -807,10 +819,15 @@ function update(dt) {
     const result = combat.tryShoot(origin, aim, combatTargets());
     if (result === 'empty') hud.showMessage('NO AMMO — finish a mission to restock');
     else if (result === 'reloading') hud.showMessage('RELOADING…');
+    else if (result === 'punch' || result === 'whiff') {
+      if (!drivenCar) player.punch();
+      audio.punchSound(result === 'punch');
+    }
   }
   combat.update(dt, player.position);
   const obstacles = [];
   if (drivenCar) obstacles.push({ x: drivenCar.position.x, z: drivenCar.position.z });
+  else obstacles.push({ x: player.position.x, z: player.position.z });
   for (const npc of traffic.cars) obstacles.push({ x: npc.car.position.x, z: npc.car.position.z });
   for (const position of police.allCarPositions()) obstacles.push(position);
   traffic.update(dt, obstacles);
@@ -941,6 +958,10 @@ function update(dt) {
     hud.showMessage(`SUNSET TAPE ${count}/${TAPE_COUNT} +$25`, 2);
   });
   dialogue.update();
+  const nextMission = missions.pendingMission;
+  if (nextMission && !missions.currentMission()) {
+    freeObj = `${nextMission.giver.split(' ')[0]} has a job for you — head to the gold marker`;
+  }
   const briefing = missions.pendingBriefing;
   if (briefing && !phoneVisible && !missionOpen) {
     hud.showBriefing(briefing.mission, briefing.index);
@@ -1045,6 +1066,8 @@ loadTextures()
         if (index === MISSIONS_IN_STORY - 1) {
           freeObj = 'STORY COMPLETE — the Keys are yours. Free roam!';
         }
+        const next = missions.pendingMission;
+        if (next) hud.showMessage(`${next.giver.split(' ')[0]} has a job for you — head to the gold marker`, 6);
       },
     });
     effects = new Effects(scene);
@@ -1098,6 +1121,7 @@ loadTextures()
     }, effects);
     audio = new GameAudio();
     chaseCamera = new ChaseCamera(camera);
+    chaseCamera.city = city; // camera pulls in when a building blocks the view
     hud = new Hud(city);
     dialogue = new Dialogue();
     tapes = new Tapes(scene, rng);
@@ -1143,13 +1167,9 @@ loadTextures()
       },
     });
     hud.setObjective('Press ENTER or click NEW GAME to play');
-    const latestSlot = latestSaveSlot();
-    if (latestSlot) {
-      const saved = saveSlotSummaries()[latestSlot - 1];
-      $('continue-button').classList.remove('hidden');
-      $('continue-summary').textContent =
-        `Saved game (slot ${latestSlot}): $${saved.money.toLocaleString('en-US')} · ${saved.missionsDone}/${MISSIONS_IN_STORY} missions done`;
-    }
+    const summaries = saveSlotSummaries();
+    $('continue-summary').textContent = `SAVES — ${summaries.map((s) => (s.empty ? `${s.slot}: EMPTY` : `${s.slot}: $${s.money.toLocaleString('en-US')} · ${s.missionsDone}/${MISSIONS_IN_STORY} jobs`)).join(' · ')}`;
+    if (latestSaveSlot()) $('continue-button').classList.remove('hidden');
     applyLook(loadLook() || {});
     stageShot();
     window.__game = {

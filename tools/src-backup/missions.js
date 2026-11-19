@@ -1,10 +1,12 @@
 import * as THREE from 'three';
 export const MISSIONS_IN_STORY = 8;
 const ARRIVE_M = 15;
+const MARKER_M = 6;
 const MISSION_CHAIN = [
   {
     name: 'FIRST FARE',
     giver: 'Mara Solis',
+    start: [52, 0],
     briefing:
       'Rook. Mara Solis. Word is you can drive. Prove it — pick up my client at Marina Del Sol. Do not keep them waiting.',
     rewardMoney: 500,
@@ -14,6 +16,7 @@ const MISSION_CHAIN = [
   {
     name: 'THE CORAL RUN',
     giver: 'Juno Reyes',
+    start: [-52, 70],
     briefing:
       'Rook. Juno. I am stranded on Coral Strand and my ride is not coming. Come get me, then drop me at Sunset Bluff — and treat the car like it is yours, because soon it will be.',
     rewardMoney: 750,
@@ -26,6 +29,7 @@ const MISSION_CHAIN = [
   {
     name: 'HEAT ON WHEELS',
     giver: 'Mara Solis',
+    start: [-104, -104],
     briefing:
       'The drop is blown — the Keys police are on you the second you move. Shake them, then bring the package to Old Port. I left an SMG in the glovebox for the trouble.',
     rewardMoney: 1000,
@@ -40,6 +44,7 @@ const MISSION_CHAIN = [
   {
     name: 'KEYS TO THE CITY',
     giver: 'Juno Reyes',
+    start: [52, -104],
     briefing:
       'Rook. Juno. A Sunset Coupe is sitting in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port — mine.',
     rewardMoney: 1250,
@@ -52,6 +57,7 @@ const MISSION_CHAIN = [
   {
     name: 'SUNSET BLUFF DROP',
     giver: 'Juno Reyes',
+    start: [130, 70],
     briefing:
       'Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then come straight back to Marina Del Sol.',
     rewardMoney: 1500,
@@ -65,6 +71,7 @@ const MISSION_CHAIN = [
   {
     name: 'THE GETAWAY',
     giver: 'Mara Solis',
+    start: [104, -104],
     briefing:
       'Three stars, a helicopter, and a roadblock with your name on it. Get clean and get to Harbor Lights. This is the job that makes your name.',
     rewardMoney: 1750,
@@ -78,6 +85,7 @@ const MISSION_CHAIN = [
   {
     name: 'HARBOR LIGHTS HEIST',
     giver: 'Otto Kane',
+    start: [104, -104],
     briefing:
       'Rook. Otto Kane. The crew is waiting at Harbor Lights. Pick them up, crack the vault, and be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.',
     rewardMoney: 2500,
@@ -91,6 +99,7 @@ const MISSION_CHAIN = [
   {
     name: 'KING OF THE KEYS',
     giver: 'Mara Solis',
+    start: [-52, 70],
     briefing:
       'One last drive. Meet me on Coral Strand at sunset, then we take the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.',
     rewardMoney: 4000,
@@ -127,7 +136,8 @@ export class Missions {
     this.stageIndex = 0;
     this.waitSeconds = 0;
     this.briefingIdx = 0;
-    this.snooze = 8;
+    this.snooze = 0;
+    this.atMarker = false;
     this.target = null;
     this.clock = 0;
     this.missionClock = 0;
@@ -135,8 +145,12 @@ export class Missions {
     this.beacon = buildBeacon(scene);
   }
   get pendingBriefing() {
-    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0) return null;
+    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0 || !this.atMarker) return null;
     return { mission: MISSION_CHAIN[this.briefingIdx], index: this.briefingIdx };
+  }
+  // Next mission waiting at its gold marker, or null once the story is done.
+  get pendingMission() {
+    return this.briefingIdx >= 0 ? MISSION_CHAIN[this.briefingIdx] : null;
   }
   currentMission() {
     return this.curIdx >= 0 ? MISSION_CHAIN[this.curIdx] : null;
@@ -212,8 +226,17 @@ export class Missions {
     this.snooze = Math.max(0, this.snooze - dt);
     const mission = this.currentMission();
     if (!mission) {
-      this.target = null;
-      this.beacon.group.visible = false;
+      // Free roam: the gold marker for the next mission waits at its start.
+      const next = this.pendingMission;
+      this.target = next ? { x: next.start[0], z: next.start[1] } : null;
+      this.beacon.group.visible = this.target !== null;
+      if (this.target) {
+        this.beacon.group.position.set(this.target.x, 0, this.target.z);
+        this.beacon.pillar.material.opacity = 0.2 + 0.1 * Math.sin(this.clock * 3);
+        this.atMarker = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z) < MARKER_M;
+      } else {
+        this.atMarker = false;
+      }
       return;
     }
     this.missionClock += dt;
