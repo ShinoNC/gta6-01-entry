@@ -34,7 +34,7 @@ const wrap = (a) => {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
@@ -56,9 +56,17 @@ check('mouse move does not rotate the camera', Math.abs(yawAfterMouse - yawBefor
 const headBefore = await page.evaluate(() => window.__game.player.heading);
 const posBeforeTurn = await page.evaluate(() => ({ x: window.__game.player.position.x, z: window.__game.player.position.z }));
 await page.keyboard.down('KeyD');
-await page.waitForTimeout(4000);
+// Poll until the turn is measurable: headless game-time crawls, so a fixed
+// 4s hold covers ~0.1s of game-time (~0.25 rad) on a slow run. The check
+// below needs 0.3 rad; stop at 0.4 for margin.
+let headAfterD = headBefore;
+const turnT0 = Date.now();
+while (Date.now() - turnT0 < 60000) {
+  headAfterD = await page.evaluate(() => window.__game.player.heading);
+  if (wrap(headAfterD - headBefore) < -0.4) break;
+  await page.waitForTimeout(500);
+}
 await page.keyboard.up('KeyD');
-const headAfterD = await page.evaluate(() => window.__game.player.heading);
 const posAfterTurn = await page.evaluate(() => ({ x: window.__game.player.position.x, z: window.__game.player.position.z }));
 const turned = wrap(headAfterD - headBefore);
 check('D turns the player right in place (heading decreases, no displacement)', turned < -0.3 && Math.hypot(posAfterTurn.x - posBeforeTurn.x, posAfterTurn.z - posBeforeTurn.z) < 0.5, `heading ${headBefore.toFixed(2)} -> ${headAfterD.toFixed(2)} (Δ ${turned.toFixed(2)}) moved ${Math.hypot(posAfterTurn.x - posBeforeTurn.x, posAfterTurn.z - posBeforeTurn.z).toFixed(2)}m`);
@@ -138,30 +146,47 @@ for (let i = 0; i < 10 && !entered; i += 1) {
 }
 check('F enters the starter car', entered, lastState);
 if (!entered) { await browser.close(); process.exit(1); }
+// Compare DECELERATION RATES over the same real-time window, not end
+// speeds after a fixed hold. Both decays are exponential in game-time —
+// brake at rate 1.0/s, coast drag at CAR_DRAG ~0.19/s — so the loss ratio
+// (~5x) is independent of the headless slowdown, which varies 3x-160x
+// between runs and makes fixed holds meaningless (a 15s hold stopped
+// BOTH cars in run 3: brake 0.0, coast 0.0 — the coast car almost
+// certainly hit traffic). Park the traffic first so no collision
+// contaminates the coast phase; restore it right after (section 6b
+// re-positions every car onto roads anyway).
 await page.evaluate(() => {
-  const car = window.__game.drivenCar;
-  car.group.position.set(0, 0, 80);
-  car.heading = Math.PI / 2;
-  car.group.rotation.y = Math.PI / 2;
-  car.speed = 30;
+  for (const npc of window.__game.traffic.cars) {
+    npc.dormant = true; npc.retryTimer = 999;
+    npc.car.group.position.set(10000, 0, 10000);
+  }
 });
-await page.keyboard.down('Space');
-await page.waitForTimeout(5000);
-await page.keyboard.up('Space');
-const brakeSpeed = await page.evaluate(() => window.__game.drivenCar.speed);
+async function decelOverMs(holdSpace, ms) {
+  await page.evaluate(() => {
+    const car = window.__game.drivenCar;
+    car.group.position.set(0, 0, 80);
+    car.heading = Math.PI;
+    car.group.rotation.y = Math.PI;
+    car.speed = 30;
+  });
+  const v0 = await page.evaluate(() => window.__game.drivenCar.speed);
+  if (holdSpace) await page.keyboard.down('Space');
+  await page.waitForTimeout(ms);
+  if (holdSpace) await page.keyboard.up('Space');
+  const v1 = await page.evaluate(() => window.__game.drivenCar.speed);
+  return v0 - v1;
+}
+const brakeLoss = await decelOverMs(true, 6000);
+const coastLoss = await decelOverMs(false, 6000);
 await page.evaluate(() => {
-  const car = window.__game.drivenCar;
-  car.group.position.set(0, 0, 80);
-  car.heading = Math.PI / 2;
-  car.group.rotation.y = Math.PI / 2;
-  car.speed = 30;
+  for (const npc of window.__game.traffic.cars) {
+    npc.dormant = false; npc.retryTimer = 0;
+  }
 });
-await page.waitForTimeout(5000);
-const coastSpeed = await page.evaluate(() => window.__game.drivenCar.speed);
 check(
   'handbrake (Space) stops far faster than coasting',
-  brakeSpeed < coastSpeed * 0.8 && brakeSpeed < 18,
-  `brake -> ${brakeSpeed.toFixed(1)} m/s, coast -> ${coastSpeed.toFixed(1)} m/s`,
+  brakeLoss > coastLoss * 2 && brakeLoss > 0.3,
+  `brake lost ${brakeLoss.toFixed(1)} m/s, coast lost ${coastLoss.toFixed(1)} m/s in 6s`,
 );
 
 // --- 6b. Traffic passing in the next lane does not slow the car ---
@@ -197,8 +222,8 @@ check(
 await page.evaluate(() => {
   const car = window.__game.drivenCar;
   car.group.position.set(0, 0, 80);
-  car.heading = Math.PI / 2;
-  car.group.rotation.y = Math.PI / 2;
+  car.heading = Math.PI;
+  car.group.rotation.y = Math.PI;
   car.speed = 30;
 });
 await page.keyboard.down('Space');

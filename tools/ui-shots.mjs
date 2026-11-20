@@ -30,7 +30,7 @@ await page.waitForTimeout(1500);
 await page.screenshot({ path: `${OUT}/1-title.png` });
 console.log('1-title.png');
 
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(2000);
 await page.screenshot({ path: `${OUT}/2-hud.png` });
 console.log('2-hud.png');

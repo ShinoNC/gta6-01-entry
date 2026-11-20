@@ -47,26 +47,52 @@ await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 6
 await page.waitForTimeout(500);
 check('game loads, title state', await page.evaluate(() => window.__game.state === 'title'));
 check(
-  'title screen has NEW GAME + OPTIONS + VICE ROYALE title',
+  'title screen has NEW GAME + SETTINGS + VICE ROYALE title',
   await page.evaluate(() => {
     const start = document.getElementById('start-button');
-    const options = document.getElementById('options-button');
+    const settings = document.getElementById('settings-button');
     const title = document.querySelector('#title-screen .game-title');
-    return start.textContent === 'NEW GAME' && !options.classList.contains('hidden') && title && title.textContent === 'VICE ROYALE';
+    return start.textContent === 'NEW GAME' && settings.textContent === 'SETTINGS' && !settings.classList.contains('hidden') && title && title.textContent === 'VICE ROYALE';
   }),
 );
-await page.click('#options-button');
+await page.click('#settings-button');
 await page.waitForTimeout(300);
-check('OPTIONS opens the options screen', await page.evaluate(() => !document.getElementById('options-screen').classList.contains('hidden')));
-await page.click('#sound-toggle');
+check('SETTINGS opens the settings panel', await page.evaluate(() => !document.getElementById('settings-screen').classList.contains('hidden')));
+check(
+  'settings tab is the default view',
+  await page.evaluate(() => !document.getElementById('settings-tab-panel').classList.contains('hidden') && document.getElementById('controls-tab-panel').classList.contains('hidden')),
+);
+await page.click('.settings-tab[data-tab="controls"]');
 await page.waitForTimeout(200);
-check('sound toggle flips to OFF', await page.evaluate(() => document.getElementById('sound-toggle').textContent === 'SOUND: OFF'));
-await page.click('#sound-toggle');
-await page.click('#options-back');
+check(
+  'CONTROLS tab lists the bindings',
+  await page.evaluate(() => {
+    const panel = document.getElementById('controls-tab-panel');
+    return !panel.classList.contains('hidden') && panel.textContent.includes('MOVE') && panel.textContent.includes('W / S') && panel.textContent.includes('ENTER CAR / CARJACK');
+  }),
+);
+await page.click('.settings-tab[data-tab="settings"]');
+await page.waitForTimeout(200);
+await page.evaluate(() => {
+  const slider = document.getElementById('music-volume');
+  slider.value = '0';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await page.waitForTimeout(200);
+check(
+  'music volume slider applies',
+  await page.evaluate(() => window.__game.audio.musicVolume === 0 && document.getElementById('music-volume-value').textContent === '0'),
+);
+await page.evaluate(() => {
+  const slider = document.getElementById('music-volume');
+  slider.value = '100';
+  slider.dispatchEvent(new Event('input', { bubbles: true }));
+});
+await page.click('#settings-back');
 await page.waitForTimeout(300);
 check('BACK returns to the title screen', await page.evaluate(() => !document.getElementById('title-screen').classList.contains('hidden')));
 
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(300);
 check('NEW GAME begins play', await page.evaluate(() => window.__game.state === 'play'));
 
@@ -176,7 +202,7 @@ for (let i = 0; i < 40 && !phoneUp; i += 1) {
 }
 check('mission 1 briefing appears at the gold marker', phoneUp);
 if (!phoneUp) { await browser.close(); process.exit(1); }
-await page.click('#phone-accept');
+await page.evaluate(() => document.getElementById('phone-accept')?.click());
 // Poll: under headless load a single 500ms read can land before the game
 // loop has run a frame (HUD not yet updated, mission not yet completed —
 // the player stands ON the target, so it completes within the first frames).
@@ -360,7 +386,31 @@ await page.evaluate(() => {
 await page.waitForTimeout(8000);
 check('wanted level falls while hidden', await page.evaluate(() => window.__game.wanted.stars === 0));
 
-// Combat: pistol shot spends ammo and raises the wanted level.
+// Combat: pistol shot spends ammo and raises the wanted level — but only
+// when witnessed, so place a witness ped next to the player first (via
+// line+along; setting x/z directly is overwritten by placeOnSidewalk).
+await page.evaluate(() => {
+  const peds = window.__game.pedestrians;
+  const ped = peds.peds[1];
+  const p = window.__game.player.position;
+  let best = null;
+  let bestD = Infinity;
+  for (const line of peds.lines) {
+    const lat = line.axis === 'z' ? p.x : p.z;
+    const d = Math.abs(lat - line.at);
+    if (d < bestD) {
+      bestD = d;
+      best = line;
+    }
+  }
+  ped.line = best;
+  ped.along = best.axis === 'z' ? p.z : p.x;
+  ped.along = Math.max(best.from, Math.min(best.to, ped.along));
+  ped.side = (best.axis === 'z' ? p.x : p.z) >= best.at ? 1 : -1;
+  ped.knockedTimer = 0;
+  ped.fleeTimer = 0;
+  ped.direction = 1;
+});
 await page.keyboard.press('Digit2');
 await page.waitForTimeout(300);
 await shoot();

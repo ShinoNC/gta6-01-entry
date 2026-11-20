@@ -35,7 +35,7 @@ function note(name, detail = '') {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => { window.__game.missions.snoozeBriefing(600); });
 
@@ -140,7 +140,7 @@ const yank = await page.evaluate(() => ({
 note('yank result', JSON.stringify(yank));
 check('F on a moving traffic car carjacks it', yank.driven === true, `driving ${yank.name}`);
 check('carjacked car is yanked to a stop', yank.speed === 0, `speed ${yank.speed} m/s`);
-check('traffic spawns a replacement NPC', yank.trafficCount === 10, `${yank.trafficCount} NPCs`);
+check('traffic spawns a replacement NPC', yank.trafficCount === 28, `${yank.trafficCount} NPCs`);
 check('stolen car joins the owned cars', yank.inCars === true);
 check('carjack adds a wanted star', yank.stars === 1, `${yank.stars} stars`);
 check('VEHICLE STOLEN message shows', sawStealMsg === true);
@@ -192,7 +192,7 @@ check('braked car can be walked up to and carjacked', braked.driven === true, `d
 await ensureOnFoot();
 await page.evaluate(() => {
   const g = window.__game;
-  let best = null; let bestD = 99;
+  let best = null; let bestD = Infinity;
   for (const car of g.cars) {
     if (car.driven || car.destroyed || car.__mark) continue;
     const d = Math.hypot(car.position.x - g.player.position.x, car.position.z - g.player.position.z);

@@ -54,7 +54,7 @@ function insideBox(x, z, boxes) {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(1500);
 await page.evaluate(() => window.__game.missions.snoozeBriefing(600));
 

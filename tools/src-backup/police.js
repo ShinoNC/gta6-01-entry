@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createCar } from './vehicles.js';
+import { createCar, waterCap } from './vehicles.js';
 import { buildWalkerMesh } from './pedestrians.js';
 import { roadLines } from './city.js';
 import { headingFor } from './traffic.js';
@@ -12,6 +12,69 @@ const RB_AHEAD = 45, RB_REPOSITION_S = 25, DESPAWN_S = 3, HELI_AHEAD = 22, HELI_
 const HELI_H = 14, HELI_SWEEP_S = 5, HELI_HP = 60, HELI_RESPAWN_S = 60;
 function pursuitCarsForStars(stars) {
   return stars <= 0 ? 0 : stars === 1 ? 1 : stars === 2 ? 2 : stars === 3 ? 4 : stars === 4 ? 5 : 6;
+}
+// VRPD livery textures (shared across all units): POLICE in white with a
+// navy outline reads on the white stripe, the blue body and the navy
+// uniform alike; the door badge is the Vice Royale Police Department
+// shield. MeshBasicMaterial so the lettering stays readable at night.
+let policeTextMat = null, policeRoofMat = null, vrpdBadgeMat = null;
+function liveryMaterials() {
+  if (policeTextMat) return { policeTextMat, policeRoofMat, vrpdBadgeMat };
+  const text = document.createElement('canvas');
+  text.width = 512;
+  text.height = 64;
+  const tctx = text.getContext('2d');
+  tctx.font = 'bold 52px "Courier New", monospace';
+  tctx.textAlign = 'center';
+  tctx.textBaseline = 'middle';
+  tctx.lineWidth = 8;
+  tctx.strokeStyle = '#1a2a6b';
+  tctx.strokeText('POLICE', 256, 34);
+  tctx.fillStyle = '#ffffff';
+  tctx.fillText('POLICE', 256, 34);
+  policeTextMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(text), transparent: true });
+  // Roof text runs front-to-back, so it is drawn rotated in the canvas.
+  const roof = document.createElement('canvas');
+  roof.width = 128;
+  roof.height = 256;
+  const rctx = roof.getContext('2d');
+  rctx.save();
+  rctx.translate(64, 128);
+  rctx.rotate(Math.PI / 2);
+  rctx.font = 'bold 72px "Courier New", monospace';
+  rctx.textAlign = 'center';
+  rctx.textBaseline = 'middle';
+  rctx.lineWidth = 10;
+  rctx.strokeStyle = '#1a2a6b';
+  rctx.strokeText('POLICE', 0, 0);
+  rctx.fillStyle = '#ffffff';
+  rctx.fillText('POLICE', 0, 0);
+  rctx.restore();
+  policeRoofMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(roof), transparent: true });
+  const badge = document.createElement('canvas');
+  badge.width = 64;
+  badge.height = 64;
+  const bctx = badge.getContext('2d');
+  bctx.fillStyle = '#1a2a6b';
+  bctx.beginPath();
+  bctx.moveTo(32, 4);
+  bctx.lineTo(58, 14);
+  bctx.lineTo(58, 34);
+  bctx.quadraticCurveTo(58, 54, 32, 60);
+  bctx.quadraticCurveTo(6, 54, 6, 34);
+  bctx.lineTo(6, 14);
+  bctx.closePath();
+  bctx.fill();
+  bctx.strokeStyle = '#ffd978';
+  bctx.lineWidth = 3;
+  bctx.stroke();
+  bctx.fillStyle = '#ffffff';
+  bctx.font = 'bold 15px "Courier New", monospace';
+  bctx.textAlign = 'center';
+  bctx.textBaseline = 'middle';
+  bctx.fillText('VRPD', 32, 32);
+  vrpdBadgeMat = new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(badge), transparent: true });
+  return { policeTextMat, policeRoofMat, vrpdBadgeMat };
 }
 export class Police {
   constructor(scene, textures, city, rng) {
@@ -75,10 +138,43 @@ export class Police {
     const bg = new THREE.BoxGeometry(0.5, 0.18, 0.32);
     const redMaterial = new THREE.MeshBasicMaterial({ color: 0xff2a3a });
     const blueMaterial = new THREE.MeshBasicMaterial({ color: 0x2a6bff });
+    // Light bar at the front edge of the roof, leaving the rear roof free
+    // for the POLICE lettering.
     for (const [m, x] of [[redMaterial, -0.35], [blueMaterial, 0.35]]) {
       const light = new THREE.Mesh(bg, m);
-      light.position.set(x, 1.52, -0.2);
+      light.position.set(x, 1.52, 0.75);
       car.group.add(light);
+    }
+    // White side stripes + white roof: the livery reads as police from
+    // the side, not just from the light bar on top.
+    const stripeMat = new THREE.MeshLambertMaterial({ color: 0xf2f2f2 });
+    for (const side of [-0.96, 0.96]) {
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.3, 4.0), stripeMat);
+      stripe.position.set(side, 0.55, 0);
+      car.group.add(stripe);
+    }
+    // POLICE lettering on both sides, the roof (readable from above) and
+    // the hood/trunk, plus the VRPD door badge.
+    const { policeTextMat, policeRoofMat, vrpdBadgeMat } = liveryMaterials();
+    for (const side of [-1, 1]) {
+      const lettering = new THREE.Mesh(new THREE.PlaneGeometry(3.4, 0.42), policeTextMat);
+      lettering.position.set(side * 0.99, 0.55, 0);
+      lettering.rotation.y = (side * Math.PI) / 2;
+      car.group.add(lettering);
+      const badge = new THREE.Mesh(new THREE.PlaneGeometry(0.45, 0.45), vrpdBadgeMat);
+      badge.position.set(side * 0.99, 0.62, 0.9);
+      badge.rotation.y = (side * Math.PI) / 2;
+      car.group.add(badge);
+    }
+    const roofLettering = new THREE.Mesh(new THREE.PlaneGeometry(1.6, 1.9), policeRoofMat);
+    roofLettering.position.set(0, 1.46, -0.3);
+    roofLettering.rotation.x = -Math.PI / 2;
+    car.group.add(roofLettering);
+    for (const hz of [1.9, -1.9]) {
+      const plate = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 0.4), policeTextMat);
+      plate.position.set(0, 0.87, hz);
+      plate.rotation.x = -Math.PI / 2;
+      car.group.add(plate);
     }
     return { car, callsign, status: 'PURSUIT', ramCooldown: 0, shootCooldown: 1 + Math.random() * 2, redMaterial, blueMaterial, escortSide: 0, officer: null };
   }
@@ -147,7 +243,7 @@ export class Police {
     unit.turnCooldown = 0;
     this.placeOnRoad(unit);
   }
-  maybeTurnAtIntersection(unit, playerPos) {
+  maybeTurnAtIntersection(unit, playerPos, dt) {
     if (unit.turnCooldown > 0) return;
     const crosses = unit.line.axis === 'z' ? this.crossZ : this.crossX;
     const playerLateral = unit.line.axis === 'z' ? playerPos.x : playerPos.z;
@@ -156,8 +252,11 @@ export class Police {
       unit.direction = playerAlong >= unit.along ? 1 : -1;
       return;
     }
+    // The turn window must cover one frame of travel, or a fast car on a
+    // slow frame jumps clean over the intersection and never turns.
+    const window = Math.max(2.5, unit.car.speed * dt * 1.5);
     for (const cross of crosses) {
-      if (Math.abs(unit.along - cross) > 2.5) continue;
+      if (Math.abs(unit.along - cross) > window) continue;
       const crossLine = this.lines.find((line) => line.axis !== unit.line.axis && line.at === cross);
       if (!crossLine) return;
       unit.line = crossLine;
@@ -317,7 +416,7 @@ export class Police {
         unit.status = 'PURSUIT';
         unit.turnCooldown = Math.max(0, unit.turnCooldown - dt);
         car.speed = Math.min(topSpeed, car.speed + ACCEL * dt);
-        this.maybeTurnAtIntersection(unit, playerPos);
+        this.maybeTurnAtIntersection(unit, playerPos, dt);
         unit.along += unit.direction * car.speed * dt;
         if (unit.along < unit.line.from || unit.along > unit.line.to) unit.direction *= -1;
         this.placeOnRoad(unit);
@@ -354,6 +453,11 @@ export class Police {
             if (!driving && dist < 3) car.speed = 0;
           }
         }
+        // The sea stops a pursuit car like any other: it stalls in deep
+        // water and can only drive back out toward shore.
+        const water = waterCap(this.city, car.position.x, car.position.z, car.heading, car.speed, topSpeed, 6);
+        car.speed = water.speed;
+        car.group.position.y = -Math.min(water.depth * 0.5, 0.6);
         car.group.position.x += Math.sin(car.heading) * car.speed * dt;
         car.group.position.z += Math.cos(car.heading) * car.speed * dt;
         const beforeX = car.group.position.x;
@@ -363,9 +467,13 @@ export class Police {
         car.group.rotation.y = car.heading;
       }
       if (!driving && wantedStars >= 1 && !unit.officer && car.speed === 0 && dist < 3.5) {
-        const mesh = buildWalkerMesh(0x24457e, 0x14141c, 0xd9a077, 0x201510, 'none', 1);
+        const mesh = buildWalkerMesh(0x24457e, 0x14141c, 0xd9a077, 0x201510, 'police', 1);
         mesh.group.position.set(car.position.x + Math.cos(car.heading) * 1.8, 0, car.position.z - Math.sin(car.heading) * 1.8);
         this.city.resolveCircle(mesh.group.position, 0.5);
+        const backText = new THREE.Mesh(new THREE.PlaneGeometry(0.5, 0.18), liveryMaterials().policeTextMat);
+        backText.position.set(0, 1.35, -0.22);
+        backText.rotation.y = Math.PI;
+        mesh.group.add(backText);
         mesh.returning = false;
         mesh.walkPhase = 0;
         this.scene.add(mesh.group);
@@ -386,9 +494,19 @@ export class Police {
           this.scene.remove(officer.group);
           unit.officer = null;
         } else if (tdist > 0.4) {
+          // Officers do not swim: they stop at the shoreline and wait.
+          // A step into water deeper than 0.5m is blocked unless it leads
+          // back to shallower ground (an officer caught in deep water
+          // walks back out).
           const step = Math.min(OFFICER_SPEED * dt, tdist);
-          op.x += (tdx / tdist) * step;
-          op.z += (tdz / tdist) * step;
+          const nx = op.x + (tdx / tdist) * step;
+          const nz = op.z + (tdz / tdist) * step;
+          const nextDepth = this.city.waterDepthAt(nx, nz);
+          const curDepth = this.city.waterDepthAt(op.x, op.z);
+          if (nextDepth <= 0.5 || nextDepth < curDepth) {
+            op.x = nx;
+            op.z = nz;
+          }
           this.city.resolveCircle(op, 0.5);
           officer.group.rotation.y = Math.atan2(tdx, tdz);
           officer.walkPhase += dt * 9;

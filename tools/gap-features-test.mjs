@@ -32,7 +32,7 @@ async function dismissPhone() {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await dismissPhone();
 await page.waitForTimeout(300);
@@ -42,7 +42,7 @@ const districts = [
   [52, 0, 'MARINA DEL SOL'], [-52, 0, 'LANTERN ROW'],
   [52, 40, 'PELICAN BAY'], [-52, 40, 'PALM ROW'],
   [52, -104, 'HARBOR LIGHTS'], [-52, -104, 'OLD PORT'],
-  [52, 77, 'SUNSET BLUFF'], [-52, 77, 'CORAL STRAND'],
+  [52, 330, 'SUNSET BLUFF'], [-52, 330, 'CORAL STRAND'],
 ];
 for (const [x, z, name] of districts) {
   await page.evaluate(([px, pz]) => window.__game.player.group.position.set(px, 0, pz), [x, z]);
@@ -132,7 +132,9 @@ const pct = await page.evaluate(() => {
   const m = document.getElementById('mission-list').textContent.match(/(\d+)% COMPLETE/);
   return m ? parseInt(m[1], 10) : -1;
 });
-check('% COMPLETE updates with progress (4 jobs + 10 tapes = 33%)', pct === 33, `got ${pct}%`);
+// 4 jobs (25%) + 10 tapes of 40 (15 x 10/40 = 3.75) = 28.75 -> 29%.
+// (The old 33% assumed TAPE_COUNT 20; the 12x12 island has 40 tapes.)
+check('% COMPLETE updates with progress (4 jobs + 10 tapes = 29%)', pct === 29, `got ${pct}%`);
 await page.keyboard.press('KeyM');
 await page.waitForTimeout(300);
 
@@ -158,6 +160,14 @@ check(
 );
 
 // --- E. Crosshair + damage numbers (#6) ---
+// Section D left the player DRIVING; the crosshair is hidden while driving
+// (round 5), so exit the car first — the pistol check needs on-foot.
+await page.keyboard.press('KeyF');
+let onFoot = false;
+for (let i = 0; i < 20 && !onFoot; i += 1) {
+  await page.waitForTimeout(500);
+  onFoot = await page.evaluate(() => window.__game.drivenCar === null);
+}
 check(
   'crosshair hidden with FISTS',
   await page.evaluate(() => document.getElementById('crosshair').classList.contains('hidden')),
@@ -167,10 +177,17 @@ await page.evaluate(() => {
   window.__game.combat.restock();
   window.__game.combat.selectWeapon(1);
 });
-await page.waitForTimeout(400);
+// The crosshair class is toggled in hud.update, which runs once per game
+// frame — headless frames are seconds apart, so a fixed 400ms wait races
+// the next frame. Poll until it shows.
+let crossVisible = false;
+for (let i = 0; i < 20 && !crossVisible; i += 1) {
+  await page.waitForTimeout(500);
+  crossVisible = await page.evaluate(() => !document.getElementById('crosshair').classList.contains('hidden'));
+}
 check(
   'crosshair shows with PISTOL equipped',
-  await page.evaluate(() => !document.getElementById('crosshair').classList.contains('hidden')),
+  crossVisible,
 );
 await page.evaluate(() => window.__game.hud.spawnDamageNumber(640, 360, '-12'));
 await page.waitForTimeout(200);
@@ -202,14 +219,22 @@ check(
 );
 
 // --- I. Garage upgrades at Pay'n'Spray (#3) ---
+// Section E left the player on foot (the crosshair checks need on-foot),
+// so re-enter cars[0] at Pay'n'Spray first — the garage needs a driven car.
 await page.evaluate(() => {
   const g = window.__game;
   g.setMoney(10000);
-  const car = g.drivenCar;
+  const car = g.cars[0];
   car.group.position.set(104, 0, -52);
-  car.position.set(104, 0, -52);
   car.speed = 0;
+  g.player.group.position.set(102, 0, -52);
 });
+await page.keyboard.press('KeyF');
+let drivingI = false;
+for (let i = 0; i < 20 && !drivingI; i += 1) {
+  await page.waitForTimeout(500);
+  drivingI = await page.evaluate(() => window.__game.drivenCar !== null);
+}
 await page.waitForTimeout(800);
 await page.keyboard.press('KeyE');
 await page.waitForTimeout(500);

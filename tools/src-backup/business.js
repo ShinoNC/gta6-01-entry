@@ -80,7 +80,7 @@ export class Businesses {
     return -1;
   }
   blips() {
-    return BUSINESS_DEFS.map((def, i) => ({ x: def.x, z: def.z, owned: this.state[i].owned }));
+    return BUSINESS_DEFS.map((def, i) => ({ x: def.x, z: def.z, owned: this.state[i].owned, name: def.name }));
   }
   serialize() {
     return this.state.map((s) => ({ owned: s.owned, level: s.level, pending: Math.floor(s.pending) }));
@@ -118,5 +118,5 @@ export function checkAchievements(stats, unlocked) {
   return fresh;
 }
 export function freshStats() {
-  return { carsStolen: 0, pedsDown: 0, moneyEarned: 0, kmDriven: 0, escapes5: 0, helisDown: 0, robberiesStopped: 0, jobsDone: 0, businessesOwned: 0 };
+  return { carsStolen: 0, pedsDown: 0, moneyEarned: 0, kmDriven: 0, escapes5: 0, helisDown: 0, robberiesStopped: 0, jobsDone: 0, businessesOwned: 0, crimeCounts: {} };
 }

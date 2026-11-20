@@ -44,40 +44,57 @@ await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 6
 await page.waitForTimeout(1500);
 
 // --- 5+6. Title checks (before starting the game) ---
+// The title screen is clean now: no controls bar, no judge note — the
+// controls list lives in the CONTROLS tab of the settings panel.
 async function titleChecks(width) {
   await page.setViewportSize({ width, height: 720 });
   await page.waitForTimeout(800);
-  const r = await page.evaluate(() => {
-    const strip = [...document.querySelectorAll('#title-screen .controls')].find((el) => el.textContent.includes('W/S'));
-    const out = { pairs: [], featureColor: '', savesColor: '', noteColor: '', controlsBg: '' };
-    for (const b of strip.querySelectorAll('b')) {
-      const textNode = b.nextSibling;
-      const range = document.createRange();
-      range.setStart(b, 0);
-      range.setEnd(textNode, textNode.textContent.length);
-      const rects = [...range.getClientRects()].map((x) => Math.round(x.top));
-      out.pairs.push({ key: b.textContent, tops: rects, ok: new Set(rects).size === 1 });
-    }
-    const cs = (sel) => getComputedStyle(document.querySelector(sel));
-    out.featureColor = cs('.feature-line').color;
-    out.savesColor = cs('#continue-summary').color;
-    out.noteColor = cs('.judge-note').color;
-    out.controlsBg = cs('#title-screen .controls').backgroundColor;
-    return out;
-  });
-  const split = r.pairs.filter((p) => !p.ok);
-  check(`title controls pairs unbroken at ${width}px`, split.length === 0, split.length ? `split: ${split.map((p) => p.key).join(',')}` : `${r.pairs.length} pairs, 1 line each`);
+  const r = await page.evaluate(() => ({
+    hasControlsBar: [...document.querySelectorAll('#title-screen .controls')].some((el) => el.textContent.includes('W/S')),
+    hasJudgeNote: Boolean(document.querySelector('.judge-note')),
+    settingsButton: document.getElementById('settings-button')?.textContent || '',
+    featureColor: getComputedStyle(document.querySelector('.feature-line')).color,
+    savesColor: getComputedStyle(document.querySelector('#continue-summary')).color,
+    savesBg: getComputedStyle(document.querySelector('#continue-summary')).backgroundColor,
+  }));
+  check(`title has no controls bar at ${width}px`, !r.hasControlsBar);
+  check(`title has no judge note at ${width}px`, !r.hasJudgeNote);
   if (width === 1280) {
+    check('SETTINGS button on the title menu', r.settingsButton === 'SETTINGS', r.settingsButton);
     check('feature line is white', r.featureColor === 'rgb(255, 255, 255)', r.featureColor);
     check('SAVES line is white', r.savesColor === 'rgb(255, 255, 255)', r.savesColor);
-    check('judge note is white', r.noteColor === 'rgb(255, 255, 255)', r.noteColor);
-    check('controls strip has dark backing', r.controlsBg === 'rgba(26, 16, 48, 0.6)', r.controlsBg);
+    check('SAVES bar has dark backing', r.savesBg === 'rgba(26, 16, 48, 0.6)', r.savesBg);
   }
 }
 await titleChecks(1280);
 await titleChecks(1024);
 await page.setViewportSize({ width: 1280, height: 720 });
 await page.waitForTimeout(500);
+// The controls list now lives in the CONTROLS tab: every row must render
+// on one line with no horizontal overflow.
+await page.evaluate(() => document.getElementById('settings-button').click());
+await page.waitForTimeout(300);
+await page.evaluate(() => document.querySelector('.settings-tab[data-tab="controls"]').click());
+await page.waitForTimeout(300);
+const controlsRows = await page.evaluate(() => {
+  const panel = document.getElementById('controls-tab-panel');
+  const rows = [...panel.querySelectorAll('.controls-row')].map((row) => {
+    const label = row.children[0].getBoundingClientRect();
+    const chip = row.children[1].getBoundingClientRect();
+    // Compare vertical CENTRES, not tops: the row is flex with
+    // align-items:center, and the chip is taller than the label (padding +
+    // border), so centred children have different tops on the same line.
+    const labelCy = label.top + label.height / 2;
+    const chipCy = chip.top + chip.height / 2;
+    return { label: row.children[0].textContent, sameLine: Math.abs(labelCy - chipCy) <= 2 };
+  });
+  return { rows, overflow: panel.scrollWidth > panel.clientWidth + 1 };
+});
+const splitRows = controlsRows.rows.filter((r) => !r.sameLine);
+check('controls tab rows render on one line', splitRows.length === 0 && controlsRows.rows.length >= 12, splitRows.length ? `split: ${splitRows.map((r) => r.label).join(',')}` : `${controlsRows.rows.length} rows`);
+check('controls tab has no horizontal overflow', !controlsRows.overflow);
+await page.evaluate(() => document.getElementById('settings-back').click());
+await page.waitForTimeout(300);
 
 await page.evaluate(() => document.getElementById('start-button').click());
 await page.waitForTimeout(1000);
@@ -88,8 +105,8 @@ const hudBg = await page.evaluate(() => {
   const cs = (id) => getComputedStyle(document.getElementById(id)).backgroundColor;
   return { topLeft: cs('hud-top-left'), topRight: cs('hud-top-right'), speedo: cs('hud-speedo') };
 });
-check('HUD top-left has dark backing', hudBg.topLeft === 'rgba(26, 16, 48, 0.62)', hudBg.topLeft);
-check('HUD top-right has dark backing', hudBg.topRight === 'rgba(26, 16, 48, 0.62)', hudBg.topRight);
+check('HUD top-left has dark backing', hudBg.topLeft === 'rgba(26, 16, 48, 0.85)', hudBg.topLeft);
+check('HUD top-right has dark backing', hudBg.topRight === 'rgba(26, 16, 48, 0.85)', hudBg.topRight);
 check('HUD speedo has dark backing', hudBg.speedo === 'rgba(26, 16, 48, 0.62)', hudBg.speedo);
 
 // --- 1. Beacon: bright pillar + floating diamond ---
@@ -267,11 +284,13 @@ async function tryFAt(x, z) {
 const near = await tryFAt(parked.x + 2, parked.z);
 check('F prompt shows near a car', near.prompt.visible && /Press F to (drive|steal)/.test(near.prompt.text), `${near.prompt.visible ? near.prompt.text : '(hidden)'}`);
 check('F enters the car at 2m from centre', Boolean(near.entered) && !near.entered.startsWith('WRONG'), near.entered || 'not entered');
-// Range sweep from the car CENTRE along +x. The carjack latch (a car that
-// just showed its prompt stays grabbable at 8m for 1.5s) means 5.1m/6m now
-// succeed right after the closer steps; 9m is past the latch range.
+// Range sweep from the car CENTRE along +x (behind the car — it faces -x,
+// so the bumper is 2.1m out and the edge distance is d-2.1m). F measures
+// to the car's nearest point (fix batch 5): base range 5m, latch 8m for
+// 1.5s after the prompt showed. So 5.1m/6m succeed on the base range
+// (edges 3.0m/3.9m), and 11m (edge 8.9m) is past the latch range.
 const sweep = [];
-for (const d of [3, 4, 4.9, 5.1, 6, 9]) {
+for (const d of [3, 4, 4.9, 5.1, 6, 11]) {
   const r = await tryFAt(parked.x + d, parked.z);
   sweep.push(`${d}m:${!r.entered ? 'no' : r.entered.startsWith('WRONG') ? 'WRONG' : 'IN'}`);
 }
@@ -287,7 +306,7 @@ for (const d of [1.5, 2.5, 3.5, 4.5]) {
 note('F range from door side', doorSweep.join(' '));
 check('F works at 4m from centre', sweep[1].endsWith('IN'), sweep.join(' '));
 check('F latch: a car that just showed its prompt stays grabbable at 6m', sweep[4].endsWith('IN'), sweep.join(' '));
-check('F fails past the 8m latch range (9m)', sweep[5].endsWith('no'), sweep.join(' '));
+check('F fails past the 8m latch range (11m from centre = 8.9m from the bumper)', sweep[5].endsWith('no'), sweep.join(' '));
 // The door sweep's last step (4.5m) SUCCEEDS, so the player is still IN the
 // car here. Exit it first: while driving, the traffic obstacles list holds
 // the driven car instead of the player, so a teleported player group would
@@ -423,17 +442,15 @@ await page.waitForTimeout(1000);
 const mapPixels = await page.evaluate(() => {
   const canvas = document.getElementById('bigmap');
   const ctx = canvas.getContext('2d');
-  const W = 1024, H = 816, MIN_X = -162, MAX_X = 162, MIN_Z = -162, MAX_Z = 96;
-  const toMap = (x, z) => {
-    const scale = W / (MAX_X - MIN_X);
-    return { x: (x - MIN_X) * scale, y: (z - MIN_Z) * scale + (H - (MAX_Z - MIN_Z) * scale) / 2 };
-  };
+  const g = window.__game;
+  // Use the game's own projection: the map bounds/canvas changed with the
+  // 12x12 island (old hardcoded 1024x816 / ±162 geometry is stale).
+  const toMap = (x, z) => g.hud.toMap(x, z, canvas.width, canvas.height, g.hud.mapView);
   const sample = (x, z) => {
     const p = toMap(x, z);
     const d = ctx.getImageData(Math.round(p.x), Math.round(p.y), 1, 1).data;
     return [d[0], d[1], d[2]];
   };
-  const g = window.__game;
   const mission = g.missions.target;
   const biz = g.businesses.defs[0];
   return {

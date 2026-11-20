@@ -26,7 +26,7 @@ page.on('pageerror', (e) => errors.push(String(e)));
 page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text()); });
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`);
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 30000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(1500);
 await page.evaluate(() => window.__game.missions.snoozeBriefing(600));
 

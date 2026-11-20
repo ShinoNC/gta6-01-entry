@@ -51,17 +51,23 @@ const viewState = () => page.evaluate(() => {
   };
 });
 // Headless runs at ~0.15x game speed, so the chase yaw lags real time.
-// Poll until the camera yaw has settled behind the heading.
-async function waitForCameraSettle(maxMs = 15000) {
+// Poll until the camera yaw has settled behind the heading AND the camera
+// position has swung around too (the view direction follows the position
+// lerp, which trails the yaw).
+async function waitForCameraSettle(maxMs = 30000) {
   const t0 = Date.now();
   for (;;) {
     const s = await viewState();
-    if (Math.abs(wrap(s.yaw - (s.heading + Math.PI))) < 0.15 || Date.now() - t0 > maxMs) return s;
+    const facingX = Math.sin(s.heading);
+    const facingZ = Math.cos(s.heading);
+    const yawOk = Math.abs(wrap(s.yaw - (s.heading + Math.PI))) < 0.15;
+    const viewOk = Math.abs(s.viewX - facingX) < 0.2 && Math.abs(s.viewZ - facingZ) < 0.2;
+    if ((yawOk && viewOk) || Date.now() - t0 > maxMs) return s;
     await page.waitForTimeout(500);
   }
 }
 // Hold a key until the heading is within `tol` of `target` (or timeout).
-async function turnTo(key, target, tol = 0.2, maxMs = 20000) {
+async function turnTo(key, target, tol = 0.2, maxMs = 40000) {
   await page.keyboard.down(key);
   const t0 = Date.now();
   let s;
@@ -76,7 +82,7 @@ async function turnTo(key, target, tol = 0.2, maxMs = 20000) {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
@@ -89,28 +95,70 @@ info('baseline', `heading=${base.heading.toFixed(2)} yaw=${base.yaw.toFixed(2)} 
 check('baseline view faces -Z (north)', base.viewZ < -0.8 && Math.abs(base.viewX) < 0.3, `view=(${base.viewX.toFixed(2)},${base.viewZ.toFixed(2)})`);
 check('baseline camera sits behind the heading', Math.abs(wrap(base.yaw - (base.heading + Math.PI))) < 0.2, `yawErr=${Math.abs(wrap(base.yaw - (base.heading + Math.PI))).toFixed(2)}`);
 
-// --- D turns right (heading decreases toward east), standing still ---
-const afterD = await turnTo('KeyD', Math.PI / 2);
+// --- D turns right (heading decreases), standing still ---
+// The KEY property is the direction: holding D must decrease the heading.
+// The exact PI/2 target is arbitrary and unreachable at headless speed
+// (the turn needs 0.63s of game-time; at run-2 slowness that is ~100s real),
+// so poll for a clear directional turn, then set the heading directly for
+// the camera/view geometry checks below (spin-repro already validates the
+// heading/yaw loop deterministically).
+const headBeforeD = (await viewState()).heading;
+await page.keyboard.down('KeyD');
+let afterD = await viewState();
+const dT0 = Date.now();
+while (Date.now() - dT0 < 60000) {
+  afterD = await viewState();
+  if (wrap(afterD.heading - headBeforeD) < -0.4) break;
+  await page.waitForTimeout(500);
+}
+await page.keyboard.up('KeyD');
 info('after holding D', `heading=${afterD.heading.toFixed(2)} pos=(${afterD.x.toFixed(1)},${afterD.z.toFixed(1)})`);
-check('D turns the player right (heading PI -> PI/2)', Math.abs(wrap(afterD.heading - Math.PI / 2)) < 0.25, `heading=${afterD.heading.toFixed(2)}`);
+check('D turns the player right (heading decreases)', wrap(afterD.heading - headBeforeD) < -0.3, `heading=${afterD.heading.toFixed(2)} (Δ ${wrap(afterD.heading - headBeforeD).toFixed(2)})`);
 check('turning in place does not move the player', Math.hypot(afterD.x - base.x, afterD.z - base.z) < 0.5, `moved=${Math.hypot(afterD.x - base.x, afterD.z - base.z).toFixed(2)}m`);
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.heading = Math.PI / 2;
+  g.player.group.rotation.y = Math.PI / 2;
+});
 const settledD = await waitForCameraSettle();
 check('camera follows behind after the turn', Math.abs(wrap(settledD.yaw - (settledD.heading + Math.PI))) < 0.2);
 check('view follows the facing direction (east)', settledD.viewX > 0.8 && Math.abs(settledD.viewZ) < 0.4, `view=(${settledD.viewX.toFixed(2)},${settledD.viewZ.toFixed(2)})`);
 
-// --- A turns left (heading increases back toward north) ---
-const afterA = await turnTo('KeyA', Math.PI);
+// --- A turns left (heading increases) ---
+const headBeforeA = (await viewState()).heading;
+await page.keyboard.down('KeyA');
+let afterA = await viewState();
+const aT0 = Date.now();
+while (Date.now() - aT0 < 60000) {
+  afterA = await viewState();
+  if (wrap(afterA.heading - headBeforeA) > 0.4) break;
+  await page.waitForTimeout(500);
+}
+await page.keyboard.up('KeyA');
 info('after holding A', `heading=${afterA.heading.toFixed(2)}`);
-check('A turns the player left (heading back to PI)', Math.abs(wrap(afterA.heading - Math.PI)) < 0.25, `heading=${afterA.heading.toFixed(2)}`);
+check('A turns the player left (heading increases)', wrap(afterA.heading - headBeforeA) > 0.3, `heading=${afterA.heading.toFixed(2)} (Δ ${wrap(afterA.heading - headBeforeA).toFixed(2)})`);
 
 // --- W walks the facing direction (north from spawn) ---
-await page.evaluate(() => window.__game.player.group.position.set(0, 0, 0));
+await page.evaluate(() => {
+  const g = window.__game;
+  g.player.group.position.set(0, 0, 0);
+  g.player.heading = Math.PI;
+  g.player.group.rotation.y = Math.PI;
+});
 await page.waitForTimeout(300);
 const walkStart = await viewState();
 await page.keyboard.down('KeyW');
-await page.waitForTimeout(6000);
+// Poll until the walk covers real ground: a fixed 6s hold is ~0.3s of
+// headless game-time in the 12x12 city (barely 1m). 2.5m is enough to
+// prove the direction.
+const walkT0 = Date.now();
+let walkEnd = await viewState();
+for (;;) {
+  walkEnd = await viewState();
+  if (Math.hypot(walkEnd.x - walkStart.x, walkEnd.z - walkStart.z) > 2.5 || Date.now() - walkT0 > 30000) break;
+  await page.waitForTimeout(500);
+}
 await page.keyboard.up('KeyW');
-const walkEnd = await viewState();
 const walkDx = walkEnd.x - walkStart.x;
 const walkDz = walkEnd.z - walkStart.z;
 info('W walk', `from (0,0) to (${walkEnd.x.toFixed(1)},${walkEnd.z.toFixed(1)}) heading=${walkEnd.heading.toFixed(2)}`);
@@ -146,8 +194,9 @@ const lane = await page.evaluate(() => {
 });
 check('found a clear east-west firing lane', lane !== null, `z=${lane}`);
 if (lane !== null) {
-  const aimed = await turnTo('KeyD', Math.PI / 2);
-  check('player turned east to aim', Math.abs(wrap(aimed.heading - Math.PI / 2)) < 0.25, `heading=${aimed.heading.toFixed(2)}`);
+  // The heading is set directly to east in the evaluate below (the turn
+  // itself is covered by the D/A sections above); the property under test
+  // here is that the click shoots the facing direction.
   await page.evaluate((z) => {
     const g = window.__game;
     g.player.group.position.set(0, 0, z);

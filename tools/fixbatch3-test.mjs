@@ -178,16 +178,37 @@ for (let i = 0; i < 6 && !latchPrompt; i += 1) {
   await page.waitForTimeout(200);
 }
 check('prompt still shows at 6m inside the 1.5s latch', latchPrompt);
-// The latch runs on GAME time, which crawls in headless (~0.3–0.5x real),
-// so poll up to 20s real for it to expire instead of waiting a fixed 2s.
+// The latch runs on GAME time, which crawls in headless (measured 13x-160x
+// slower than real time across runs, varying with host load) — 1.5s of
+// game-time needs up to ~240s real. Poll with a long budget; it returns
+// early the moment the prompt hides.
 let latchHidden = false;
-for (let i = 0; i < 20 && !latchHidden; i += 1) {
+for (let i = 0; i < 240 && !latchHidden; i += 1) {
   await page.waitForTimeout(1000);
   latchHidden = await ev(() => !document.getElementById('hud-message').classList.contains('visible')
     || !document.getElementById('hud-message').textContent.includes('Press F'));
 }
 check('prompt hides after the latch expires at 6m', latchHidden);
 
+// Wait for the briefing to fully reset after leaving the marker: the
+// auto-close (phone hidden) AND the re-arm (briefingArmed) each need a game
+// frame at >15m, and headless frames are seconds apart. Teleporting back
+// after only the close (before the re-arm) strands the briefing disarmed —
+// the re-arm condition (dist > 15) never fires again at the marker. So
+// observe the close first, then the re-arm.
+async function waitForBriefingReset(maxMs = 60000) {
+  const t0 = Date.now();
+  let closed = false;
+  for (;;) {
+    const s = await ev(() => ({
+      hidden: document.getElementById('phone-panel').classList.contains('hidden'),
+      armed: window.__game.missions.briefingArmed,
+    }));
+    if (s.hidden) closed = true;
+    if ((closed && s.armed) || Date.now() - t0 > maxMs) return closed && s.armed;
+    await page.waitForTimeout(500);
+  }
+}
 // ---- C. Briefing dismiss + cooldown (bug 4) ----
 await loadGame();
 check('NEW GAME starts (briefing test)', await newGame());
@@ -199,21 +220,21 @@ check('Escape dismisses the briefing', await ev(() => document.getElementById('p
 await page.waitForTimeout(3000);
 check('briefing does NOT reopen while still at the marker (3s)', await ev(() => document.getElementById('phone-panel').classList.contains('hidden')));
 await ev(() => { window.__game.player.group.position.set(0, 0, 0); });
-await page.waitForTimeout(1000);
+await waitForBriefingReset();
 await ev(() => { window.__game.player.group.position.set(52, 0, 0); });
 check('briefing reopens after leaving (>15m) and re-entering', await waitForPhone());
 await page.keyboard.press('KeyW');
 await page.waitForTimeout(600);
 check('W does NOT dismiss the briefing (W is the move key — fix batch 4)', await ev(() => !document.getElementById('phone-panel').classList.contains('hidden')));
 await ev(() => { window.__game.player.group.position.set(0, 0, 0); });
-await page.waitForTimeout(1000);
+await waitForBriefingReset();
 await ev(() => { window.__game.player.group.position.set(52, 0, 0); });
 check('briefing reopens a second time after leaving and re-entering', await waitForPhone());
 await ev(() => { window.__game.player.group.position.set(100, 0, 0); });
 let autoHidden = false;
-for (let i = 0; i < 8 && !autoHidden; i += 1) {
+for (let i = 0; i < 30 && !autoHidden; i += 1) {
   autoHidden = await ev(() => document.getElementById('phone-panel').classList.contains('hidden'));
-  await page.waitForTimeout(250);
+  await page.waitForTimeout(500);
 }
 check('briefing auto-hides when the player walks >15m away', autoHidden);
 
@@ -362,16 +383,17 @@ const iconSizes = await ev(() => {
 });
 note(`map icon sizes (minimap px): ${JSON.stringify(iconSizes)}`);
 // Anti-aliasing eats ~1px per side at the diamond tips, so measured sizes
-// run ~2px under the geometric diameter (mission r 6±0.5 → 11–13, others
-// r 5 → 10). What matters is the family: mission slightly larger, the rest
-// equal.
-check('mission diamond is 9–12px tall (r 6 ± 0.5 pulse, AA-adjusted)',
-  iconSizes.mission && iconSizes.mission.h >= 9 && iconSizes.mission.h <= 12, JSON.stringify(iconSizes.mission));
-check('spray diamond is 7–10px tall (r 5, AA-adjusted)',
-  iconSizes.spray && iconSizes.spray.h >= 7 && iconSizes.spray.h <= 10, JSON.stringify(iconSizes.spray));
-check('business diamonds are 7–10px tall (r 5, AA-adjusted)',
-  iconSizes.taxiBiz && iconSizes.taxiBiz.h >= 7 && iconSizes.taxiBiz.h <= 10
-  && iconSizes.dealerBiz && iconSizes.dealerBiz.h >= 7 && iconSizes.dealerBiz.h <= 10,
+// run ~2px under the geometric diameter. The minimap grew in round 5
+// (168px circle -> 260x220 rectangle), so the same radii render larger:
+// mission r 6±0.5 -> 12-15px, others r 5 -> 9-12px. What matters is the
+// family: mission slightly larger, the rest equal.
+check('mission diamond is 12–15px tall (r 6 ± 0.5 pulse, AA-adjusted)',
+  iconSizes.mission && iconSizes.mission.h >= 12 && iconSizes.mission.h <= 15, JSON.stringify(iconSizes.mission));
+check('spray diamond is 9–12px tall (r 5, AA-adjusted)',
+  iconSizes.spray && iconSizes.spray.h >= 9 && iconSizes.spray.h <= 12, JSON.stringify(iconSizes.spray));
+check('business diamonds are 9–12px tall (r 5, AA-adjusted)',
+  iconSizes.taxiBiz && iconSizes.taxiBiz.h >= 9 && iconSizes.taxiBiz.h <= 12
+  && iconSizes.dealerBiz && iconSizes.dealerBiz.h >= 9 && iconSizes.dealerBiz.h <= 12,
   JSON.stringify({ taxi: iconSizes.taxiBiz, dealer: iconSizes.dealerBiz }));
 check('mission diamond is at most ~3px taller than spray/business (slightly larger by design)',
   iconSizes.mission && iconSizes.spray && iconSizes.mission.h - iconSizes.spray.h <= 3 && iconSizes.mission.h >= iconSizes.spray.h, JSON.stringify(iconSizes));
@@ -474,7 +496,7 @@ const after = await ev(() => ({
   driving: window.__game.drivenCar?.name,
 }));
 check('first entry is a steal (PALM RUNNER, not the starter)', after.driving === 'PALM RUNNER' && after.stolen === 1, JSON.stringify(after));
-check('+$100 is FIRST WHEELS, tapes still 0/20',
+check('+$100 is FIRST WHEELS, tapes still 0/40',
   before.money === 1250 && after.money === 1350 && after.tapes === 0 && after.achievements.includes('firstWheels'),
   JSON.stringify({ before, after }));
 

@@ -27,6 +27,9 @@ export function createPlayer(scene, startX, startZ) {
   const legRight = legLeft.clone();
   legRight.position.x = 0.19;
   group.add(torso, head, hairTop, armLeft, armRight, legLeft, legRight);
+  group.traverse((child) => {
+    if (child.isMesh) child.castShadow = true;
+  });
   group.position.set(startX, 0, startZ);
   scene.add(group);
   const player = {
@@ -37,6 +40,9 @@ export function createPlayer(scene, startX, startZ) {
     jumpV: 0,
     punchTimer: 0,
     downTimer: 0,
+    stamina: 100,
+    swimming: false,
+    swimTime: 0,
     punch() {
       this.punchTimer = 0.45;
     },
@@ -52,6 +58,19 @@ export function createPlayer(scene, startX, startZ) {
       if (look.hair !== undefined) hair.color.set(look.hair);
       if (look.shirt !== undefined) shirt.color.set(look.shirt);
     },
+    // Seated on a bike: legs forward to the pegs, arms forward to the
+    // bars, a slight forward lean. player.update is not called while
+    // driving, so the pose holds until setBikePose(false) on dismount.
+    setBikePose(onBike) {
+      const legs = onBike ? -1.0 : 0;
+      const arms = onBike ? -1.1 : 0;
+      legLeft.rotation.x = legs;
+      legRight.rotation.x = legs;
+      armLeft.rotation.x = arms;
+      armRight.rotation.x = arms;
+      group.rotation.x = onBike ? 0.2 : 0;
+      group.rotation.z = 0;
+    },
     update(dt, input, city) {
       if (this.punchTimer > 0) this.punchTimer = Math.max(0, this.punchTimer - dt);
       if (this.downTimer > 0) {
@@ -59,7 +78,20 @@ export function createPlayer(scene, startX, startZ) {
         if (this.downTimer <= 0) group.rotation.x = 0;
         else { group.position.y = 0.4; return; }
       }
-      if (input.pressed('Space') && this.jumpY <= 0) this.jumpV = JUMP_SPEED;
+      const depth = city.waterDepthAt(group.position.x, group.position.z);
+      // Swim state with hysteresis: enter past 1m, leave below 0.7m, so
+      // the pose never flickers at the boundary. Stamina is the boundary
+      // out there — it drains while swimming and refills on land or in
+      // the shallows; at 0 the only way open is back to shore.
+      if (!this.swimming && depth > 1) this.swimming = true;
+      else if (this.swimming && depth < 0.7) { this.swimming = false; group.rotation.x = 0; }
+      if (this.swimming) {
+        this.stamina = Math.max(0, this.stamina - 8 * dt);
+        this.swimTime += dt;
+      } else {
+        this.stamina = Math.min(100, this.stamina + 15 * dt);
+      }
+      if (input.pressed('Space') && this.jumpY <= 0 && !this.swimming && depth <= 0.5) this.jumpV = JUMP_SPEED;
       if (this.jumpY > 0 || this.jumpV > 0) {
         this.jumpV -= GRAVITY * dt;
         this.jumpY += this.jumpV * dt;
@@ -79,6 +111,35 @@ export function createPlayer(scene, startX, startZ) {
       }
       const moving = forward !== 0;
       city.resolveCircle(group.position, PLAYER_RADIUS);
+      if (this.swimming) {
+        // Prone in the water, bobbing; arms stroke, legs kick.
+        group.rotation.x = Math.PI / 2;
+        group.position.y = -0.15 + Math.sin(this.swimTime * 2) * 0.05;
+        if (!moving) {
+          const t = Math.sin(this.swimTime * 2) * 0.3;
+          armLeft.rotation.x = t;
+          armRight.rotation.x = -t;
+          legLeft.rotation.x = 0;
+          legRight.rotation.x = 0;
+          return;
+        }
+        let blocked = false;
+        if (this.stamina <= 0) {
+          const out = city.shoreOutward(group.position.x, group.position.z);
+          const mx = Math.sin(this.heading) * forward, mz = Math.cos(this.heading) * forward;
+          if (out && mx * out.x + mz * out.z > 0) blocked = true;
+        }
+        this.walkPhase += dt * 3 * 1.4;
+        const swing = Math.sin(this.walkPhase) * 0.9;
+        armLeft.rotation.x = swing;
+        armRight.rotation.x = -swing;
+        legLeft.rotation.x = Math.sin(this.walkPhase) * 0.4;
+        legRight.rotation.x = -Math.sin(this.walkPhase) * 0.4;
+        if (blocked) return;
+        group.position.x += Math.sin(this.heading) * forward * 3 * dt;
+        group.position.z += Math.cos(this.heading) * forward * 3 * dt;
+        return;
+      }
       if (!moving) {
         legLeft.rotation.x = 0;
         legRight.rotation.x = 0;
@@ -90,6 +151,9 @@ export function createPlayer(scene, startX, startZ) {
       const running = input.isDown('ShiftLeft') || input.isDown('ShiftRight');
       let speed = running ? RUN_SPEED : WALK_SPEED;
       if (forward < 0) speed *= 0.6;
+      // Wading drag: the deeper the water, the slower the walk — a smooth
+      // ramp into the 3 m/s swim speed at 1m depth.
+      if (depth > 0) speed *= Math.max(0.35, 1 - depth * 0.45);
       const dx = Math.sin(this.heading) * forward * speed * dt;
       const dz = Math.cos(this.heading) * forward * speed * dt;
       group.position.x += dx;

@@ -1,6 +1,6 @@
 // GTA-logic audit tests for SOLARIS KEYS: pistol locked at start, police shoot
 // at 3+ stars, arrest/BUSTED at 1-2 stars, WASTED, car burn/explode, traffic
-// steal, drive-by, Pay'n'Spray, ped death, witness system.
+// steal, no drive-by, Pay'n'Spray, ped death, witness system.
 // Run: node tools/gta-audit-test.mjs
 import { chromium } from '/home/hatch/workspace/tools/pw/node_modules/playwright-core/index.mjs';
 import { readFileSync } from 'node:fs';
@@ -34,7 +34,7 @@ async function shoot() {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 // Dismiss the mission-1 briefing (LATER) so it does not block the screen.
 await page.evaluate(() => document.getElementById('phone-later')?.click());
@@ -138,17 +138,22 @@ const burn = await page.evaluate(() => {
   const car = window.__game.cars[0];
   window.__game.player.group.position.set(car.position.x + 3, 0, car.position.z + 3);
   window.__game.damageCar(car, 100);
-  return { hp: car.hp, burning: car.burning };
+  return { hp: car.hp, burning: car.burning, fuse: car.burnTimer };
 });
 check('car at 0 HP starts burning', burn.hp <= 0 && burn.burning === true, `hp=${burn.hp} burning=${burn.burning}`);
+check('burn fuse is 3s of game-time', burn.fuse === 3, `fuse=${burn.fuse}s`);
 const hpPreBoom = await page.evaluate(() => window.__game.health);
+// The 3s fuse is game-time: at headless speed (13x-160x slowdown) it needs
+// minutes of real time. The 3s value is asserted above; shorten the fuse
+// directly here and poll for the explosion + damage.
+await page.evaluate(() => { window.__game.cars[0].burnTimer = 0.2; });
 let exploded = false;
-for (let i = 0; i < 12; i += 1) {
+for (let i = 0; i < 24; i += 1) {
   await page.waitForTimeout(5000);
   exploded = await page.evaluate(() => window.__game.cars[0].destroyed === true);
   if (exploded) break;
 }
-check('burning car explodes after ~3s', exploded);
+check('burning car explodes when the fuse burns down', exploded);
 const hpPostBoom = await page.evaluate(() => window.__game.health);
 check('explosion damages nearby player', hpPostBoom < hpPreBoom, `HP ${hpPreBoom} -> ${hpPostBoom}`);
 // Heal back up for later tests (mission-complete path restores 100; use regen wait instead).
@@ -165,8 +170,24 @@ const steal = await page.evaluate(() => {
   const npcBefore = window.__game.traffic.cars.length;
   const fx = Math.sin(npc.car.heading), fz = Math.cos(npc.car.heading);
   window.__game.player.group.position.set(npc.car.position.x + fx * 4, 0, npc.car.position.z + fz * 4);
-  return { carsBefore, npcBefore, name: npc.car.name };
+  // Stage a witness: a steal earns a star only when seen (ped within 20m
+  // or police LOS), so an unwitnessed steal correctly gives 0 stars. Park
+  // an active ped on the nearest sidewalk next to the player (same pattern
+  // as fixbatch2 L2) so the witness rule fires deterministically.
+  const ped = window.__game.pedestrians.peds.find((p) => !p.dormant && p.knockedTimer <= 0);
+  if (ped) {
+    ped.knockedTimer = 0;
+    ped.fleeTimer = 0;
+    ped.walkSpeed = 0;
+    const lines = window.__game.pedestrians.lines.filter((l) => l.axis === 'z');
+    lines.sort((a, b) => Math.abs(a.at - window.__game.player.position.x) - Math.abs(b.at - window.__game.player.position.x));
+    ped.line = lines[0];
+    ped.along = window.__game.player.position.z;
+    ped.side = window.__game.player.position.x >= lines[0].at ? 1 : -1;
+  }
+  return { carsBefore, npcBefore, name: npc.car.name, witness: !!ped };
 });
+await page.waitForTimeout(1000); // let placeOnSidewalk put the witness ped down
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(1500);
 if (!(await page.evaluate(() => window.__game.drivenCar !== null))) {
@@ -183,20 +204,29 @@ check(
   await page.evaluate(([cb, nb]) => window.__game.cars.length === cb + 1 && window.__game.traffic.cars.length === nb, [steal.carsBefore, steal.npcBefore]),
 );
 check(
-  'stealing gives a star',
+  'stealing gives a star (ped witness staged)',
   await page.evaluate(() => window.__game.wanted.stars >= 1),
-  `stars=${await page.evaluate(() => window.__game.wanted.stars)}`,
+  `stars=${await page.evaluate(() => window.__game.wanted.stars)} witness=${steal.witness}`,
 );
 
-// --- 7. Drive-by shooting (unlock pistol via test hook, then click while driving) ---
+// --- 7. No firing while driving (unlock pistol via test hook, then click while driving) ---
 await page.evaluate(() => { window.__game.combat.unlockWeapon('pistol'); window.__game.wanted.setStars(0); });
 await page.keyboard.press('Digit2');
 await page.waitForTimeout(1200);
 const magBefore = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
+const crosshairHiddenWhileDriving = await page.evaluate(() => document.getElementById('crosshair').classList.contains('hidden'));
 await shoot();
-await page.waitForTimeout(1500);
+// The muzzle flash lasts 0.06s of game-time (~1s real time headless), so
+// sample repeatedly: it must never appear while driving.
+let muzzleSeen = false;
+for (let i = 0; i < 6; i += 1) {
+  muzzleSeen = muzzleSeen || (await page.evaluate(() => window.__game.combat.muzzle.visible));
+  await page.waitForTimeout(300);
+}
 const magAfter = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-check('drive-by shooting spends pistol ammo while driving', magAfter === magBefore - 1, `mag ${magBefore} -> ${magAfter}`);
+check('clicking while driving spends no pistol ammo', magAfter === magBefore, `mag ${magBefore} -> ${magAfter}`);
+check('no muzzle flash while driving', !muzzleSeen);
+check('crosshair hidden while driving', crosshairHiddenWhileDriving);
 
 // --- 8. Pay'n'Spray repairs + clears heat ---
 await page.evaluate(() => {
@@ -239,7 +269,7 @@ const pedDown = await page.evaluate(() => {
 });
 check('knockDown(20s) drops ped for 20s', pedDown.timer >= 19 && pedDown.fallen, `timer=${pedDown.timer.toFixed(1)} fallen=${pedDown.fallen}`);
 
-// --- 10. Witness bypasses shoot cooldown ---
+// --- 10. Witnessed shots follow the shoot-star cooldown ---
 // Place a witness ped next to the player via line+along (placeOnSidewalk
 // recomputes the mesh position from those every frame; setting x/z directly
 // is overwritten immediately).
@@ -265,47 +295,62 @@ const placeWitness = () => page.evaluate(() => {
   ped.fleeTimer = 0;
   ped.direction = 1;
 });
+// Wait for the pistol cooldown (0.28s game-time) and any knockdown to elapse
+// — poll the real timers instead of guessing real-time, since headless
+// game-time runs ~10-20x slower than real time.
+async function waitToShoot() {
+  for (let i = 0; i < 15; i += 1) {
+    const cd = await page.evaluate(() => window.__game.combat.cooldownTimer);
+    if (cd <= 0) break;
+    await page.waitForTimeout(1000);
+  }
+  for (let i = 0; i < 20; i += 1) {
+    const down = await page.evaluate(() => window.__game.player.downTimer > 0);
+    if (!down) break;
+    await page.waitForTimeout(1000);
+  }
+}
+// Shoot once (retrying once if the click was swallowed) and return whether
+// a round was actually spent.
+async function shootOnce() {
+  const magBefore = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
+  await shoot();
+  await page.waitForTimeout(1500);
+  let magAfter = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
+  if (magAfter === magBefore) {
+    await placeWitness();
+    await shoot();
+    await page.waitForTimeout(1500);
+    magAfter = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
+  }
+  return magAfter === magBefore - 1;
+}
 await placeWitness();
 await page.evaluate(() => {
   window.__game.wanted.setStars(0);
   window.__game.wanted.lastShootStarAt = -99;
 });
-await shoot(); // shot 1 -> 1 star
+const shot1Fired = await shootOnce(); // shot 1 witnessed -> 1 star
 await page.waitForTimeout(1000);
 const stars1 = await page.evaluate(() => window.__game.wanted.stars);
-// Wait for the pistol cooldown (0.28s game-time) to actually elapse — poll the
-// real timer instead of guessing real-time, since headless game-time runs
-// ~10-20x slower than real time.
-for (let i = 0; i < 15; i += 1) {
-  const cd = await page.evaluate(() => window.__game.combat.cooldownTimer);
-  if (cd <= 0) break;
-  await page.waitForTimeout(1000);
-}
-// Re-place the witness: it flees after shot 1 and may leave the 20m radius
-// during the cooldown wait.
+check('witnessed first shot gives a star', shot1Fired && stars1 === 1, `fired=${shot1Fired} stars=${stars1}`);
+// Shot 2 within the 4s cooldown: force the precondition via the test hook
+// (set the last-star time to now), so headless timing cannot expire it.
+await waitToShoot();
 await placeWitness();
-// A traffic car (or the pursuit car from shot 1) can knock the player down
-// during the wait — a click while downTimer > 0 is swallowed, so wait it out.
-for (let i = 0; i < 20; i += 1) {
-  const down = await page.evaluate(() => window.__game.player.downTimer > 0);
-  if (!down) break;
-  await page.waitForTimeout(1000);
-}
-const magBefore2 = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-await shoot(); // shot 2 within 4s cooldown, witness nearby
-await page.waitForTimeout(1500);
-const magAfter2 = await page.evaluate(() => window.__game.combat.ammoForHud()[1].mag);
-if (magAfter2 === magBefore2) {
-  // Shot 2 was swallowed (knockdown or briefing popup) — re-place the
-  // witness and retry once. The witness bypasses the shoot-star cooldown,
-  // so the retry still counts even if it lands later in game-time.
-  await placeWitness();
-  await shoot();
-  await page.waitForTimeout(1500);
-}
-await page.waitForTimeout(1500);
+await page.evaluate(() => { window.__game.wanted.lastShootStarAt = window.__game.wanted.elapsed; });
+const shot2Fired = await shootOnce();
+await page.waitForTimeout(1000);
 const stars2 = await page.evaluate(() => window.__game.wanted.stars);
-check('witness calls in second shot despite cooldown', stars1 === 1 && stars2 === 2, `stars ${stars1} -> ${stars2}`);
+check('witnessed second shot within cooldown gives no star', shot2Fired && stars2 === 1, `fired=${shot2Fired} stars ${stars1} -> ${stars2}`);
+// Shot 3 after the cooldown expired (reset via the hook) -> a star again.
+await waitToShoot();
+await placeWitness();
+await page.evaluate(() => { window.__game.wanted.lastShootStarAt = -99; });
+const shot3Fired = await shootOnce();
+await page.waitForTimeout(1000);
+const stars3 = await page.evaluate(() => window.__game.wanted.stars);
+check('witnessed third shot after cooldown gives a star', shot3Fired && stars3 === 2, `fired=${shot3Fired} stars ${stars2} -> ${stars3}`);
 
 check('zero console/page errors', errors.length === 0, errors.join(' | ').slice(0, 300));
 

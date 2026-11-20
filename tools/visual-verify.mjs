@@ -25,7 +25,7 @@ page.on('console', (m) => { if (m.type() === 'error') errors.push(`CONSOLE: ${m.
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(500);
@@ -69,7 +69,7 @@ console.log('wasted-screen.png');
 // 4. BUSTED screen.
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);

@@ -1,7 +1,11 @@
 import * as THREE from 'three';
-import { roadLines } from './city.js';
+import { roadLines, averageDensity, densityForMinute, districtNameAt, NIGHTLIFE_DISTRICTS } from './city.js';
 import { chance, pick, range } from './random.js';
-const PEDESTRIAN_COUNT = 20;
+const PEDESTRIAN_COUNT = 90;
+const DORMANT_X = 10000;
+const DORMANT_Z = 10000;
+const RESPAWN_RETRY_SECONDS = 5;
+const NIGHTLIFE_LINE_BIAS = 0.6;
 const SIDEWALK_OFFSET = 7.6;
 const WALK_MIN_SPEED = 1.1;
 const WALK_MAX_SPEED = 2.0;
@@ -44,6 +48,27 @@ export function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour
     const crown = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.18, 0.4), brimHat.material);
     crown.position.y = 2.2;
     group.add(brimHat, crown);
+  } else if (hat === 'bandana') {
+    // Gang bandana: a shirt-coloured band across the forehead.
+    const bandana = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.14, 0.5), shirt);
+    bandana.position.y = 1.98;
+    group.add(bandana);
+  } else if (hat === 'police') {
+    // Unmistakable officer: navy cap with a light-blue band and brim, a
+    // gold chest badge, and a dark belt — a navy shirt alone reads as a
+    // civilian.
+    const capMat = new THREE.MeshLambertMaterial({ color: 0x1a2a6b });
+    const cap = new THREE.Mesh(new THREE.BoxGeometry(0.52, 0.14, 0.52), capMat);
+    cap.position.y = 2.12;
+    const band = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.06, 0.54), new THREE.MeshLambertMaterial({ color: 0x7ac4ff }));
+    band.position.y = 2.06;
+    const brim = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.05, 0.24), capMat);
+    brim.position.set(0, 2.08, 0.32);
+    const badge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.16, 0.03), new THREE.MeshLambertMaterial({ color: 0xffd978 }));
+    badge.position.set(0.16, 1.28, 0.21);
+    const belt = new THREE.Mesh(new THREE.BoxGeometry(0.68, 0.09, 0.42), new THREE.MeshLambertMaterial({ color: 0x14141c }));
+    belt.position.y = 0.74;
+    group.add(cap, band, brim, badge, belt);
   }
   function limb(geometry, material, x, y) {
     const mesh = new THREE.Mesh(geometry, material);
@@ -59,6 +84,8 @@ export function buildWalkerMesh(shirtColour, pantsColour, skinColour, hairColour
   const armLeft = limb(armGeometry, skin, -0.44, 1.42);
   const armRight = limb(armGeometry, skin, 0.44, 1.42);
   group.add(legLeft, legRight, armLeft, armRight);
+  // Walkers do not cast shadows: with 90 peds on the 12x12 map their
+  // shadow pass would cost ~600 draw calls for shadows nobody sees.
   group.scale.setScalar(heightScale);
   return { group, legLeft, legRight, armLeft, armRight };
 }
@@ -70,10 +97,13 @@ function pickHatColour() {
 export class Pedestrians {
   constructor(scene, rng, onScream) {
     this.lines = roadLines();
+    this.nightlifeLine = this.lines.find((line) => line.axis === 'x' && line.at === 0);
     this.rng = rng;
     this.onScream = onScream;
     this.screamCooldown = 0;
     this.peds = [];
+    this.target = PEDESTRIAN_COUNT;
+    this.night = false;
     for (let i = 0; i < PEDESTRIAN_COUNT; i += 1) {
       const hat = chance(rng, 0.3) ? 'cap' : chance(rng, 0.2) ? 'brim' : 'none';
       const mesh = buildWalkerMesh(
@@ -103,6 +133,8 @@ export class Pedestrians {
         lastHitX: 0,
         lastHitZ: 0,
         walkPhase: rng() * 6,
+        dormant: false,
+        retryTimer: 0,
       };
       this.placeOnSidewalk(ped);
       scene.add(mesh.group);
@@ -111,6 +143,39 @@ export class Pedestrians {
   }
   get fleeingCount() {
     return this.peds.filter((ped) => ped.fleeTimer > 0).length;
+  }
+  get activeCount() {
+    return this.peds.filter((ped) => !ped.dormant).length;
+  }
+  // Time-of-day density: the street thins out at night (see city.js).
+  // Existing peds walk off naturally — a ped only leaves when it reaches
+  // the end of its walk, and dormant peds respawn from the map edge, so
+  // nothing ever pops in or out in view.
+  setDensity(minutes) {
+    this.target = Math.max(1, Math.round(PEDESTRIAN_COUNT * averageDensity(minutes)));
+    this.night = densityForMinute(minutes) < 0.7;
+  }
+  pickLine() {
+    if (this.night && this.nightlifeLine && this.rng() < NIGHTLIFE_LINE_BIAS) return this.nightlifeLine;
+    return pick(this.rng, this.lines);
+  }
+  respawnPed(ped) {
+    ped.line = this.pickLine();
+    ped.side = this.rng() < 0.5 ? -1 : 1;
+    ped.direction = this.rng() < 0.5 ? -1 : 1;
+    ped.along = ped.direction > 0 ? ped.line.from : ped.line.to;
+    ped.fleeTimer = 0;
+    ped.knockedTimer = 0;
+    ped.frozen = false;
+    ped.dormant = false;
+    ped.mesh.group.visible = true;
+    this.placeOnSidewalk(ped);
+  }
+  goDormant(ped) {
+    ped.dormant = true;
+    ped.retryTimer = RESPAWN_RETRY_SECONDS;
+    ped.mesh.group.visible = false;
+    ped.mesh.group.position.set(DORMANT_X, 0, DORMANT_Z);
   }
   placeOnSidewalk(ped) {
     const offset = SIDEWALK_OFFSET * ped.side;
@@ -141,7 +206,7 @@ export class Pedestrians {
   }
   scareFrom(x, z, range) {
     for (const ped of this.peds) {
-      if (ped.knockedTimer > 0 || ped.fleeTimer > 0) continue;
+      if (ped.dormant || ped.knockedTimer > 0 || ped.fleeTimer > 0) continue;
       const pos = ped.mesh.group.position;
       if (Math.hypot(pos.x - x, pos.z - z) < range) this.fleeFrom(ped, x, z);
     }
@@ -158,6 +223,14 @@ export class Pedestrians {
   update(dt, city, playerCar, gunshot) {
     this.screamCooldown -= dt;
     for (const ped of this.peds) {
+      if (ped.dormant) {
+        ped.retryTimer -= dt;
+        if (ped.retryTimer <= 0) {
+          ped.retryTimer = RESPAWN_RETRY_SECONDS;
+          if (this.activeCount < this.target) this.respawnPed(ped);
+        }
+        continue;
+      }
       const pos = ped.mesh.group.position;
       if (ped.knockedTimer > 0) {
         ped.knockedTimer -= dt;
@@ -210,7 +283,25 @@ export class Pedestrians {
         }
       } else {
         ped.along += ped.direction * ped.walkSpeed * dt;
-        if (ped.along < ped.line.from || ped.along > ped.line.to) ped.direction *= -1;
+        if (ped.along < ped.line.from || ped.along > ped.line.to) {
+          // End of the walk: when the street is over its density target
+          // the ped heads home — except in the nightlife districts, which
+          // stay busy while the residential streets empty out.
+          const nightlife = NIGHTLIFE_DISTRICTS.includes(districtNameAt(pos.x, pos.z));
+          if (this.activeCount > this.target && !nightlife) {
+            this.goDormant(ped);
+            continue;
+          }
+          // At night, a residential ped reaching the end of its walk
+          // drifts toward the nightlife strip instead of turning around
+          // (respawn re-rolls the line, 60% nightlife) — the busy
+          // districts stay busier while residential streets empty out.
+          if (this.night && !nightlife && this.rng() < 0.5) {
+            this.respawnPed(ped);
+            continue;
+          }
+          ped.direction *= -1;
+        }
         this.placeOnSidewalk(ped);
         ped.walkPhase += dt * ped.walkSpeed * 1.6;
         if (playerCar && Math.abs(playerCar.speed) > 4) {

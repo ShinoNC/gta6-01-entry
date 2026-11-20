@@ -3,6 +3,7 @@ const SAVE_SLOT_COUNT = 3;
 const SAVE_FORMAT_VERSION = 1;
 const SAVE_KEY_PREFIX = 'solaris-keys-save-';
 const LOOK_KEY = 'solaris-keys-look';
+const SETTINGS_KEY = 'solaris-keys-settings';
 const memorySlots = new Map();
 function isValidSave(data) {
   if (!data || typeof data !== 'object') return false;
@@ -47,6 +48,30 @@ export function loadLook() {
   } catch {
   }
   return null;
+}
+export const DEFAULT_SETTINGS = { musicVolume: 100, effectsVolume: 100, station: 0, quality: 'high', shadows: true, hudDensity: 'full' };
+export function saveSettings(settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+  }
+}
+export function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    if (!raw) return { ...DEFAULT_SETTINGS };
+    const parsed = JSON.parse(raw);
+    const settings = { ...DEFAULT_SETTINGS };
+    if (typeof parsed.musicVolume === 'number') settings.musicVolume = Math.max(0, Math.min(100, parsed.musicVolume));
+    if (typeof parsed.effectsVolume === 'number') settings.effectsVolume = Math.max(0, Math.min(100, parsed.effectsVolume));
+    if (typeof parsed.station === 'number') settings.station = Math.max(0, Math.min(2, Math.round(parsed.station)));
+    if (parsed.quality === 'high' || parsed.quality === 'medium' || parsed.quality === 'low') settings.quality = parsed.quality;
+    if (typeof parsed.shadows === 'boolean') settings.shadows = parsed.shadows;
+    if (parsed.hudDensity === 'full' || parsed.hudDensity === 'minimal') settings.hudDensity = parsed.hudDensity;
+    return settings;
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
 }
 export function latestSaveSlot() {
   let bestSlot = null;

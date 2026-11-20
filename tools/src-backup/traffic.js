@@ -1,7 +1,11 @@
-import { createCar } from './vehicles.js';
-import { roadLines } from './city.js';
+import { createCar, createBike } from './vehicles.js';
+import { roadLines, averageDensity, densityForMinute, districtNameAt, NIGHTLIFE_DISTRICTS } from './city.js';
 import { intBetween, pick, weightedPick } from './random.js';
-const TRAFFIC_CAR_COUNT = 10;
+const TRAFFIC_CAR_COUNT = 28;
+const DORMANT_X = 10000;
+const DORMANT_Z = 10000;
+const RESPAWN_RETRY_SECONDS = 5;
+const NIGHTLIFE_LINE_BIAS = 0.6;
 const LANE_OFFSET = 2.5;
 const LOOK_AHEAD_METRES = 9;
 const BLOCKED_LATERAL_METRES = 2.6;
@@ -10,12 +14,18 @@ const TRAFFIC_BODY_STYLES = [
   ['sedan', 6],
   ['pickup', 2],
   ['van', 2],
+  ['bus', 1],
+  ['truck', 1],
+  ['bike', 2],
 ];
 const STYLE_SPEED_BAND = {
   sedan: [9, 15],
   pickup: [8, 13],
   van: [7, 11],
   taxi: [11, 16],
+  bus: [6, 10],
+  truck: [7, 11],
+  bike: [12, 18],
 };
 function laneOffsetFor(axis, direction) {
   if (axis === 'z') return direction > 0 ? -LANE_OFFSET : LANE_OFFSET;
@@ -28,22 +38,49 @@ export function headingFor(axis, direction) {
 export class Traffic {
   constructor(scene, textures, rng) {
     this.lines = roadLines();
+    this.nightlifeLine = this.lines.find((line) => line.axis === 'x' && line.at === 0);
     this.rng = rng;
     this.textures = textures;
     this.cars = [];
+    this.target = TRAFFIC_CAR_COUNT;
+    this.night = false;
     for (let i = 0; i < TRAFFIC_CAR_COUNT; i += 1) {
       this.cars.push(this.buildNpc(scene, rng));
     }
   }
+  get activeCount() {
+    return this.cars.filter((npc) => !npc.dormant).length;
+  }
+  // Time-of-day density: traffic thins out at night (see city.js). A car
+  // only leaves when it reaches the end of its road, and dormant cars
+  // respawn from the map edge, so nothing ever pops in or out in view.
+  setDensity(minutes) {
+    this.target = Math.max(1, Math.round(TRAFFIC_CAR_COUNT * averageDensity(minutes)));
+    this.night = densityForMinute(minutes) < 0.7;
+  }
+  pickLine() {
+    if (this.night && this.nightlifeLine && this.rng() < NIGHTLIFE_LINE_BIAS) return this.nightlifeLine;
+    return pick(this.rng, this.lines);
+  }
+  goDormant(npc) {
+    npc.dormant = true;
+    npc.retryTimer = RESPAWN_RETRY_SECONDS;
+    npc.speed = 0;
+    npc.car.group.visible = false;
+    npc.car.group.position.set(DORMANT_X, 0, DORMANT_Z);
+  }
   buildNpc(scene, rng) {
-    const line = pick(rng, this.lines);
+    const line = this.pickLine();
     const direction = rng() < 0.5 ? -1 : 1;
     const isTaxi = rng() < 0.15;
-    const style = isTaxi ? 'sedan' : weightedPick(rng, TRAFFIC_BODY_STYLES);
+    const style = isTaxi ? 'taxi' : weightedPick(rng, TRAFFIC_BODY_STYLES);
     const paint = isTaxi ? 0xffc828 : pick(rng, TRAFFIC_PAINTS);
     const texture = isTaxi ? this.textures.carTaxi : paint === 0xd6303e || paint === 0xe8a33d ? this.textures.carRed : this.textures.carBlue;
-    const [minSpeed, maxSpeed] = STYLE_SPEED_BAND[isTaxi ? 'taxi' : style];
-    const car = createCar(scene, this.textures, isTaxi ? 'KEYS TAXI' : 'TRAFFIC', texture, paint, 0, 0, 0, style);
+    const [minSpeed, maxSpeed] = STYLE_SPEED_BAND[style];
+    const car =
+      style === 'bike'
+        ? createBike(scene, 'TRAFFIC', paint, 0, 0, 0, true)
+        : createCar(scene, this.textures, isTaxi ? 'KEYS TAXI' : 'TRAFFIC', texture, paint, 0, 0, 0, style);
     const npc = {
       car,
       line,
@@ -56,8 +93,11 @@ export class Traffic {
       blockedTimer: 0,
       overtakeTimer: 0,
       overtake: 0,
+      dormant: false,
+      retryTimer: 0,
     };
     this.placeOnRoad(npc);
+    if (this.activeCount >= this.target) this.goDormant(npc);
     return npc;
   }
   placeOnRoad(npc) {
@@ -71,7 +111,7 @@ export class Traffic {
     npc.car.group.rotation.y = npc.car.heading;
   }
   respawnAtEdge(npc) {
-    npc.line = pick(this.rng, this.lines);
+    npc.line = this.pickLine();
     npc.direction = this.rng() < 0.5 ? -1 : 1;
     npc.along = npc.direction > 0 ? npc.line.from : npc.line.to;
     npc.cruiseSpeed = intBetween(this.rng, npc.speedBand[0], npc.speedBand[1]);
@@ -79,6 +119,16 @@ export class Traffic {
     npc.overtakeTimer = 0;
     npc.overtake = 0;
     this.placeOnRoad(npc);
+    // End of the road: when traffic is over its density target the car
+    // heads home — except on the nightlife strip, which stays busy.
+    const pos = npc.car.position;
+    const nightlife = NIGHTLIFE_DISTRICTS.includes(districtNameAt(pos.x, pos.z));
+    if (this.activeCount > this.target && !nightlife) {
+      this.goDormant(npc);
+      return;
+    }
+    npc.dormant = false;
+    npc.car.group.visible = true;
   }
   blockedAhead(npc, obstacles) {
     const pos = npc.car.position;
@@ -101,6 +151,14 @@ export class Traffic {
   }
   update(dt, obstacles) {
     for (const npc of this.cars) {
+      if (npc.dormant) {
+        npc.retryTimer -= dt;
+        if (npc.retryTimer <= 0) {
+          npc.retryTimer = RESPAWN_RETRY_SECONDS;
+          if (this.activeCount < this.target) this.respawnAtEdge(npc);
+        }
+        continue;
+      }
       if (npc.stoppedTimer > 0) {
         npc.stoppedTimer -= dt;
         npc.speed = 0;
@@ -121,7 +179,7 @@ export class Traffic {
       if (npc.along < npc.line.from - 2 || npc.along > npc.line.to + 2) this.respawnAtEdge(npc);
       this.placeOnRoad(npc);
       for (const wheel of npc.car.wheels) {
-        wheel.wheel.rotation.x += (npc.speed / 0.36) * dt;
+        wheel.wheel.rotation.x += (npc.speed / npc.car.wheelRadius) * dt;
       }
     }
   }

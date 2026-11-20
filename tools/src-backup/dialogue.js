@@ -3,23 +3,23 @@ const SPEAKERS = {
   mara: ['MARA SOLIS', 'FIXER'],
   juno: ['JUNO REYES', 'WHEELWOMAN'],
   otto: ['OTTO KANE', 'FIXER'],
-  pd: ['KEYS PD', 'DISPATCH'],
+  pd: ['VRPD', 'DISPATCH'],
 };
 const LINES = {
   go: [
     ['mara', 'Drive like you mean it — the Keys are watching.'],
-    ['mara', 'Clean and fast, Rook. No heroes on my jobs.'],
-    ['otto', 'My jobs pay. My jobs also end careers. Drive clean.'],
+    ['mara', 'Clean and fast, Rook. No heroes.'],
+    ['otto', 'My jobs pay — and end careers. Drive clean.'],
   ],
   heat: [
     ['juno', 'Alarms are back! Lose them before they box you in.'],
-    ['pd', 'All units: suspect vehicle, code 3. Box them in.'],
-    ['juno', 'Whole department is coming — drive, Rook, drive!'],
+    ['pd', 'All units: suspect vehicle, code 3.'],
+    ['juno', 'The whole department is coming — drive!'],
   ],
   done: [
-    ['mara', 'Clean work. The money is already moving.'],
-    ['mara', 'That is how you earn the Keys, Rook.'],
-    ['otto', 'Vault work like that gets remembered. So do you.'],
+    ['mara', 'Clean work. The money is moving.'],
+    ['mara', 'That is how you earn the Keys.'],
+    ['otto', 'Vault work like that gets remembered.'],
   ],
 };
 export class Dialogue {

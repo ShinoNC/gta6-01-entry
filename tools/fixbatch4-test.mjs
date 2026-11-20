@@ -34,6 +34,16 @@ function check(name, ok, detail = '') {
   if (!ok) fails += 1;
 }
 function note(text) { console.log(`NOTE ${text}`); }
+// Screenshots are evidence, not assertions: the renderer can stall on
+// ReadPixels under the 12x12 city load, so retry once, then continue.
+async function shot(pg, path) {
+  try { await pg.screenshot({ path, timeout: 60000 }); }
+  catch (e) {
+    note(`screenshot ${path.split('/').pop()} timed out — retrying`);
+    try { await pg.screenshot({ path, timeout: 60000 }); }
+    catch (e2) { note(`screenshot ${path.split('/').pop()} failed twice, continuing`); }
+  }
+}
 const ev = (fn, arg) => page.evaluate(fn, arg);
 async function loadGame() {
   await page.goto(GAME_URL, { waitUntil: 'domcontentloaded', timeout: 60000 });
@@ -188,7 +198,7 @@ check('no small green square remains: ammo diamonds are full-size',
 await page.keyboard.press('KeyN');
 await page.waitForTimeout(600);
 check('N opens the full map screen', await ev(() => !document.getElementById('map-screen').classList.contains('hidden')));
-await page.screenshot({ path: `${SHOTS}/fullmap.png` });
+await shot(page, `${SHOTS}/fullmap.png`);
 await page.keyboard.press('KeyN');
 await page.waitForTimeout(300);
 
@@ -288,7 +298,8 @@ check('mission ground ring stays visible up close (>= 0.85)', ringOp >= 0.85, `o
 await loadGame();
 check('NEW GAME starts (dispatch position test)', await newGame());
 const msgTop = await ev(() => getComputedStyle(document.getElementById('hud-message')).top);
-check('#hud-message is pinned to top:120px', msgTop === '120px', `top=${msgTop}`);
+check('#hud-message is pinned to top:150px (fix batch 5: 120px overlapped the objective line)',
+  msgTop === '150px', `top=${msgTop}`);
 await ev(() => { window.__game.hud.showMessage('BANK ROBBERY — Stop the getaway car! $500 REWARD', 5, true); });
 await page.waitForTimeout(400);
 const msgBox = await ev(() => {
@@ -300,7 +311,7 @@ check('dispatch banner shows in the upper area (bottom < 45% of viewport height)
   msgBox.visible && msgBox.bottom < 720 * 0.45, JSON.stringify(msgBox));
 check('dispatch banner clears the vertical centre (top < 30% of viewport height)',
   msgBox.top < 720 * 0.3, JSON.stringify(msgBox));
-await page.screenshot({ path: `${SHOTS}/dispatch-top.png` });
+await shot(page, `${SHOTS}/dispatch-top.png`);
 
 // ---- E. Layout: no overlap at 768px, 860/880px (wrap boundary), 480px, 1280px ----
 async function layoutAt(width, height, label) {
@@ -319,7 +330,7 @@ async function layoutAt(width, height, label) {
     return { minimap: r('hud-minimap'), speedo: r('hud-speedo'), hint: r('hud-hint'), bars: r('hud-bars'), canvas: r('minimap') };
   });
   note(`${label} boxes: ${JSON.stringify(boxes)}`);
-  await p.screenshot({ path: `${SHOTS}/layout-${label}.png` });
+  await shot(p, `${SHOTS}/layout-${label}.png`);
   await p.close();
   return boxes;
 }
@@ -344,7 +355,7 @@ check('480px: minimap stays 120px', b480.canvas.width === 120 && b480.canvas.hei
 check('480px: hint strip does not overlap the minimap', b480.hint.top >= b480.minimap.bottom, JSON.stringify({ hintTop: b480.hint.top, minimapBottom: b480.minimap.bottom }));
 check('480px: hint strip does not overlap the speedo', b480.hint.top >= b480.speedo.bottom, JSON.stringify({ hintTop: b480.hint.top, speedoBottom: b480.speedo.bottom }));
 const b1280 = await layoutAt(1280, 720, '1280x720');
-check('1280px: minimap stays 168px', b1280.canvas.width === 168 && b1280.canvas.height === 168, JSON.stringify(b1280.canvas));
+check('1280px: minimap is the large 260x220 rectangle', b1280.canvas.width === 260 && b1280.canvas.height === 220, JSON.stringify(b1280.canvas));
 check('1280px: hint strip does not overlap the minimap', b1280.hint.top >= b1280.minimap.bottom, JSON.stringify({ hintTop: b1280.hint.top, minimapBottom: b1280.minimap.bottom }));
 check('1280px: hint strip does not overlap the speedo', b1280.hint.top >= b1280.speedo.bottom, JSON.stringify({ hintTop: b1280.hint.top, speedoBottom: b1280.speedo.bottom }));
 

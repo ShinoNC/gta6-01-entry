@@ -8,26 +8,26 @@ const MISSION_CHAIN = [
     giver: 'Mara Solis',
     start: [52, 0],
     briefing:
-      'Rook. Mara Solis. Word is you can drive. Prove it — my client is waiting at the east pier. Pick them up, then drop them at Palm Row. Do not keep them waiting.',
+      'Rook. Mara Solis. Word is you can drive. Prove it — my client waits at the east pier. Pick them up, drop them at Palm Row. Do not keep them waiting.',
     rewardMoney: 500,
     rewardRep: 60,
     objectives: [
-      { kind: 'driveTo', x: 104, z: 0, needsCar: true, label: 'Pick up the client at the east pier' },
-      { kind: 'waitAt', x: 104, z: 0, seconds: 2, needsCar: true, label: 'Wait for the client to get in' },
+      { kind: 'driveTo', x: 104, z: 0, needsCar: true, label: 'Pick up the client at the pier' },
+      { kind: 'waitAt', x: 104, z: 0, seconds: 2, needsCar: true, label: 'Wait for the client' },
       { kind: 'driveTo', x: -52, z: 52, label: 'Drop the client at Palm Row' },
     ],
   },
   {
     name: 'THE CORAL RUN',
     giver: 'Juno Reyes',
-    start: [-52, 70],
+    start: [-52, 330],
     briefing:
-      'Rook. Juno. I am stranded on Coral Strand and my ride is not coming. Come get me, then drop me at Sunset Bluff — and treat the car like it is yours, because soon it will be.',
+      'Rook. Juno. Stranded on Coral Strand, my ride is not coming. Come get me, drop me at Sunset Bluff — treat the car like it is yours, because soon it will be.',
     rewardMoney: 750,
     rewardRep: 90,
     objectives: [
-      { kind: 'waitAt', x: -52, z: 70, seconds: 2, needsCar: true, label: 'Pick up Juno Reyes on Coral Strand' },
-      { kind: 'driveTo', x: 104, z: 70, label: 'Drop Juno at Sunset Bluff' },
+      { kind: 'waitAt', x: -52, z: 330, seconds: 2, needsCar: true, label: 'Pick up Juno on Coral Strand' },
+      { kind: 'driveTo', x: 104, z: 330, label: 'Drop Juno at Sunset Bluff' },
     ],
   },
   {
@@ -35,7 +35,7 @@ const MISSION_CHAIN = [
     giver: 'Mara Solis',
     start: [-104, -104],
     briefing:
-      'The drop is blown — the Keys police are on you the second you move. Shake them, then bring the package to Old Port. I left an SMG in the glovebox for the trouble.',
+      'The drop is blown — the VRPD are on you the second you move. Shake them, bring the package to Old Port. I left an SMG in the glovebox.',
     rewardMoney: 1000,
     rewardRep: 120,
     rewardWeapon: 'smg',
@@ -50,26 +50,26 @@ const MISSION_CHAIN = [
     giver: 'Juno Reyes',
     start: [52, -104],
     briefing:
-      'Rook. Juno. A Sunset Coupe is sitting in Harbor Lights with the keys in it. I did not say steal it. I said it needs a new garage in Old Port — mine.',
+      'Rook. Juno. A Sunset Coupe sits in Harbor Lights, keys in it. I did not say steal it. It needs a new garage in Old Port — mine.',
     rewardMoney: 1250,
     rewardRep: 140,
     scriptedHeat: 1,
     objectives: [
-      { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe in Harbor Lights' },
-      { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to the Old Port garage' },
+      { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe' },
+      { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to Old Port' },
     ],
   },
   {
     name: 'SUNSET BLUFF DROP',
     giver: 'Juno Reyes',
-    start: [130, 70],
+    start: [130, 330],
     briefing:
-      'Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then come straight back to Marina Del Sol.',
+      'Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then straight back to Marina Del Sol.',
     rewardMoney: 1500,
     rewardRep: 160,
     objectives: [
-      { kind: 'driveTo', x: 130, z: 70, label: 'Drive to Sunset Bluff' },
-      { kind: 'waitAt', x: 130, z: 70, seconds: 3, label: 'Make the drop — hold position' },
+      { kind: 'driveTo', x: 130, z: 330, label: 'Drive to Sunset Bluff' },
+      { kind: 'waitAt', x: 130, z: 330, seconds: 3, label: 'Make the drop — hold position' },
       { kind: 'driveTo', x: 52, z: 0, label: 'Return to Marina Del Sol' },
     ],
   },
@@ -78,13 +78,13 @@ const MISSION_CHAIN = [
     giver: 'Mara Solis',
     start: [104, -104],
     briefing:
-      'Three stars, a helicopter, and a roadblock with your name on it. Get clean and get to Harbor Lights. This is the job that makes your name.',
+      'Three stars, a helicopter, a roadblock with your name on it. Get clean, get to Harbor Lights. The job that makes your name.',
     rewardMoney: 1750,
     rewardRep: 180,
     scriptedHeat: 3,
     objectives: [
-      { kind: 'loseWanted', label: 'Lose the heat — 3 stars, helicopter overhead' },
-      { kind: 'driveTo', x: 104, z: -104, label: 'Reach the Harbor Lights safehouse' },
+      { kind: 'loseWanted', label: 'Lose the heat — 3 stars, heli overhead' },
+      { kind: 'driveTo', x: 104, z: -104, label: 'Reach the safehouse' },
     ],
   },
   {
@@ -92,11 +92,11 @@ const MISSION_CHAIN = [
     giver: 'Otto Kane',
     start: [104, -104],
     briefing:
-      'Rook. Otto Kane. The crew is waiting at Harbor Lights. Pick them up, crack the vault, and be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.',
+      'Rook. Otto Kane. The crew waits at Harbor Lights. Pick them up, crack the vault, be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.',
     rewardMoney: 2500,
     rewardRep: 240,
     objectives: [
-      { kind: 'waitAt', x: 104, z: -104, seconds: 2, needsCar: true, label: 'Pick up the crew at Harbor Lights' },
+      { kind: 'waitAt', x: 104, z: -104, seconds: 2, needsCar: true, label: 'Pick up the crew' },
       { kind: 'waitAt', x: -52, z: -104, seconds: 4, label: 'Crack the vault — hold position' },
       { kind: 'driveTo', x: -104, z: 26, label: 'Escape to Palm Row' },
     ],
@@ -104,16 +104,16 @@ const MISSION_CHAIN = [
   {
     name: 'KING OF THE KEYS',
     giver: 'Mara Solis',
-    start: [-52, 70],
+    start: [-52, 330],
     briefing:
-      'One last drive. Meet me on Coral Strand at sunset, then we take the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.',
+      'One last drive. Meet me on Coral Strand at sunset, then the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.',
     rewardMoney: 4000,
     rewardRep: 400,
     finale: true,
     objectives: [
-      { kind: 'driveTo', x: -52, z: 70, label: 'Drive to Coral Strand beach' },
-      { kind: 'waitAt', x: -52, z: 70, seconds: 3, label: 'Meet Mara and the crew on the beach' },
-      { kind: 'driveTo', x: 130, z: 52, label: 'Take the Bluff road — the victory lap' },
+      { kind: 'driveTo', x: -52, z: 330, label: 'Drive to Coral Strand' },
+      { kind: 'waitAt', x: -52, z: 330, seconds: 3, label: 'Meet Mara and the crew' },
+      { kind: 'driveTo', x: 130, z: 52, label: 'Take the Bluff road' },
       { kind: 'waitAt', x: 130, z: 52, seconds: 3, label: 'Watch the sunset — King of the Keys' },
     ],
   },
@@ -367,6 +367,7 @@ export class Missions {
       name: mission.name,
       giver: mission.giver,
       briefing: mission.briefing,
+      start: mission.start,
       rewardMoney: mission.rewardMoney,
       rewardRep: mission.rewardRep,
       objectiveCount: mission.objectives.length,

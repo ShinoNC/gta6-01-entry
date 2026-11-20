@@ -63,7 +63,11 @@ async function simWalk(forward, strafe, frames = 600, dt = 1 / 60) {
       isDown: () => false,
       pressed: () => false,
     };
-    const fakeCity = { resolveCircle: () => {} }; // collision is orthogonal to the heading/yaw loop
+    const fakeCity = {
+      resolveCircle: () => {},
+      waterDepthAt: () => 0, // dry land: no wading/swimming in the spin sim
+      shoreOutward: () => ({ x: 0, z: 1 }),
+    }; // collision is orthogonal to the heading/yaw loop
     const wrap = (a) => {
       let w = a;
       while (w > Math.PI) w -= Math.PI * 2;
@@ -159,7 +163,7 @@ const e = await page.evaluate(() => {
   let headRot = 0;
   let prevYaw = cam.yaw;
   let prevHead = car.heading;
-  const fakeCity = { resolveCircle: () => {} };
+  const fakeCity = { resolveCircle: () => {}, waterDepthAt: () => 0, shoreOutward: () => ({ x: 0, z: 1 }) };
   for (let i = 0; i < 600; i += 1) {
     car.update(1 / 60, fake, fakeCity, 1);
     cam.update(1 / 60, car.position, car.heading, true, 0, 0);
@@ -175,7 +179,7 @@ check('E: driving W-only — car does not spin', e.headRot < 0.5, `headRot=${e.h
 check('E: driving W-only — car drives away', Math.hypot(e.endX, e.endZ + 8) > 50, `end=(${e.endX.toFixed(1)},${e.endZ.toFixed(1)})`);
 
 // --- Real input: start the game, hold W while wiggling the mouse ---
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);

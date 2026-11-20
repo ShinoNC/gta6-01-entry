@@ -58,10 +58,15 @@ const radioState = () => page.evaluate(() => {
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(800);
 await dismissPhone();
 await page.waitForTimeout(1500);
+// The first track loads while the main thread is still busy building the
+// 12x12 city after start; on a slow run 2.3s is not enough for the MP3
+// metadata (readyState stays 0). Poll for the load like the R-switches
+// below do, instead of reading the state once after a fixed wait.
+await waitForTrack();
 
 let st = await radioState();
 check('radio Audio element created after start', st.exists === true);
@@ -84,7 +89,7 @@ check('playhead advances', st.currentTime > t0, `${t0} -> ${st.currentTime}`);
 
 // Switch stations with R (KeyR handler calls nextStation).
 async function waitForTrack() {
-  for (let i = 0; i < 10; i += 1) {
+  for (let i = 0; i < 30; i += 1) {
     const d = await page.evaluate(() => window.__game.audio.radioAudio.duration);
     if (Number.isFinite(d) && d > 0) return;
     await page.waitForTimeout(500);
@@ -107,15 +112,16 @@ await waitForTrack();
 st = await radioState();
 check('R wraps back to radio-1.mp3', typeof st.src === 'string' && st.src.endsWith('radio-1.mp3'), st.src);
 
-// Music toggle pauses/resumes (only meaningful if a track loaded).
-await page.evaluate(() => window.__game.audio.setMusicEnabled(false));
+// Music volume 0 pauses / restores the radio (the boolean toggle API was
+// replaced by volume sliders in round 5; setMusicVolume(0) pauses).
+await page.evaluate(() => window.__game.audio.setMusicVolume(0));
 await page.waitForTimeout(300);
 st = await radioState();
-check('setMusicEnabled(false) pauses', st.paused === true);
-await page.evaluate(() => window.__game.audio.setMusicEnabled(true));
+check('setMusicVolume(0) pauses', st.paused === true);
+await page.evaluate(() => window.__game.audio.setMusicVolume(1));
 await page.waitForTimeout(500);
 st = await radioState();
-check('setMusicEnabled(true) resumes', st.paused === false);
+check('setMusicVolume(1) resumes', st.paused === false);
 
 check('zero console/page errors', errors.length === 0, errors.length ? errors.join(' | ') : '');
 const failed = results.filter((r) => r.startsWith('FAIL')).length;

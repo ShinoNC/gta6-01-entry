@@ -1,10 +1,10 @@
 # Readable sources for minified game files
 
-22 of the 24 files in `game/src/` are MINIFIED with esbuild (to fit the
-163,840 B dossier cap). This directory holds the readable originals. `main.js`
-is NOT minified — it is edited in place in `game/src/` (its copy here is a
-backup kept byte-identical). `police.js` was minified in the 20/11 fix batch
-(freed ~8.4 KB); edit it here and re-minify like the rest.
+All 24 files in `game/src/` are MINIFIED with esbuild (to fit the
+163,840 B dossier cap). This directory holds the readable originals — edit
+here and re-minify, never in `game/src/`. `police.js` was minified in the
+20/11 fix batch (freed ~8.4 KB); `main.js` was minified in fix batch 5
+(53,417 → 28,967 B, freed ~24.4 KB).
 
 ## Editing a minified file
 
@@ -18,13 +18,12 @@ backup kept byte-identical). `police.js` was minified in the 20/11 fix batch
    Must stay under 163,840 B with no cut marker.
 5. Run `node tools/verify.mjs` + `node tools/gta-audit-test.mjs`.
 
-## Minified files (22)
+## Minified files (24)
 
 audio, business, camera, city, combat, dialogue, effects, hud, input,
-missions, pedestrians, player, police, random, robbery, save, sidejobs,
-tapes, textures, traffic, vehicles, wanted, weather.
+main, missions, pedestrians, player, police, random, robbery, save,
+sidejobs, tapes, textures, traffic, vehicles, wanted, weather.
 
-## Kept readable (1)
-
-main.js (+ game/index.html, whose CSS is minified but whose markup is intact;
-its readable copy is index.html here).
+`game/index.html` is minified from its readable copy here with
+`node tools/html-minify.mjs` (its CSS is minified but its markup is
+intact).

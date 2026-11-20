@@ -39,7 +39,7 @@ async function freshPage() {
   return page;
 }
 async function startGame(page) {
-  await page.click('#start-button');
+  await page.evaluate(() => document.getElementById('start-button')?.click());
   await page.waitForTimeout(400);
 }
 

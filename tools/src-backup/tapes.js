@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { roadLines } from './city.js';
-export const TAPE_COUNT = 20;
+export const TAPE_COUNT = 40;
 const TAPE_PICKUP_METRES = 3.5;
 export class Tapes {
   constructor(scene, rng) {

@@ -28,8 +28,8 @@ export class GameAudio {
     this.sirenIntensity = 0;
     this.engineSpeed = 0;
     this.engineDriving = false;
-    this.soundEnabled = true;
-    this.musicEnabled = true;
+    this.musicVolume = 1;
+    this.effectsVolume = 1;
     this.clock = 0;
   }
   unlock() {
@@ -75,7 +75,7 @@ export class GameAudio {
   }
   startRadio() {
     if (this.radioAudio || this.radioFailed) {
-      if (this.radioAudio && this.musicEnabled) {
+      if (this.radioAudio && this.musicVolume > 0) {
         const p = this.radioAudio.play();
         if (p) p.catch(() => {});
       }
@@ -84,7 +84,7 @@ export class GameAudio {
     try {
       const el = new Audio();
       el.loop = true;
-      el.volume = RADIO_VOLUME;
+      el.volume = RADIO_VOLUME * this.musicVolume;
       el.preload = 'auto';
       el.addEventListener('error', () => {
         this.radioFailed = true;
@@ -103,12 +103,21 @@ export class GameAudio {
       el.src = RADIO_STATIONS[this.stationIndex].file;
       this.radioLoaded = this.stationIndex;
     }
-    if (!this.musicEnabled) return;
+    if (this.musicVolume <= 0) return;
     const p = el.play();
     if (p) p.catch(() => {});
   }
   radioStationName() {
     return RADIO_STATIONS[this.stationIndex].name;
+  }
+  stationNames() {
+    return RADIO_STATIONS.map((station) => station.name);
+  }
+  setStation(index) {
+    if (index < 0 || index >= RADIO_STATIONS.length || index === this.stationIndex) return this.radioStationName();
+    this.stationIndex = index;
+    this.playStation();
+    return this.radioStationName();
   }
   nowPlaying() {
     const station = RADIO_STATIONS[this.stationIndex];
@@ -119,20 +128,22 @@ export class GameAudio {
     this.playStation();
     return this.radioStationName();
   }
-  setSoundEnabled(enabled) {
-    this.soundEnabled = enabled;
-    if (this.ctx && !enabled) this.ctx.suspend().catch(() => {});
-    if (this.ctx && enabled) this.ctx.resume().catch(() => {});
-  }
-  setMusicEnabled(enabled) {
-    this.musicEnabled = enabled;
+  setMusicVolume(volume) {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
     if (!this.radioAudio) return;
-    if (enabled) {
+    this.radioAudio.volume = RADIO_VOLUME * this.musicVolume;
+    if (this.musicVolume <= 0) {
+      this.radioAudio.pause();
+    } else {
       const p = this.radioAudio.play();
       if (p) p.catch(() => {});
-    } else {
-      this.radioAudio.pause();
     }
+  }
+  setEffectsVolume(volume) {
+    this.effectsVolume = Math.max(0, Math.min(1, volume));
+    if (!this.ctx) return;
+    if (this.effectsVolume <= 0) this.ctx.suspend().catch(() => {});
+    else this.ctx.resume().catch(() => {});
   }
   setEngine(speedNorm, driving) {
     this.engineSpeed = speedNorm;
@@ -144,13 +155,13 @@ export class GameAudio {
       : 0;
   }
   blip(frequency, seconds, gainValue, type = 'sine', when = 0) {
-    if (!this.ctx || !this.soundEnabled) return;
+    if (!this.ctx || this.effectsVolume <= 0) return;
     const startAt = this.ctx.currentTime + when;
     const osc = this.ctx.createOscillator();
     osc.type = type;
     osc.frequency.value = frequency;
     const gain = this.ctx.createGain();
-    gain.gain.setValueAtTime(gainValue, startAt);
+    gain.gain.setValueAtTime(gainValue * this.effectsVolume, startAt);
     gain.gain.exponentialRampToValueAtTime(0.0001, startAt + seconds);
     osc.connect(gain).connect(this.ctx.destination);
     osc.start(startAt);
@@ -161,7 +172,7 @@ export class GameAudio {
     this.blip(494, 0.28, 0.09, 'square');
   }
   gunshot() {
-    if (!this.ctx || !this.soundEnabled) return;
+    if (!this.ctx || this.effectsVolume <= 0) return;
     const duration = 0.14;
     const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * duration), this.ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -171,7 +182,7 @@ export class GameAudio {
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     const gain = this.ctx.createGain();
-    gain.gain.value = 0.25;
+    gain.gain.value = 0.25 * this.effectsVolume;
     const filter = this.ctx.createBiquadFilter();
     filter.type = 'lowpass';
     filter.frequency.value = 1600;
@@ -201,9 +212,9 @@ export class GameAudio {
     this.engineOsc.frequency.setTargetAtTime(engineFrequency, this.ctx.currentTime, 0.08);
     this.engineSubOsc.frequency.setTargetAtTime(engineFrequency / 2, this.ctx.currentTime, 0.08);
     this.engineFilter.frequency.setTargetAtTime(320 + this.engineSpeed * 900, this.ctx.currentTime, 0.1);
-    this.engineGain.gain.setTargetAtTime(this.engineDriving ? 0.05 : 0, this.ctx.currentTime, 0.1);
+    this.engineGain.gain.setTargetAtTime((this.engineDriving ? 0.05 : 0) * this.effectsVolume, this.ctx.currentTime, 0.1);
     const sirenTone = Math.floor(this.clock / SIREN_TONE_SECONDS) % 2 === 0 ? SIREN_LOW_HZ : SIREN_HIGH_HZ;
     this.sirenOsc.frequency.setTargetAtTime(sirenTone, this.ctx.currentTime, 0.03);
-    this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045, this.ctx.currentTime, 0.15);
+    this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045 * this.effectsVolume, this.ctx.currentTime, 0.15);
   }
 }

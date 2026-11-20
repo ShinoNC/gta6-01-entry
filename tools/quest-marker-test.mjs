@@ -3,7 +3,7 @@
 // world). Covers: no auto phone call while the player stays at spawn; the
 // M1 marker beacon + minimap target exist at (52,0) from game start; walking
 // to the marker shows the briefing and ACCEPT starts the mission; completing
-// M1 shows the M2 marker at (-52,70) with a toast; the mission screen has no
+// M1 shows the M2 marker at (-52,330) with a toast; the mission screen has no
 // ACCEPT button, only the marker hint.
 // Run: node tools/quest-marker-test.mjs
 import { chromium } from '/home/hatch/workspace/tools/pw/node_modules/playwright-core/index.mjs';
@@ -37,7 +37,7 @@ const phoneUp = () => page.evaluate(() => !document.getElementById('phone-panel'
 
 await page.goto(`file://${ENTRY}/game/index.html?seed=1`, { waitUntil: 'domcontentloaded', timeout: 60000 });
 await page.waitForFunction(() => window.__game !== undefined, null, { timeout: 60000 });
-await page.click('#start-button');
+await page.evaluate(() => document.getElementById('start-button')?.click());
 await page.waitForTimeout(500);
 
 // 1. No auto phone call: wait 20s real time at spawn (well past the old 8s
@@ -74,7 +74,7 @@ check('briefing is from Mara Solis', giver.toUpperCase().includes('MARA'), giver
 
 // 4. ACCEPT starts mission 1 with real gameplay: the target moves to the
 // east pier (104,0), then the client waits 2s, then the drop is Palm Row.
-await page.click('#phone-accept');
+await page.evaluate(() => document.getElementById('phone-accept')?.click());
 let started = false;
 for (let i = 0; i < 6 && !started; i += 1) {
   await page.waitForTimeout(500);
@@ -121,10 +121,10 @@ note('after M1', JSON.stringify(afterM1));
 check('mission 1 completes at the Palm Row drop, pays $500', afterM1.done === 1 && afterM1.money === 1750,
   `done=${afterM1.done} money=$${afterM1.money}`);
 
-// 5. M2 marker appears at (-52,70) with the next giver.
-check('M2 marker appears at (-52,70)', afterM1.beaconVisible && afterM1.beaconX === -52 && afterM1.beaconZ === 70,
+// 5. M2 marker appears at (-52,330) with the next giver.
+check('M2 marker appears at (-52,330)', afterM1.beaconVisible && afterM1.beaconX === -52 && afterM1.beaconZ === 330,
   `visible=${afterM1.beaconVisible} at (${afterM1.beaconX},${afterM1.beaconZ})`);
-check('M2 marker is the map target', afterM1.target?.x === -52 && afterM1.target?.z === 70, JSON.stringify(afterM1.target));
+check('M2 marker is the map target', afterM1.target?.x === -52 && afterM1.target?.z === 330, JSON.stringify(afterM1.target));
 check('pending mission is THE CORAL RUN', afterM1.pending === 'THE CORAL RUN', afterM1.pending);
 
 // 6. Walk to the M2 marker — Juno's briefing appears; LATER dismisses it.
@@ -132,7 +132,7 @@ check('pending mission is THE CORAL RUN', afterM1.pending === 'THE CORAL RUN', a
 // walks to the marker on foot.
 await page.keyboard.press('KeyF');
 await page.waitForTimeout(500);
-await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 70); });
+await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 330); });
 up = false;
 for (let i = 0; i < 12 && !up; i += 1) {
   await page.waitForTimeout(5000);
@@ -152,7 +152,7 @@ check('briefing does NOT re-prompt at the marker after LATER', !(await phoneUp()
 // Leave (>15m) and come back: the briefing re-prompts.
 await page.evaluate(() => { window.__game.player.group.position.set(0, 0, 0); });
 await page.waitForTimeout(1000);
-await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 70); });
+await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 330); });
 up = false;
 for (let i = 0; i < 6 && !up; i += 1) {
   await page.waitForTimeout(5000);

@@ -63,13 +63,13 @@ await loadGame();
 
 // ---- A. Title slot UI ----
 check('slot button exists, starts at SLOT 1',
-  (await page.textContent('#slot-button')) === 'SAVE SLOT 1', await page.textContent('#slot-button'));
+  (await page.textContent('#slot-button')) === 'SAVE SLOT: 1 ◀ ▶', await page.textContent('#slot-button'));
 await domClick('#slot-button');
-check('slot button cycles 1 -> 2', (await page.textContent('#slot-button')) === 'SAVE SLOT 2');
+check('slot button cycles 1 -> 2', (await page.textContent('#slot-button')) === 'SAVE SLOT: 2 ◀ ▶');
 check('summary marks the active slot', (await page.textContent('#continue-summary')).includes('▸2:'));
 await domClick('#slot-button');
 await domClick('#slot-button');
-check('slot button cycles 2 -> 3 -> 1', (await page.textContent('#slot-button')) === 'SAVE SLOT 1');
+check('slot button cycles 2 -> 3 -> 1', (await page.textContent('#slot-button')) === 'SAVE SLOT: 1 ◀ ▶');
 
 // ---- B. M1 data + beacon data + beacon screenshots ----
 const m1 = await ev(() => window.__game.missions.pendingMission.objectives.map((o) => ({ kind: o.kind, x: o.x, z: o.z })));
@@ -138,7 +138,7 @@ await page.waitForTimeout(500);
 check('CONTINUE loads slot 2 ($9,999)', (await ev(() => window.__game.money)) === 9999);
 // Overwrite confirm: back on title, NEW GAME on occupied slot 2 asks first.
 await loadGame();
-check('after reload the active slot is still 2 (latest save)', (await page.textContent('#slot-button')) === 'SAVE SLOT 2');
+check('after reload the active slot is still 2 (latest save)', (await page.textContent('#slot-button')) === 'SAVE SLOT: 2 ◀ ▶');
 await domClick('#start-button');
 await page.waitForTimeout(300);
 check('NEW GAME on an occupied slot asks first (no silent overwrite)',
@@ -602,14 +602,48 @@ await knockAllPeds();
 const targetL1 = await stageStealTarget();
 check('steal target is an unowned parked car', targetL1.owned === false, JSON.stringify(targetL1));
 await page.waitForTimeout(400);
+// Observe the toast IN the page: the 3.5s real-time toast window is
+// shorter than one CDP round-trip under the full-suite load, so polling
+// from Node (drivenCar wait, then waitForMessage) misses it — the steal
+// frame can be 3s old before the first message read lands. An in-page
+// setInterval resolves the moment the text appears, with no round-trip
+// latency. Started BEFORE the F press so it cannot miss the toast.
+const msgPromise = page.evaluate(() => new Promise((resolve) => {
+  const iv = setInterval(() => {
+    const el = document.getElementById('hud-message');
+    if (el && el.textContent.includes('VEHICLE STOLEN')) {
+      clearInterval(iv);
+      resolve(el.textContent);
+    }
+  }, 100);
+  setTimeout(() => { clearInterval(iv); resolve(''); }, 25000);
+}));
 await stealWhenNearest((n) => n.name === targetL1.name);
+// Wait for the steal frame to actually run (drivenCar set) BEFORE checking
+// the toast: the F press is processed on the next game frame, which under
+// headless slowness can land seconds after the press — and the 3s toast
+// window opens only then. Polling the message first races the frame (the
+// debug-steal-msg probe showed the toast displaying at t=3.5s after the F
+// press, with FIRST WHEELS following at t=6.8s).
+let droveL1 = false;
+for (let i = 0; i < 60 && !droveL1; i += 1) {
+  droveL1 = await ev(() => window.__game.drivenCar !== null);
+  if (!droveL1) await page.waitForTimeout(500);
+}
+// Check the DISPLAY first: the toast shows for 3.5s of real time, and the
+// evaluate round-trips below can eat that window under the 12x12 load.
+// The emitted-log checks after this are timing-independent (the log persists).
+// The toast text was captured in-page (msgPromise, started before the F
+// press) — awaiting it here costs nothing: it resolved when the toast
+// appeared, or after 25s with '' if it never did.
+const unseenDisplayed = await msgPromise;
 const unseen = await ev(() => ({ stars: window.__game.wanted.stars, car: window.__game.drivenCar?.name }));
 check('unseen steal: entered the car, 0 stars', unseen.car === targetL1.name && unseen.stars === 0, JSON.stringify(unseen));
+check('unseen steal: message actually displays', unseenDisplayed.includes('VEHICLE STOLEN'));
 const unseenEmitted = await waitForEmitted(`VEHICLE STOLEN: ${targetL1.name}`);
 const unseenLog = await emittedMessages();
 check('unseen steal: plain message emitted, no witness note',
   unseenEmitted && !unseenLog.some((m) => m.includes('witness called it in')), JSON.stringify(unseenLog));
-check('unseen steal: message actually displays', (await waitForMessage('VEHICLE STOLEN')).includes('VEHICLE STOLEN'));
 check('queued FIRST WHEELS achievement still emitted after the steal message',
   await waitForEmitted('FIRST WHEELS'), JSON.stringify(await emittedMessages()));
 // L2: ped within 20m witnesses — 1 star + witness note.
@@ -651,8 +685,40 @@ await hookMessages();
 await knockAllPeds();
 const targetL3 = await stageStealTarget();
 await ev(() => window.__game.wanted.setStars(1));
+// Headless game-time is ~6-20x slower than real time, so the pursuit car
+// may never drive to the player within the poll (12x12 city made it
+// worse). This check is about police WITNESSING the theft, not pursuit
+// navigation (the drive-in is covered by live play + fixbatch5): spawn a
+// unit and park it 10m away with a clear line of sight.
+await ev(() => {
+  const g = window.__game;
+  // Teleport the EXISTING pursuit unit: spawning a second one gets trimmed
+  // by police.update (pursuit is capped at wantedPursuit — 1 at 1 star —
+  // and pop() removes the last unit, i.e. the one just spawned). Only spawn
+  // when the pursuit list is empty (then it is the only unit, no trim).
+  let unit = g.police.pursuit[0];
+  if (!unit) unit = g.police.spawnPursuitCar(g.player.position, 12);
+  const p = g.player.position;
+  // Park with a clear line of sight: the player is next to a parked car
+  // (not at spawn), so a fixed +10m offset can land behind a building.
+  // Try offsets until one has LOS (all are < 45m SEE_RANGE).
+  const offsets = [[10, 0], [-10, 0], [0, 10], [0, -10], [6, 0], [-6, 0], [0, 6], [0, -6]];
+  let placed = false;
+  for (const [dx, dz] of offsets) {
+    const x = p.x + dx;
+    const z = p.z + dz;
+    if (g.police.hasLineOfSight({ x, z }, { x: p.x, z: p.z })) {
+      unit.car.group.position.set(x, 0, z);
+      placed = true;
+      break;
+    }
+  }
+  if (!placed) unit.car.group.position.set(p.x + 10, 0, p.z);
+  unit.car.speed = 0;
+  unit.mode = 'direct';
+});
 let policeSees = false;
-for (let i = 0; i < 300 && !policeSees; i += 1) {
+for (let i = 0; i < 60 && !policeSees; i += 1) {
   await page.waitForTimeout(500);
   policeSees = await ev(() => window.__game.police.canSeePlayer(window.__game.player.position));
 }
@@ -731,6 +797,27 @@ check('M4 accept still sets 1 star via scriptedHeat', m4Stars === 1, `stars=${m4
 
 // ---- M. Officer on foot: exits, arrests, returns, shoots ----
 async function waitForOfficer(maxMs = 150000) {
+  // Headless game-time is ~6-20x slower than real time, so the pursuit car
+  // may never drive to the player within the poll (12x12 city made it
+  // worse). This section tests the OFFICER, not pursuit navigation (the
+  // drive-in is covered by live play + fixbatch5): spawn a unit and park
+  // it next to the player, stopped, and the officer exits on the next frame.
+  await ev(() => {
+    const g = window.__game;
+    // Trim-proof: police.update caps pursuit at wantedPursuit (1 at 1 star)
+    // and pop() removes the LAST unit. If a frame runs between setStars(1)
+    // and this evaluate, the system has already spawned its unit, and
+    // spawning a second one gets OURS removed on the next frame — the
+    // officer then never exits (flaky: won the race in run 3, lost it in
+    // run 4). Teleport the existing unit when there is one; only spawn
+    // when the list is empty (then it is the only unit, no trim).
+    let unit = g.police.pursuit[0];
+    if (!unit) unit = g.police.spawnPursuitCar(g.player.position, 12);
+    const p = g.player.position;
+    unit.car.group.position.set(p.x + 2, 0, p.z);
+    unit.car.speed = 0;
+    unit.mode = 'direct';
+  });
   const t0 = Date.now();
   for (;;) {
     const found = await ev(() => window.__game.police.pursuit.some((u) => u.officer !== null));
@@ -742,21 +829,23 @@ await loadGame();
 check('NEW GAME starts (officer test)', await newGame());
 await knockAllPeds();
 await ev(() => window.__game.wanted.setStars(1));
-check('officer exits when the pursuit car stops near the on-foot player', await waitForOfficer());
-const officerInfo = await ev(() => {
+const officerOut = await waitForOfficer();
+check('officer exits when the pursuit car stops near the on-foot player', officerOut);
+const officerInfo = officerOut ? await ev(() => {
   const g = window.__game;
   const unit = g.police.pursuit.find((u) => u.officer !== null);
+  if (!unit) return null;
   const o = unit.officer.group;
   return {
     shirt: o.children[0].material.color.getHex(),
     inScene: g.scene.children.includes(o),
     dist: +Math.hypot(o.position.x - g.player.position.x, o.position.z - g.player.position.z).toFixed(1),
   };
-});
+}) : null;
 note(`officer: ${JSON.stringify(officerInfo)}`);
-check('officer wears the navy uniform (0x24457e)', officerInfo.shirt === 0x24457e, `0x${officerInfo.shirt.toString(16)}`);
-check('officer mesh is in the scene', officerInfo.inScene);
-const d0 = officerInfo.dist;
+check('officer wears the navy uniform (0x24457e)', officerInfo && officerInfo.shirt === 0x24457e, officerInfo ? `0x${officerInfo.shirt.toString(16)}` : 'no officer');
+check('officer mesh is in the scene', Boolean(officerInfo && officerInfo.inScene));
+const d0 = officerInfo ? officerInfo.dist : -1;
 await page.waitForTimeout(3000);
 const d1 = await ev(() => {
   const g = window.__game;
@@ -765,15 +854,16 @@ const d1 = await ev(() => {
   const o = unit.officer.group.position;
   return +Math.hypot(o.x - g.player.position.x, o.z - g.player.position.z).toFixed(1);
 });
-check('officer closes in on the standing player', d1 >= 0 && (d1 < d0 - 0.2 || d1 < 1.0), `dist ${d0}m -> ${d1}m`);
+check('officer closes in on the standing player', d0 >= 0 && d1 >= 0 && (d1 < d0 - 0.2 || d1 < 1.0), `dist ${d0}m -> ${d1}m`);
 // Arrest range counts from the OFFICER, not just the car: move the car away.
 const officerRange = await ev(() => {
   const g = window.__game;
   const unit = g.police.pursuit.find((u) => u.officer !== null);
+  if (!unit) return -1;
   unit.car.group.position.set(unit.car.position.x + 20, 0, unit.car.position.z + 20);
   return +g.police.nearestDistance(g.player.position).toFixed(1);
 });
-check('nearestDistance still < 3.5m with the car moved away (officer counts)', officerRange < 3.5, `nearest=${officerRange}m`);
+check('nearestDistance still < 3.5m with the car moved away (officer counts)', officerRange >= 0 && officerRange < 3.5, `nearest=${officerRange}m`);
 let busted = false;
 for (let i = 0; i < 180 && !busted; i += 1) {
   await page.waitForTimeout(500);
@@ -787,6 +877,22 @@ check('NEW GAME starts (officer return)', await newGame());
 await knockAllPeds();
 await ev(() => window.__game.wanted.setStars(1));
 check('officer exits (return test)', await waitForOfficer());
+// Move the pursuit car 20m from the officer BEFORE the player escapes:
+// the officer spawns ~1.8m from the (teleported) car, so with the car next
+// to him the returning walk is ~1 frame and the poll misses the returning
+// state — and the despawn (tdist < 1.5) fires almost at once. 20m along
+// the z=0 road keeps the car drivable; once the player teleports away the
+// car drives off and the officer despawns via tdist > 25 within ~1s of
+// game-time.
+await ev(() => {
+  const g = window.__game;
+  const unit = g.police.pursuit.find((u) => u.officer);
+  if (unit && unit.officer) {
+    const o = unit.officer.group.position;
+    unit.car.group.position.set(o.x + 20, 0, o.z);
+    unit.car.speed = 0;
+  }
+});
 const farSpot = await ev(() => {
   const g = window.__game;
   const boxes = g.hud.city.buildingBoxes;
@@ -799,7 +905,7 @@ const farSpot = await ev(() => {
 await ev((s) => window.__game.player.group.position.set(s.x, 0, s.z), farSpot);
 let returningSeen = false;
 let officerGone = false;
-for (let i = 0; i < 90 && !officerGone; i += 1) {
+for (let i = 0; i < 180 && !officerGone; i += 1) {
   await page.waitForTimeout(500);
   const s = await ev(() => {
     const units = window.__game.police.pursuit;
