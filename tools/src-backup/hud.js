@@ -52,6 +52,7 @@ export class Hud {
     this.passedUntil = 0;
     this.messageUntil = 0;
     this.messageSticky = false;
+    this.promptKind = null;
     this.pendingMessages = [];
     this.lastPoliceSig = '';
     this.lastWeaponSig = '';
@@ -73,6 +74,27 @@ export class Hud {
     this.el.message.classList.add('visible');
     this.messageUntil = performance.now() + seconds * 1000;
     this.messageSticky = sticky;
+    this.promptKind = null;
+  }
+  // Transient per-frame prompt (carjack / garage / collect): never queued,
+  // and clearPrompt hides it the frame its condition ends — so the line
+  // never shows a stale prompt after the car drove off or the player
+  // walked away. A toast owns the line while it shows; the prompt simply
+  // waits for the next free 0.6s slot, like before.
+  showPrompt(kind, text) {
+    if (this.messageUntil && performance.now() < this.messageUntil) return;
+    this.promptKind = kind;
+    this.el.message.textContent = text;
+    this.el.message.classList.add('visible');
+    this.messageUntil = performance.now() + 600;
+    this.messageSticky = false;
+  }
+  clearPrompt(kind) {
+    if (this.promptKind !== kind) return;
+    this.promptKind = null;
+    this.el.message.classList.remove('visible');
+    // Past timestamp: the drain shifts the next queued toast on its tick.
+    this.messageUntil = 1;
   }
   spawnDamageNumber(x, y, text) {
     if (!this.dmgPool) {
@@ -161,10 +183,12 @@ export class Hud {
     if (s.trafficBlips) for (const b of s.trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
     if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
     if (s.sprayPos) diamond(s.sprayPos.x, s.sprayPos.z, 5, '#2ad0c4');
-    if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 4, b.owned ? '#7affc4' : '#ffd978');
-    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 5 + Math.sin(s.timeSeconds * 4), '#ffffff');
+    if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 5, b.owned ? '#7affc4' : '#ffd978');
+    // One icon scale for every destination marker (radius 5); the mission
+    // diamond is only slightly larger (6) with a small pulse.
+    if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 6 + Math.sin(s.timeSeconds * 4) * 0.5, '#ffffff');
     if (s.policeBlips) for (const b of s.policeBlips) circle(b.x, b.z, 3, Math.floor(s.timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
-    if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 4 + Math.sin(s.timeSeconds * 4), '#7affc4');
+    if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 5, '#7affc4');
     if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
     if (s.labels) {
       // Small outlined labels, clamped inside the canvas so no name is cut
@@ -199,8 +223,8 @@ export class Hud {
     ctx.fill();
     ctx.restore();
   }
-  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips) {
-    this.paintMap(this.ctx, MINIMAP_SIZE, MINIMAP_SIZE, { playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips });
+  drawMinimap(playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips, sprayPos) {
+    this.paintMap(this.ctx, MINIMAP_SIZE, MINIMAP_SIZE, { playerPos, playerHeading, cars, driving, missionTarget, policeBlips, timeSeconds, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips, sprayPos });
   }
   renderMapScreen(s) {
     this.paintMap(this.mapCtx, 1024, 816, { ...s, labels: true });
@@ -401,11 +425,12 @@ export class Hud {
       sideJobTarget,
       eventBlip,
       businessBlips,
+      sprayPos,
       weatherText,
       timeSeconds,
     } = state;
     const setText = (el, value) => { if (value !== undefined) el.textContent = value; };
-    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips);
+    this.drawMinimap(playerPos, heading, cars, driving, missionTarget, policeBlips, timeSeconds || 0, trafficBlips, ammoCrates, sideJobTarget, eventBlip, businessBlips, sprayPos);
     this.el.district.textContent = districtNameAt(playerPos.x, playerPos.z);
     setText(this.el.mission, missionLine);
     setText(this.el.objective, objective);
@@ -436,6 +461,7 @@ export class Hud {
       this.el.message.classList.remove('visible');
       this.messageUntil = 0;
       this.messageSticky = false;
+      this.promptKind = null;
       const p = this.pendingMessages.shift();
       if (p) this.showMessage(p.text, p.seconds, p.sticky);
     }

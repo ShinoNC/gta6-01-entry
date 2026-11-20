@@ -189,8 +189,8 @@ const restoredDrive = await ev(() => ({
   z: +window.__game.player.position.z.toFixed(1),
   driving: !!window.__game.drivenCar,
 }));
-check('CONTINUE after driving restores the CAR position (80,-52), on foot',
-  Math.abs(restoredDrive.x - 80) < 1 && Math.abs(restoredDrive.z + 52) < 1 && !restoredDrive.driving, JSON.stringify(restoredDrive));
+check('CONTINUE after driving restores the CAR (80,-52), still driving',
+  Math.abs(restoredDrive.x - 80) < 1 && Math.abs(restoredDrive.z + 52) < 1 && restoredDrive.driving, JSON.stringify(restoredDrive));
 
 // ---- E. Backpedal + diagonal ----
 await loadGame();
@@ -461,11 +461,11 @@ await loadGame();
 check('NEW GAME starts (headlight test)', await newGame());
 const lamp = await ev(() => {
   const h = window.__game.headlight;
-  return { exists: !!h, spot: h.isSpotLight, angle: h.angle, distance: h.distance, shadow: h.castShadow, visible: h.visible };
+  return { exists: !!h, spot: h.isSpotLight, intensity: h.intensity, angle: h.angle, distance: h.distance, shadow: h.castShadow, visible: h.visible };
 });
 note(`headlight: ${JSON.stringify(lamp)}`);
-check('headlight is a real SpotLight (angle 0.5, range 35m, no shadow)',
-  lamp.exists && lamp.spot && lamp.angle === 0.5 && lamp.distance === 35 && lamp.shadow === false, JSON.stringify(lamp));
+check('headlight is a real SpotLight (intensity 1200, angle 0.55, range 35m, no shadow)',
+  lamp.exists && lamp.spot && lamp.intensity === 1200 && lamp.angle === 0.55 && lamp.distance === 35 && lamp.shadow === false, JSON.stringify(lamp));
 await ev(() => {
   const g = window.__game;
   g.pedestrians.peds.forEach((p) => { p.knockedTimer = 999; });

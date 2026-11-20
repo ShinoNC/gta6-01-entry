@@ -651,6 +651,17 @@
       padding:14px 24px;
       font-size:16px;
       }
+      /* Portrait layout: this block MUST stay last — the base #hud-minimap /
+         #minimap / #hud-bars / #hud-speedo rules above win ties by source
+         order, so an earlier media block cannot override them. The hint
+         strip wraps to two lines (42px tall), so the bottom row rides 50px
+         up and the minimap shrinks to clear it. */
+      @media (max-width:560px){
+      #hud-minimap{bottom:50px}
+      #minimap{width:120px;height:120px}
+      #hud-bars{bottom:178px;width:120px}
+      #hud-speedo{bottom:50px}
+      }
     </style><script type="importmap">
     { "imports": { "three": "./vendor/three.module.min.js" } }
   </script></head>

@@ -4,7 +4,7 @@ import { loadTextures } from './textures.js';
 import { Input } from './input.js';
 import { buildCity, districtNameAt } from './city.js';
 import { createPlayer } from './player.js';
-import { createCars } from './vehicles.js';
+import { createCars, createCar } from './vehicles.js';
 import { ChaseCamera } from './camera.js';
 import { Hud } from './hud.js';
 import { Traffic } from './traffic.js';
@@ -56,14 +56,14 @@ const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(62, window.innerWidth / window.innerHeight, 0.1, 900);
 // One real headlight for the player's car only (no shadow: perf). It
 // follows whichever car is driven and switches off on foot / by day.
-const headlight = new THREE.SpotLight(0xfff2cc, 300, 35, 0.5, 0.4);
+const headlight = new THREE.SpotLight(0xfff2cc, 1200, 35, 0.55, 0.4);
 headlight.visible = false;
 scene.add(headlight);
 scene.add(headlight.target);
 const input = new Input();
 const rng = makeRng(seed);
 let state = 'title';
-let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses;
+let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses, textures;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
 let gameMinutes = CLOCK_START_MINUTES;
 let arrestTimer = 0, lastHurtAt = -99, reachedFive = false;
@@ -109,6 +109,17 @@ function clockLine() {
   const hh = String(Math.floor(total / 60) % 24).padStart(2, '0');
   const mm = String(Math.floor(total % 60)).padStart(2, '0');
   return `DAY ${day} ${hh}:${mm}`;
+}
+// Live distance + 4-way arrow to a point, relative to the camera.
+function distArrow(from, tx, tz) {
+  const dx = tx - from.x;
+  const dz = tz - from.z;
+  const fx = -Math.sin(chaseCamera.yaw);
+  const fz = -Math.cos(chaseCamera.yaw);
+  const ahead = dx * fx + dz * fz;
+  const side = dz * fx - dx * fz;
+  const arrow = Math.abs(ahead) > Math.abs(side) ? (ahead > 0 ? '↑' : '↓') : (side > 0 ? '→' : '←');
+  return `${Math.round(Math.hypot(dx, dz))}m ${arrow}`;
 }
 function nightFactor() {
   const mins = gameMinutes % 1440;
@@ -166,6 +177,9 @@ function snapshotSave() {
     look: { ...look },
     playerX: drivenCar ? drivenCar.position.x : player.position.x,
     playerZ: drivenCar ? drivenCar.position.z : player.position.z,
+    heading: drivenCar ? drivenCar.heading : player.heading,
+    car: drivenCar ? { name: drivenCar.name, style: drivenCar.style, hp: drivenCar.hp, x: drivenCar.position.x, z: drivenCar.position.z, heading: drivenCar.heading } : null,
+    mission: missions.curIdx >= 0 ? { index: missions.curIdx, stage: missions.stageIndex, clock: missions.missionClock } : null,
     gameMinutes,
     businesses: businesses.serialize(),
     stats: { ...stats },
@@ -173,6 +187,28 @@ function snapshotSave() {
     playSeconds: Math.floor(elapsed),
     garage: { ...garage },
   };
+}
+function restoreDrivenCar(saved) {
+  // The driven car survives a reload: a parked car with the same name is
+  // teleported to the saved spot; a traffic/police car (no fixed twin in
+  // a fresh world) is recreated with the same name and style.
+  let car = cars.find((candidate) => candidate.name === saved.name && !candidate.destroyed);
+  if (car) {
+    car.group.position.set(saved.x, 0, saved.z);
+    car.heading = saved.heading;
+    car.group.rotation.y = saved.heading;
+  } else {
+    const taxi = saved.name === 'KEYS TAXI';
+    car = createCar(scene, textures, saved.name, taxi ? textures.carTaxi : textures.carBlue, taxi ? 0xffc828 : 0x346edc, saved.x, saved.z, saved.heading, saved.style || 'sedan');
+    cars.push(car);
+  }
+  car.hp = Math.max(1, saved.hp || 100);
+  car.maxHp = garage.armour ? 200 : 100;
+  car.burning = false;
+  car.burnTimer = 0;
+  car.speed = 0;
+  car.owned = true;
+  enterCar(car);
 }
 function applySave(data) {
   money = data.money;
@@ -185,6 +221,9 @@ function applySave(data) {
   }
   missions.failCurrent();
   missions.setCompleted(data.missionsDone);
+  if (data.mission && data.mission.index >= 0 && data.mission.index < MISSIONS_IN_STORY) {
+    missions.restoreActive(data.mission.index, data.mission.stage || 0, data.mission.clock || 0);
+  }
   combat.setOwnedWeapons(data.weaponsOwned || ['fists', 'pistol']);
   tapes.setCollected(data.tapesCollected || 0);
   businesses.reset();
@@ -201,7 +240,10 @@ function applySave(data) {
   reachedFive = false;
   player.jumpY = 0;
   player.jumpV = 0;
+  player.heading = data.heading || 0;
+  player.group.rotation.y = player.heading;
   player.group.position.set(data.playerX, 0, data.playerZ);
+  if (data.car) restoreDrivenCar(data.car);
 }
 function startGame() {
   state = 'play';
@@ -320,6 +362,12 @@ function acceptBriefing() {
   hud.hideBriefing();
   phoneVisible = false;
   missions.startMission(briefing.index);
+}
+function laterBriefing() {
+  if (!phoneVisible) return;
+  hud.hideBriefing();
+  phoneVisible = false;
+  missions.dismissBriefing();
 }
 buildSwatches();
 function refreshTitleSaves() {
@@ -444,11 +492,7 @@ on('empire-list', (event) => {
   }
 });
 on('phone-accept', acceptBriefing);
-on('phone-later', () => {
-  hud.hideBriefing();
-  phoneVisible = false;
-  missions.snoozeBriefing(20);
-});
+on('phone-later', laterBriefing);
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
@@ -712,8 +756,12 @@ function update(dt) {
   if (input.pressed('Enter') && state === 'title' && !optionsOpen) startGame();
   if (input.pressed('Enter') && state === 'down') recoverFromDown();
   if (input.pressed('Enter') && phoneVisible && state === 'play') acceptBriefing();
+  // A briefing must never trap the player: W or Escape dismisses it as
+  // LATER, so walking away just works.
+  if (input.pressed('KeyW') && phoneVisible && state === 'play') laterBriefing();
   if (input.pressed('Escape')) {
-    if (optionsOpen) closeOptions();
+    if (phoneVisible) laterBriefing();
+    else if (optionsOpen) closeOptions();
     else if (missionOpen) closeMissionScreen();
     else if (empireOpen) closeEmpireScreen();
     else if (mapOpen) closeMapScreen();
@@ -794,14 +842,17 @@ function update(dt) {
       else hud.showMessage('No car nearby — walk closer to one and press F');
     }
   }
-  // Carjack prompt: show it only while no other message is showing, so
-  // toasts (achievements, hits) are never overwritten.
+  // Carjack prompt: it shows exactly when F would succeed — a car within
+  // 5m, or the latched car within 8m — and hides the frame that stops
+  // being true, so it never lingers after the car drove off.
   if (!drivenCar && player.downTimer <= 0) {
     const near = nearestCar(player.position);
     if (near) promptAt = elapsed;
-    if (near && !$('hud-message').classList.contains('visible')) {
-      hud.showMessage(`Press F to ${near.owned ? 'drive' : 'steal'} ${near.name}`, 0.6);
-    }
+    const grabbable = near || (elapsed - promptAt < 1.5 ? nearestCar(player.position, 8) : null);
+    if (grabbable) hud.showPrompt('car', `Press F to ${grabbable.owned ? 'drive' : 'steal'} ${grabbable.name}`);
+    else hud.clearPrompt('car');
+  } else {
+    hud.clearPrompt('car');
   }
   const autoDrive = shotName === 'chase' && drivenCar;
   const drivingInput = autoDrive
@@ -842,6 +893,7 @@ function update(dt) {
       driftChain = 0;
     }
   } else {
+    hud.clearPrompt('spray');
     player.update(dt, input, city);
     chaseCamera.update(dt, player.position, player.heading, false, combat.recoil, police.helicopter ? 2 : 0);
     const hitByCar = (car, speed) => {
@@ -940,8 +992,10 @@ function update(dt) {
     for (const unit of police.roadblock) collideWith(unit.car, true);
     for (const unit of police.pursuit) collideWith(unit.car, false);
     if (Math.hypot(drivenCar.position.x - SPRAY_X, drivenCar.position.z - SPRAY_Z) < SPRAY_RANGE) {
-      hud.showMessage("PAY'N'SPRAY — press E for the garage (repair $200 · upgrades)", 0.6);
+      hud.showPrompt('spray', "PAY'N'SPRAY — press E for the garage (repair $200 · upgrades)");
       if (input.pressed('KeyE')) openGarageScreen();
+    } else {
+      hud.clearPrompt('spray');
     }
     if (robbery.active && !robbery.getaway.stopped) {
       const getawayPos = robbery.getaway.car.position;
@@ -998,13 +1052,15 @@ function update(dt) {
   if (collectIndex >= 0) {
     const def = businesses.defs[collectIndex];
     const pending = Math.floor(businesses.state[collectIndex].pending);
-    hud.showMessage(`${def.name} — collect $${pending.toLocaleString('en-US')} (press E)`, 0.6);
+    hud.showPrompt('collect', `${def.name} — collect $${pending.toLocaleString('en-US')} (press E)`);
     if (input.pressed('KeyE')) {
       const amount = businesses.collect(collectIndex);
       earn(amount);
       hud.showMessage(`${def.name} — collected $${amount.toLocaleString('en-US')}`, 3);
       audio.chime();
     }
+  } else {
+    hud.clearPrompt('collect');
   }
   awardAchievements();
   weather.update(dt, focus.position);
@@ -1016,21 +1072,21 @@ function update(dt) {
   dialogue.update();
   const nextMission = missions.pendingMission;
   if (nextMission && !missions.currentMission()) {
-    // Live distance + 4-way arrow to the marker, relative to the camera.
-    const dx = nextMission.start[0] - focus.position.x;
-    const dz = nextMission.start[1] - focus.position.z;
-    const fx = -Math.sin(chaseCamera.yaw);
-    const fz = -Math.cos(chaseCamera.yaw);
-    const ahead = dx * fx + dz * fz;
-    const side = dz * fx - dx * fz;
-    const arrow = Math.abs(ahead) > Math.abs(side) ? (ahead > 0 ? '↑' : '↓') : (side > 0 ? '→' : '←');
-    freeObj = `${nextMission.giver.split(' ')[0]} has a job for you — ${Math.round(Math.hypot(dx, dz))}m ${arrow}`;
+    freeObj = `${nextMission.giver.split(' ')[0]} has a job for you — ${distArrow(focus.position, nextMission.start[0], nextMission.start[1])}`;
   }
+  // Mission objective: live distance + arrow to the target — or the
+  // get-in-a-car hint when a pickup needs a car and the player is on foot.
+  let missionObj = missions.nextObjectiveLine();
+  if (missionObj && missions.needsCarHint) missionObj += ' — get in a car first';
+  else if (missionObj && missions.target) missionObj += ` — ${distArrow(focus.position, missions.target.x, missions.target.z)}`;
   const briefing = missions.pendingBriefing;
   if (briefing && !phoneVisible && !missionOpen) {
     hud.showBriefing(briefing.mission, briefing.index);
     phoneVisible = true;
     audio.click();
+  } else if (phoneVisible && missions.target && Math.hypot(focus.position.x - missions.target.x, focus.position.z - missions.target.z) > 15) {
+    // Walked away without deciding: the call drops on its own.
+    laterBriefing();
   }
   audio.setEngine(drivenCar ? Math.abs(drivenCar.speed) / 38 : 0, Boolean(drivenCar));
   audio.setSiren(police.nearestDistance(focus.position));
@@ -1050,7 +1106,7 @@ function update(dt) {
     carHp: drivenCar ? drivenCar.hp : 0,
     carMaxHp: drivenCar ? drivenCar.maxHp || 100 : 100,
     missionLine: missions.currentMission() ? missions.progressLine() : sideJobs.statusLine() || missions.progressLine(),
-    objective: missions.nextObjectiveLine() || sideJobs.objectiveLine() || freeObj,
+    objective: missionObj || sideJobs.objectiveLine() || freeObj,
     nextLine: missions.nextLine(),
     clockText: clockLine(),
     weatherText: weather.label,
@@ -1064,6 +1120,7 @@ function update(dt) {
     missionTarget: missions.target,
     sideJobTarget: sideJobs.target,
     businessBlips: businesses.blips(),
+    sprayPos: { x: SPRAY_X, z: SPRAY_Z },
     eventBlip: robbery.blip,
     policeBlips: police.allCarPositions(),
     trafficBlips: traffic.cars.map((npc) => ({ x: npc.car.position.x, z: npc.car.position.z })),
@@ -1080,7 +1137,8 @@ function loop() {
   input.endFrame();
 }
 loadTextures()
-  .then((textures) => {
+  .then((loaded) => {
+    textures = loaded;
     city = buildCity(scene, textures, rng);
     const sprayBeacon = buildBeacon(scene, 0x2ad0c4);
     sprayBeacon.group.position.set(SPRAY_X, 0, SPRAY_Z);

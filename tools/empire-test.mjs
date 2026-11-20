@@ -138,9 +138,15 @@ await page.evaluate(() => {
   window.__game.player.group.position.set(52, 0, 52);
 });
 await page.waitForTimeout(1500);
+// The prompt cycles on a 0.6s timer with a 1-frame gap, so poll.
+let collectSeen = false;
+for (let i = 0; i < 10 && !collectSeen; i += 1) {
+  collectSeen = await page.evaluate(() => document.getElementById('hud-message').textContent.includes('collect $1,200'));
+  if (!collectSeen) await page.waitForTimeout(200);
+}
 check(
   'collect prompt shows near the taxi office',
-  await page.evaluate(() => document.getElementById('hud-message').textContent.includes('collect $1,200')),
+  collectSeen,
   await page.evaluate(() => document.getElementById('hud-message').textContent),
 );
 const moneyBeforeCollect = await page.evaluate(() => window.__game.money);
@@ -245,6 +251,12 @@ check(
   'side job still offered after story ends',
   await page.evaluate(() => window.__game.sideJobs.job !== null && window.__game.sideJobs.job.type === 'delivery'),
 );
+// Tape pickup follows the focus (the car if driving); §12's load restores
+// the driven car now, so exit first and walk to the tape on foot.
+if (await page.evaluate(() => !!window.__game.drivenCar)) {
+  await page.keyboard.press('KeyF');
+  await page.waitForTimeout(500);
+}
 await page.evaluate(() => {
   const tape = window.__game.tapes.tapes.find((t) => !t.taken);
   window.__game.player.group.position.set(tape.x, 0, tape.z);

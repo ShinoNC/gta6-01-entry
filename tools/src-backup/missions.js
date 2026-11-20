@@ -12,8 +12,8 @@ const MISSION_CHAIN = [
     rewardMoney: 500,
     rewardRep: 60,
     objectives: [
-      { kind: 'driveTo', x: 104, z: 0, label: 'Pick up the client at the east pier' },
-      { kind: 'waitAt', x: 104, z: 0, seconds: 2, label: 'Wait for the client to get in' },
+      { kind: 'driveTo', x: 104, z: 0, needsCar: true, label: 'Pick up the client at the east pier' },
+      { kind: 'waitAt', x: 104, z: 0, seconds: 2, needsCar: true, label: 'Wait for the client to get in' },
       { kind: 'driveTo', x: -52, z: 52, label: 'Drop the client at Palm Row' },
     ],
   },
@@ -26,7 +26,7 @@ const MISSION_CHAIN = [
     rewardMoney: 750,
     rewardRep: 90,
     objectives: [
-      { kind: 'waitAt', x: -52, z: 70, seconds: 2, label: 'Pick up Juno Reyes on Coral Strand' },
+      { kind: 'waitAt', x: -52, z: 70, seconds: 2, needsCar: true, label: 'Pick up Juno Reyes on Coral Strand' },
       { kind: 'driveTo', x: 104, z: 70, label: 'Drop Juno at Sunset Bluff' },
     ],
   },
@@ -96,7 +96,7 @@ const MISSION_CHAIN = [
     rewardMoney: 2500,
     rewardRep: 240,
     objectives: [
-      { kind: 'waitAt', x: 104, z: -104, seconds: 2, label: 'Pick up the crew at Harbor Lights' },
+      { kind: 'waitAt', x: 104, z: -104, seconds: 2, needsCar: true, label: 'Pick up the crew at Harbor Lights' },
       { kind: 'waitAt', x: -52, z: -104, seconds: 4, label: 'Crack the vault — hold position' },
       { kind: 'driveTo', x: -104, z: 26, label: 'Escape to Palm Row' },
     ],
@@ -147,6 +147,8 @@ export class Missions {
     this.waitSeconds = 0;
     this.briefingIdx = 0;
     this.snooze = 0;
+    this.briefingArmed = true;
+    this.needsCarHint = false;
     this.atMarker = false;
     this.target = null;
     this.clock = 0;
@@ -155,7 +157,7 @@ export class Missions {
     this.beacon = buildBeacon(scene);
   }
   get pendingBriefing() {
-    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0 || !this.atMarker) return null;
+    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0 || !this.atMarker || !this.briefingArmed) return null;
     return { mission: MISSION_CHAIN[this.briefingIdx], index: this.briefingIdx };
   }
   // Next mission waiting at its gold marker, or null once the story is done.
@@ -174,6 +176,27 @@ export class Missions {
   }
   snoozeBriefing(seconds) {
     this.snooze = seconds;
+  }
+  // LATER pressed: the briefing stays shut until the player leaves the
+  // marker area (>15m) and comes back — crossing the area must not force
+  // ACCEPT or LATER on the player again and again.
+  dismissBriefing() {
+    this.briefingArmed = false;
+  }
+  // Resume a mission mid-way (save/load): same state as startMission but
+  // without the scripted heat or the started callback — both already
+  // happened when the mission first began.
+  restoreActive(index, stage, clock) {
+    const mission = MISSION_CHAIN[index];
+    this.curIdx = index;
+    this.stageIndex = stage;
+    this.waitSeconds = 0;
+    this.missionClock = clock || 0;
+    this.parSeconds = 90 + mission.objectives.length * 45;
+    this.status[index] = 'active';
+    this.briefingIdx = -1;
+    this.snooze = 0;
+    this.briefingArmed = true;
   }
   startMission(index) {
     const mission = MISSION_CHAIN[index];
@@ -196,6 +219,7 @@ export class Missions {
     if (this.curIdx < 0) return;
     this.status[this.curIdx] = 'pending';
     this.briefingIdx = this.curIdx;
+    this.briefingArmed = true;
     this.snooze = 5;
     this.curIdx = -1;
     this.target = null;
@@ -208,6 +232,7 @@ export class Missions {
     if (count < MISSIONS_IN_STORY) {
       this.status[count] = 'pending';
       this.briefingIdx = count;
+      this.briefingArmed = true;
       this.snooze = 1;
     } else {
       this.briefingIdx = -1;
@@ -227,6 +252,7 @@ export class Missions {
     if (nextIndex < MISSIONS_IN_STORY) {
       this.status[nextIndex] = 'pending';
       this.briefingIdx = nextIndex;
+      this.briefingArmed = true;
       this.snooze = 2;
     }
     this.callbacks.onMissionComplete(mission, finishedIndex);
@@ -251,13 +277,17 @@ export class Missions {
       if (this.target) {
         this.beacon.group.position.set(this.target.x, 0, this.target.z);
         this.animateBeacon(dt);
-        this.atMarker = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z) < MARKER_M;
+        const dist = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z);
+        this.atMarker = dist < MARKER_M;
+        // Leaving the area re-arms a dismissed briefing.
+        if (!this.briefingArmed && dist > 15) this.briefingArmed = true;
       } else {
         this.atMarker = false;
       }
       return;
     }
     this.missionClock += dt;
+    this.needsCarHint = false;
     const objective = mission.objectives[this.stageIndex];
     const { playerPos, drivenCar, cars, wantedStars } = context;
     if (objective.kind === 'stealCar') {
@@ -274,11 +304,20 @@ export class Missions {
       this.animateBeacon(dt);
     }
     if (objective.kind === 'driveTo') {
-      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M) {
+      const inRange = Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M;
+      // A pickup needs a car: arriving on foot holds the stage and hints
+      // at it instead of letting the client "get in" with no car there.
+      if (objective.needsCar && !drivenCar) {
+        this.needsCarHint = inRange;
+      } else if (inRange) {
         this.completeStage();
       }
     } else if (objective.kind === 'waitAt') {
-      if (Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M) {
+      const inRange = Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M;
+      if (objective.needsCar && !drivenCar) {
+        this.waitSeconds = 0;
+        this.needsCarHint = inRange;
+      } else if (inRange) {
         this.waitSeconds += dt;
         if (this.waitSeconds >= objective.seconds) this.completeStage();
       } else {
@@ -293,8 +332,13 @@ export class Missions {
   progressLine() {
     if (this.curIdx < 0) return this.doneCount() >= MISSIONS_IN_STORY ? 'STORY COMPLETE' : 'FREE ROAM';
     const mission = this.currentMission();
-    const left = Math.max(0, this.parSeconds - this.missionClock);
-    const timer = `${Math.floor(left / 60)}:${String(Math.floor(left % 60)).padStart(2, '0')}`;
+    // Par is display-only (no fail), but a timer stuck at 0:00 looks
+    // broken — past par it counts up over par instead.
+    const over = this.missionClock - this.parSeconds;
+    const timer =
+      over > 0
+        ? `+${Math.floor(over / 60)}:${String(Math.floor(over % 60)).padStart(2, '0')} OVER PAR`
+        : `${Math.floor((this.parSeconds - this.missionClock) / 60)}:${String(Math.floor((this.parSeconds - this.missionClock) % 60)).padStart(2, '0')}`;
     return `MISSION ${this.curIdx + 1}/${MISSIONS_IN_STORY} — ${mission.name} · STAGE ${this.stageIndex + 1}/${mission.objectives.length} · ${timer}`;
   }
   nextLine() {

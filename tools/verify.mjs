@@ -189,9 +189,20 @@ for (let i = 0; i < 12 && !accepted; i += 1) {
   accepted = await page.evaluate(() => Boolean(window.__game.missions.currentMission()) || window.__game.missions.doneCount() >= 1);
 }
 check('mission 1 briefing accepted', accepted);
+// M1 pickups need a car now: enter the starter car first, then drive
+// (teleport the driven car) to the objectives.
+await page.evaluate(() => {
+  const g = window.__game;
+  const car = g.cars.find((c) => c.name === 'SOLSTICE GT');
+  g.player.group.position.set(car.position.x + 2, 0, car.position.z);
+});
+await page.waitForTimeout(400);
+await page.keyboard.press('KeyF');
+await page.waitForTimeout(400);
 await page.evaluate(() => {
   const target = window.__game.missions.target;
-  window.__game.player.group.position.set(target.x, 0, target.z);
+  window.__game.drivenCar.group.position.set(target.x, 0, target.z);
+  window.__game.drivenCar.speed = 0;
 });
 // M1 has 3 stages now (pier pickup, 2s wait, Palm Row drop). The waitAt
 // stage needs 2s of GAME time, and headless runs ~0.15x real time, so poll
@@ -205,7 +216,10 @@ for (let i = 0; i < 40; i += 1) {
 }
 await page.evaluate(() => {
   const target = window.__game.missions.target;
-  if (target) window.__game.player.group.position.set(target.x, 0, target.z);
+  if (target) {
+    window.__game.drivenCar.group.position.set(target.x, 0, target.z);
+    window.__game.drivenCar.speed = 0;
+  }
 });
 for (let i = 0; i < 12; i += 1) {
   if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
@@ -252,7 +266,10 @@ check('M closes the mission list', await page.evaluate(() => document.getElement
 
 // Stealing a parked car (not the starter) raises the wanted level — but
 // only when witnessed (GTA rule): stage a pedestrian next to the car first,
-// or the steal is free and no police come.
+// or the steal is free and no police come. M1 now ends with the player
+// driving, so exit the car first — this test starts on foot.
+await page.keyboard.press('KeyF');
+await page.waitForTimeout(500);
 await page.evaluate(() => {
   const car = window.__game.cars[3];
   window.__game.player.group.position.set(car.position.x + 2, 0, car.position.z);

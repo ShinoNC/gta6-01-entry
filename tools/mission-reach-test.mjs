@@ -139,7 +139,17 @@ note(`M1 walk test: mission active = ${missionActive}, target = ${JSON.stringify
 check('M1: ACCEPT starts the mission (no instant pass)', missionActive === 'FIRST FARE', `active=${missionActive}`);
 check('M1: after ACCEPT the target moves to the east pier (104,0)', targetAfterAccept?.x === 104 && targetAfterAccept?.z === 0, JSON.stringify(targetAfterAccept));
 // Drive the new M1: pickup at the pier, hold 2s for the client, deliver to Palm Row.
-await page.evaluate(() => { window.__game.player.group.position.set(104, 0, 0); });
+// The pickup needs a car: enter the starter car first, then drive (teleport
+// the driven car) to the objectives.
+await page.evaluate(() => {
+  const g = window.__game;
+  const car = g.cars.find((c) => c.name === 'SOLSTICE GT');
+  g.player.group.position.set(car.position.x + 2, 0, car.position.z);
+});
+await page.waitForTimeout(400);
+await page.keyboard.press('KeyF');
+await page.waitForTimeout(400);
+await page.evaluate(() => { window.__game.drivenCar.group.position.set(104, 0, 0); window.__game.drivenCar.speed = 0; });
 // The 2s waitAt needs 2s of GAME time; headless runs ~0.15x real time,
 // so poll for the stage to advance instead of sleeping a fixed amount.
 for (let i = 0; i < 40; i += 1) {
@@ -148,7 +158,7 @@ for (let i = 0; i < 40; i += 1) {
 }
 const stageAfterPickup = await page.evaluate(() => window.__game.missions.stageIndex);
 check('M1: pickup + 2s wait advances to the delivery stage', stageAfterPickup === 2, `stageIndex=${stageAfterPickup}`);
-await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 52); });
+await page.evaluate(() => { window.__game.drivenCar.group.position.set(-52, 0, 52); window.__game.drivenCar.speed = 0; });
 for (let i = 0; i < 12; i += 1) {
   if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
   await page.waitForTimeout(1000);

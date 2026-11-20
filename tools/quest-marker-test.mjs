@@ -84,7 +84,17 @@ check('mission 1 starts on ACCEPT', started);
 const m1Target = await page.evaluate(() => window.__game.missions.target);
 check('M1 target after ACCEPT is the east pier (104,0)', m1Target?.x === 104 && m1Target?.z === 0, JSON.stringify(m1Target));
 check('M1 does NOT auto-complete on ACCEPT', await page.evaluate(() => window.__game.missions.doneCount() === 0));
-await page.evaluate(() => { window.__game.player.group.position.set(104, 0, 0); });
+// The pickup needs a car: enter the starter car first, then drive (teleport
+// the driven car) to the pier.
+await page.evaluate(() => {
+  const g = window.__game;
+  const car = g.cars.find((c) => c.name === 'SOLSTICE GT');
+  g.player.group.position.set(car.position.x + 2, 0, car.position.z);
+});
+await page.waitForTimeout(400);
+await page.keyboard.press('KeyF');
+await page.waitForTimeout(400);
+await page.evaluate(() => { window.__game.drivenCar.group.position.set(104, 0, 0); window.__game.drivenCar.speed = 0; });
 // The 2s waitAt needs 2s of GAME time; headless runs ~0.15x real time,
 // so poll for the stage to advance instead of sleeping a fixed amount.
 for (let i = 0; i < 40; i += 1) {
@@ -93,7 +103,7 @@ for (let i = 0; i < 40; i += 1) {
 }
 check('M1 pickup + wait advances to stage 3', await page.evaluate(() => window.__game.missions.stageIndex === 2),
   `stageIndex=${await page.evaluate(() => window.__game.missions.stageIndex)}`);
-await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 52); });
+await page.evaluate(() => { window.__game.drivenCar.group.position.set(-52, 0, 52); window.__game.drivenCar.speed = 0; });
 for (let i = 0; i < 12; i += 1) {
   if (await page.evaluate(() => window.__game.missions.doneCount() === 1)) break;
   await page.waitForTimeout(1000);
@@ -117,8 +127,11 @@ check('M2 marker appears at (-52,70)', afterM1.beaconVisible && afterM1.beaconX 
 check('M2 marker is the map target', afterM1.target?.x === -52 && afterM1.target?.z === 70, JSON.stringify(afterM1.target));
 check('pending mission is THE CORAL RUN', afterM1.pending === 'THE CORAL RUN', afterM1.pending);
 
-// 6. Walk to the M2 marker — Juno's briefing appears; LATER dismisses it and
-// it re-prompts (player still at the marker).
+// 6. Walk to the M2 marker — Juno's briefing appears; LATER dismisses it.
+// M1 now ends with the player driving, so exit the car first — this section
+// walks to the marker on foot.
+await page.keyboard.press('KeyF');
+await page.waitForTimeout(500);
 await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 70); });
 up = false;
 for (let i = 0; i < 12 && !up; i += 1) {
@@ -131,15 +144,21 @@ check('M2 briefing is from Juno Reyes', giver2.toUpperCase().includes('JUNO'), g
 await page.click('#phone-later');
 await page.waitForTimeout(500);
 check('LATER dismisses the briefing', !(await phoneUp()));
-// Snooze is 20 game-seconds; headless runs ~0.1x, so the re-prompt takes a
-// while — force the snooze down to prove the re-prompt path works.
+// LATER now dismisses until the player leaves the area: no re-prompt while
+// standing at the marker, even with the snooze forced to 0.
 await page.evaluate(() => { window.__game.missions.snooze = 0; });
+await page.waitForTimeout(3000);
+check('briefing does NOT re-prompt at the marker after LATER', !(await phoneUp()));
+// Leave (>15m) and come back: the briefing re-prompts.
+await page.evaluate(() => { window.__game.player.group.position.set(0, 0, 0); });
+await page.waitForTimeout(1000);
+await page.evaluate(() => { window.__game.player.group.position.set(-52, 0, 70); });
 up = false;
 for (let i = 0; i < 6 && !up; i += 1) {
   await page.waitForTimeout(5000);
   up = await phoneUp();
 }
-check('briefing re-prompts at the marker after LATER', up);
+check('briefing re-prompts after leaving and re-entering', up);
 await page.evaluate(() => document.getElementById('phone-later')?.click());
 await page.waitForTimeout(300);
 
