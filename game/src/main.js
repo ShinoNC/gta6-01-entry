@@ -11,7 +11,7 @@ import { Traffic } from './traffic.js';
 import { Pedestrians, SKIN_COLOURS, HAIR_COLOURS, SHIRT_COLOURS } from './pedestrians.js';
 import { Wanted } from './wanted.js';
 import { Police } from './police.js';
-import { Missions, MISSIONS_IN_STORY, buildBeacon } from './missions.js';
+import { Missions, MISSIONS_IN_STORY, buildBeacon, beaconFade } from './missions.js';
 import { Combat } from './combat.js';
 import { Dialogue } from './dialogue.js';
 import { Tapes, TAPE_COUNT } from './tapes.js';
@@ -63,7 +63,7 @@ scene.add(headlight.target);
 const input = new Input();
 const rng = makeRng(seed);
 let state = 'title';
-let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses, textures;
+let city, player, cars, chaseCamera, hud, traffic, pedestrians, wanted, police, missions, combat, dialogue, tapes, sideJobs, weather, robbery, audio, effects, businesses, textures, sprayBeacon;
 let drivenCar = null, money = START_MONEY, rep = 0, prevStars = 0, skidSeconds = 0, driftChain = 0, nearMissAt = -99, elapsed = 0, health = 100, armour = 0;
 let gameMinutes = CLOCK_START_MINUTES;
 let arrestTimer = 0, lastHurtAt = -99, reachedFive = false;
@@ -756,9 +756,8 @@ function update(dt) {
   if (input.pressed('Enter') && state === 'title' && !optionsOpen) startGame();
   if (input.pressed('Enter') && state === 'down') recoverFromDown();
   if (input.pressed('Enter') && phoneVisible && state === 'play') acceptBriefing();
-  // A briefing must never trap the player: W or Escape dismisses it as
-  // LATER, so walking away just works.
-  if (input.pressed('KeyW') && phoneVisible && state === 'play') laterBriefing();
+  // A briefing closes on Escape, the LATER button, or walking >15m away —
+  // never on W: W is the move key the player uses to walk up to the marker.
   if (input.pressed('Escape')) {
     if (phoneVisible) laterBriefing();
     else if (optionsOpen) closeOptions();
@@ -1047,7 +1046,8 @@ function update(dt) {
     wantedStars: wanted.stars,
   });
   sideJobs.update(dt, { focusPos: focus.position, driving: Boolean(drivenCar) });
-  businesses.update(dt);
+  businesses.update(dt, focus.position);
+  if (sprayBeacon) sprayBeacon.pillar.material.opacity = 0.9 * beaconFade(Math.hypot(focus.position.x - SPRAY_X, focus.position.z - SPRAY_Z));
   const collectIndex = businesses.nearestCollectable(focus.position);
   if (collectIndex >= 0) {
     const def = businesses.defs[collectIndex];
@@ -1140,7 +1140,7 @@ loadTextures()
   .then((loaded) => {
     textures = loaded;
     city = buildCity(scene, textures, rng);
-    const sprayBeacon = buildBeacon(scene, 0x2ad0c4);
+    sprayBeacon = buildBeacon(scene, 0x2ad0c4);
     sprayBeacon.group.position.set(SPRAY_X, 0, SPRAY_Z);
     sprayBeacon.group.visible = true;
     player = createPlayer(scene, SPAWN_X, SPAWN_Z);

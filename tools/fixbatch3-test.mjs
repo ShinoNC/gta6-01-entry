@@ -204,7 +204,7 @@ await ev(() => { window.__game.player.group.position.set(52, 0, 0); });
 check('briefing reopens after leaving (>15m) and re-entering', await waitForPhone());
 await page.keyboard.press('KeyW');
 await page.waitForTimeout(600);
-check('W dismisses the briefing', await ev(() => document.getElementById('phone-panel').classList.contains('hidden')));
+check('W does NOT dismiss the briefing (W is the move key — fix batch 4)', await ev(() => !document.getElementById('phone-panel').classList.contains('hidden')));
 await ev(() => { window.__game.player.group.position.set(0, 0, 0); });
 await page.waitForTimeout(1000);
 await ev(() => { window.__game.player.group.position.set(52, 0, 0); });

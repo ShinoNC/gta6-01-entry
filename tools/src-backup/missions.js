@@ -137,6 +137,12 @@ export function buildBeacon(scene, color = 0xffe600) {
   scene.add(group);
   return { group, pillar, ring, diamond };
 }
+// A beacon pillar fades as the player nears it: at full opacity it floods
+// the screen when the camera sits metres away, while the ground ring still
+// marks the spot up close. Full strength past 14m, a faint 12% within 4m.
+export function beaconFade(dist) {
+  return Math.min(1, Math.max(0.12, (dist - 2) / 12));
+}
 export class Missions {
   constructor(scene, callbacks) {
     this.callbacks = callbacks;
@@ -257,9 +263,9 @@ export class Missions {
     }
     this.callbacks.onMissionComplete(mission, finishedIndex);
   }
-  animateBeacon(dt) {
+  animateBeacon(dt, dist) {
     const b = this.beacon;
-    b.pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
+    b.pillar.material.opacity = (0.85 + 0.1 * Math.sin(this.clock * 3)) * beaconFade(dist);
     const s = 1 + 0.07 * Math.sin(this.clock * 3);
     b.ring.scale.set(s, s, 1);
     b.diamond.rotation.y += dt * 1.5;
@@ -276,8 +282,8 @@ export class Missions {
       this.beacon.group.visible = this.target !== null;
       if (this.target) {
         this.beacon.group.position.set(this.target.x, 0, this.target.z);
-        this.animateBeacon(dt);
         const dist = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z);
+        this.animateBeacon(dt, dist);
         this.atMarker = dist < MARKER_M;
         // Leaving the area re-arms a dismissed briefing.
         if (!this.briefingArmed && dist > 15) this.briefingArmed = true;
@@ -301,7 +307,7 @@ export class Missions {
     this.beacon.group.visible = this.target !== null;
     if (this.target) {
       this.beacon.group.position.set(this.target.x, 0, this.target.z);
-      this.animateBeacon(dt);
+      this.animateBeacon(dt, Math.hypot(playerPos.x - this.target.x, playerPos.z - this.target.z));
     }
     if (objective.kind === 'driveTo') {
       const inRange = Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M;

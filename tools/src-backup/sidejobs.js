@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { roadLines, districtNameAt } from './city.js';
 import { buildWalkerMesh } from './pedestrians.js';
-import { buildBeacon } from './missions.js';
+import { buildBeacon, beaconFade } from './missions.js';
 const DISCOVER = 40, AVOID = 60, PICKUP = 8, PKG_PICKUP = 4, DROP = 10, MIN_TRIP = 80, HINT_CD = 5;
 function roadside(rng) {
   const lines = roadLines(), line = lines[(rng() * lines.length) | 0];
@@ -146,7 +146,8 @@ export class SideJobs {
       if (Math.hypot(focusPos.x - job.pickup.x, focusPos.z - job.pickup.z) < DISCOVER) this.discover();
       return;
     }
-    this.beacon.pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
+    const bd = Math.hypot(focusPos.x - this.beacon.group.position.x, focusPos.z - this.beacon.group.position.z);
+    this.beacon.pillar.material.opacity = (0.85 + 0.1 * Math.sin(this.clock * 3)) * beaconFade(bd);
     if (this.taxiMarker.visible) {
       this.taxiMarker.rotation.y += dt * 2;
       this.taxiMarker.position.y = 3 + Math.sin(this.clock * 2) * 0.15;

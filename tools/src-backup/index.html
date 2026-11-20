@@ -176,7 +176,7 @@
       color:#ffd978;
       }
       #hud-minimap{
-      bottom:18px;
+      bottom:30px;
       left:18px;
       }
       #minimap{
@@ -188,7 +188,7 @@
       background:#1a1030;
       }
       #hud-speedo{
-      bottom:18px;
+      bottom:30px;
       right:18px;
       text-align:right;
       background:rgba(26,16,48,.62);
@@ -244,7 +244,7 @@
       color:#ffb3c4;
       }
       #hud-bars{
-      bottom:200px;
+      bottom:212px;
       left:18px;
       width:168px;
       }
@@ -272,7 +272,7 @@
       width:0%;
       }
       #hud-message{
-      top:33%;
+      top:120px;
       left:50%;
       transform:translateX(-50%);
       font-size:22px;
@@ -651,12 +651,13 @@
       padding:14px 24px;
       font-size:16px;
       }
-      /* Portrait layout: this block MUST stay last — the base #hud-minimap /
-         #minimap / #hud-bars / #hud-speedo rules above win ties by source
-         order, so an earlier media block cannot override them. The hint
-         strip wraps to two lines (42px tall), so the bottom row rides 50px
-         up and the minimap shrinks to clear it. */
-      @media (max-width:560px){
+      /* Narrow layout (<=880px, where the hint strip wraps to two lines):
+         this block MUST stay last — the base #hud-minimap / #minimap /
+         #hud-bars / #hud-speedo rules above win ties by source order, so
+         an earlier media block cannot override them. The wrapped hint is
+         42px tall, so the bottom row rides 50px up and the minimap
+         shrinks to clear it. */
+      @media (max-width:880px){
       #hud-minimap{bottom:50px}
       #minimap{width:120px;height:120px}
       #hud-bars{bottom:178px;width:120px}

@@ -1,4 +1,4 @@
-import { buildBeacon } from './missions.js';
+import { buildBeacon, beaconFade } from './missions.js';
 const BUSINESS_DEFS = [
   { id: 'taxi', name: 'KEYS CAB CO.', kind: 'TAXI COMPANY', x: 52, z: 52, district: 'PELICAN BAY', price: 2000, repRequired: 1, incomePerDay: 1200 },
   { id: 'club', name: 'NEON PALMS', kind: 'NIGHTCLUB', x: -52, z: -52, district: 'OLD PORT', price: 6000, repRequired: 3, incomePerDay: 3000 },
@@ -37,10 +37,11 @@ export class Businesses {
   totalPending() {
     return this.state.reduce((sum, s) => sum + s.pending, 0);
   }
-  update(dt) {
+  update(dt, playerPos) {
     this.clock += dt;
     for (let i = 0; i < BUSINESS_DEFS.length; i += 1) {
-      this.beacons[i].pillar.material.opacity = 0.85 + 0.1 * Math.sin(this.clock * 3);
+      const dist = playerPos ? Math.hypot(playerPos.x - BUSINESS_DEFS[i].x, playerPos.z - BUSINESS_DEFS[i].z) : 99;
+      this.beacons[i].pillar.material.opacity = (0.85 + 0.1 * Math.sin(this.clock * 3)) * beaconFade(dist);
       if (!this.state[i].owned) continue;
       const cap = this.incomePerDay(i) * PENDING_CAP_DAYS;
       this.state[i].pending = Math.min(cap, this.state[i].pending + (this.incomePerDay(i) / SECONDS_PER_GAME_DAY) * dt);

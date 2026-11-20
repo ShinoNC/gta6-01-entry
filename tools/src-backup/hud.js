@@ -179,13 +179,15 @@ export class Hud {
       const bw = b.x - a.x, bh = b.y - a.y;
       ctx.fillRect(a.x + bw * 0.08, a.y + bh * 0.08, bw * 0.84, bh * 0.84);
     }
-    for (const car of s.cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 3, '#ffd978');
-    if (s.trafficBlips) for (const b of s.trafficBlips) dot(b.x, b.z, 2, '#c4bcd0');
-    if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) dot(c.x, c.z, 4, '#7affc4');
+    for (const car of s.cars) if (!car.driven && !car.destroyed) dot(car.position.x, car.position.z, 4, '#ffd978');
+    if (s.trafficBlips) for (const b of s.trafficBlips) dot(b.x, b.z, 3, '#c4bcd0');
+    if (s.ammoCrates) for (const c of s.ammoCrates) if (c.available) diamond(c.x, c.z, 5, '#7affc4');
     if (s.sprayPos) diamond(s.sprayPos.x, s.sprayPos.z, 5, '#2ad0c4');
     if (s.businessBlips) for (const b of s.businessBlips) diamond(b.x, b.z, 5, b.owned ? '#7affc4' : '#ffd978');
-    // One icon scale for every destination marker (radius 5); the mission
-    // diamond is only slightly larger (6) with a small pulse.
+    // One icon scale for every destination marker (radius 5, ammo crates
+    // included); the mission diamond is only slightly larger (6) with a
+    // small pulse. Cars and traffic stay small dots: ambient blips, not
+    // destinations.
     if (s.missionTarget) diamond(s.missionTarget.x, s.missionTarget.z, 6 + Math.sin(s.timeSeconds * 4) * 0.5, '#ffffff');
     if (s.policeBlips) for (const b of s.policeBlips) circle(b.x, b.z, 3, Math.floor(s.timeSeconds * 2.8) % 2 === 0 ? '#ff2a3a' : '#2a6bff');
     if (s.sideJobTarget) diamond(s.sideJobTarget.x, s.sideJobTarget.z, 5, '#7affc4');
