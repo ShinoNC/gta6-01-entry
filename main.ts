@@ -1,4 +1,4 @@
-// SOLARIS KEYS — entry hand-in for gta6-01 (Node 22, standard library only).
+// VICE ROYALE — entry hand-in for gta6-01 (Node 22, standard library only).
 //
 // The game itself lives in game/ beside this file: static files a desktop
 // browser loads offline (index.html, ES modules under src/, pixel-art PNGs
