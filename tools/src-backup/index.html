@@ -1054,6 +1054,111 @@
       .bar-label{font-size:12px;margin:3px 0 1px}
       .bar{height:10px}
       }
+      /* Mobile landscape readability (contrast audit 2026-11-21): size bumps
+      that apply on any narrow screen, menu contrast panels, map column fix. */
+      @media (max-width:880px){
+      .bar-label{font-size:16px}
+      .weapon-slot.locked{opacity:.65}
+      #dialogue-name{font-size:16px;color:#d8a8ff}
+      #dialogue-text{font-size:16px}
+      #phone-giver{font-size:16px}
+      #phone-text{font-size:16px}
+      .phone-button{font-size:16px}
+      #passed-rewards{font-size:16px;font-weight:700}
+      .menu-tab{font-size:16px}
+      #map-body{justify-content:flex-start}
+      .legend-grid{font-size:15px}
+      .legend-hint{font-size:14px;font-weight:700;color:#fff}
+      .district-row{font-size:15px}
+      .save-row{font-size:15px}
+      .save-summary{font-size:14px;font-weight:700;color:#fff}
+      .map-next-obj{font-size:15px;font-weight:700}
+      .map-next-dist{font-size:16px}
+      .mission-reward{font-size:15px;font-weight:700}
+      .mission-briefing{font-size:15px}
+      .mission-summary{font-size:15px}
+      .settings-row label{font-size:16px}
+      .settings-value{font-size:16px}
+      .settings-row select{font-size:16px}
+      .controls-row{font-size:16px}
+      .key-chip{font-size:15px;font-weight:700}
+      .feature-line{font-size:14px;font-weight:700;background:rgba(26,16,48,.78);padding:6px 14px;border-radius:20px}
+      #mission-screen .game-title,#empire-screen .game-title,#map-screen .game-title,#stats-screen .game-title,#save-screen .game-title,#garage-screen .game-title{background:rgba(26,16,48,.85);padding:6px 18px}
+      .mission-subtitle{background:rgba(48,32,86,.88);border:2px solid #ffd978;padding:6px 14px;font-size:16px;font-weight:700}
+      }
+      @media (max-width:560px){
+      #hud-radio{max-width:200px}
+      }
+      /* Short landscape screens: row map, reachable panels, compact headers,
+      scrollable title/pause, bigger minimap, docked police panel. */
+      @media (max-height:500px){
+      .overlay{overflow-y:auto}
+      #title-screen{justify-content:flex-start;padding:8px 0}
+      #pause-screen{justify-content:flex-start;padding:8px 0}
+      #title-screen .game-title{font-size:56px;line-height:1;letter-spacing:6px}
+      #title-screen .game-subtitle{margin-top:6px}
+      #title-screen .feature-line{margin-top:8px}
+      #title-screen .menu-button{padding:10px 12px}
+      #pause-screen .menu-button{padding:10px 12px;margin-top:16px}
+      #continue-summary{margin-top:10px;font-size:15px;font-weight:700}
+      .controls{font-size:16px}
+      #minimap{width:130px;height:130px}
+      #hud-minimap{bottom:30px}
+      #hud-speedo{bottom:30px}
+      #hud-bars{bottom:168px}
+      #hud-district{font-size:26px}
+      #hud-street{display:block;font-size:14px}
+      #hud-repbar{display:block;margin:3px 0 5px}
+      .bar-label{font-size:16px;line-height:1.15;margin:2px 0 1px}
+      #hud-hint{font-size:15px}
+      #hud-rep{font-size:16px}
+      .ws-num{font-size:14px}
+      .ws-name{font-size:16px}
+      .ws-ammo{font-size:15px}
+      .weapon-slot{min-width:76px}
+      #hud-clock{font-size:15px}
+      #hud-radio{font-size:15px;max-width:320px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+      #hud-car{font-size:16px}
+      #hud-condition{font-size:16px}
+      #hud-hiding{font-size:16px}
+      #hud-message{max-width:340px}
+      #dialogue-panel{bottom:110px}
+      #hud-police{top:auto;bottom:30px;left:160px;right:auto;width:230px;font-size:15px}
+      #hud-top-left{padding:8px 12px}
+      #hud-objective{margin-top:3px;max-width:52vw}
+      #hud-next{margin-top:2px;max-width:52vw;font-size:16px}
+      #map-body{flex-direction:row;justify-content:center;align-items:stretch;overflow-y:visible;margin-top:0}
+      #map-sidebar{width:auto;flex:1 1 0;min-width:280px}
+      #bigmap{width:min(56vw,calc((100vh - 140px)*1.255));min-width:280px;min-height:220px;flex:none}
+      #mission-screen .game-title,#empire-screen .game-title,#map-screen .game-title,#stats-screen .game-title,#save-screen .game-title,#garage-screen .game-title{font-size:26px !important;letter-spacing:2px}
+      #mission-header .portrait{display:none}
+      #mission-header>div{min-width:0}
+      .mission-subtitle{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:92vw}
+      #mission-footer{padding:4px 0 6px}
+      #mission-footer .menu-button{margin-top:0;padding:10px 12px}
+      #settings-tab-panel,#controls-tab-panel{max-height:62vh}
+      }
+      @media (max-height:500px) and (min-width:800px){
+      #hud-message{top:150px}
+      }
+      /* Very short screens (800x360): shave the HUD stack and the menu
+      footer so the bars clear the mission panel and the list hits 150px. */
+      @media (max-height:400px){
+      #minimap{width:120px;height:120px}
+      #hud-bars{bottom:160px}
+      #hud-district{line-height:1}
+      #hud-street{margin-top:0;padding:0 6px}
+      #hud-repbar{margin:2px 0 2px}
+      .bar-label{line-height:1}
+      .bar{height:8px}
+      #hud-top-left{padding:6px 10px}
+      #hud-objective{margin-top:2px}
+      #hud-next{margin-top:1px}
+      .mission-subtitle{padding:3px 10px}
+      .mission-summary{padding:2px 5px;margin-bottom:4px;line-height:1.15}
+      #mission-footer{padding:2px 0 4px}
+      #mission-footer .menu-button{padding:4px 12px}
+      }
     </style><script type="importmap">
     { "imports": { "three": "./vendor/three.module.min.js" } }
   </script></head>

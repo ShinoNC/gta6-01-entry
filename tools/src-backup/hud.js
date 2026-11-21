@@ -205,6 +205,15 @@ export class Hud {
     // Past timestamp: the drain shifts the next queued toast on its tick.
     this.messageUntil = 1;
   }
+  // Dismiss the toast (and any queued ones) when an overlay opens, so it
+  // never shows through a translucent overlay over menu rows.
+  hideMessage() {
+    this.promptKind = null;
+    this.el.message.classList.remove('visible');
+    this.messageUntil = 1;
+    this.messageSticky = false;
+    this.pendingMessages.length = 0;
+  }
   spawnDamageNumber(x, y, text) {
     if (!this.dmgPool) {
       this.dmgPool = [];
@@ -327,8 +336,52 @@ export class Hud {
     if (s.eventBlip) circle(s.eventBlip.x, s.eventBlip.z, 4, Math.floor(s.timeSeconds * 4) % 2 === 0 ? '#ff2a3a' : '#ff8a94');
     if (s.labels) {
       // Small outlined labels, clamped inside the canvas so no name is cut
-      // off at an edge or runs into its neighbour.
-      const fs = Math.round(9 * m);
+      // off at an edge or runs into its neighbour. Floor at a readable
+      // SCREEN size: on a small displayed map the canvas px shrink, so
+      // divide by the canvas-to-screen scale (audit 2026-11-21).
+      const shown = ctx.canvas.clientWidth > 0 ? ctx.canvas.clientWidth / w : 1;
+      // On a small displayed map the 14px labels would print over each
+      // other in the dense centre: skip a label whose box hits one already
+      // placed (only when the map is small; desktop keeps every label).
+      // POIs claim their spots first (they are the actionable labels);
+      // districts fill the gaps that are left.
+      const placed = [];
+      const collides = (x0, x1, y0, y1) => placed.some((b) => x0 < b.x1 && b.x0 < x1 && y0 < b.y1 && b.y0 < y1);
+      const smallMap = shown < 0.45;
+      // POI labels (full map only): businesses, Pay'n'Spray, the shop,
+      // the safehouse and the mission givers. Stacked entries share a
+      // point with a vertical offset so they read as a list, not a blob.
+      const pfs = Math.max(Math.round(7 * m), Math.ceil(12 / shown));
+      ctx.font = `bold ${pfs}px "Courier New", monospace`;
+      ctx.textAlign = 'center';
+      ctx.lineWidth = Math.round(pfs / 6);
+      ctx.strokeStyle = '#1a1030';
+      // Stacked POI offsets scale with the font, so OTTO KANE / SAFEHOUSE
+      // stay a readable list instead of printing on top of each other.
+      const dyScale = pfs / 17;
+      // Order is priority on a small map: the givers and the safehouse
+      // claim their spots first, then services, then businesses.
+      const pois = [];
+      pois.push({ x: 52, z: 0, text: 'MARA SOLIS', color: '#ffffff', dy: 14 });
+      pois.push({ x: -52, z: 330, text: 'JUNO REYES', color: '#ffffff', dy: 0 });
+      pois.push({ x: 104, z: -104, text: 'OTTO KANE', color: '#ffffff', dy: 16 });
+      pois.push({ x: 104, z: -104, text: 'SAFEHOUSE', color: '#ffffff', dy: 32 });
+      if (s.sprayPos) pois.push({ x: s.sprayPos.x, z: s.sprayPos.z, text: "PAY'N'SPRAY", color: '#2ad0c4', dy: 0 });
+      if (s.shopPos) pois.push({ x: s.shopPos.x, z: s.shopPos.z, text: 'VICE CUTS', color: '#ff5aa8', dy: -14 });
+      if (s.businessBlips) for (const b of s.businessBlips) pois.push({ x: b.x, z: b.z, text: b.name, color: b.owned ? '#7affc4' : '#ffd978', dy: -14 });
+      for (const poi of pois) {
+        const p = toMap(poi.x, poi.z);
+        ctx.fillStyle = poi.color;
+        const tw = ctx.measureText(poi.text).width;
+        const x = Math.min(Math.max(p.x, tw / 2 + 4), w - tw / 2 - 4);
+        const y = Math.min(Math.max(p.y + poi.dy * dyScale, pfs + 2), h - 4);
+        const box = { x0: x - tw / 2 - 12, x1: x + tw / 2 + 12, y0: y - pfs * 0.8, y1: y + 2 };
+        if (smallMap && collides(box.x0, box.x1, box.y0, box.y1)) continue;
+        placed.push(box);
+        ctx.strokeText(poi.text, x, y);
+        ctx.fillText(poi.text, x, y);
+      }
+      const fs = Math.max(Math.round(9 * m), Math.ceil(14 / shown));
       ctx.font = `bold ${fs}px "Courier New", monospace`;
       ctx.textAlign = 'center';
       ctx.lineWidth = Math.round(fs / 6);
@@ -337,33 +390,13 @@ export class Hud {
       for (const d of districtLabels()) {
         const p = toMap(d.x, d.z);
         const tw = ctx.measureText(d.name).width;
-        const x = Math.min(Math.max(p.x, tw / 2 + 24), w - tw / 2 - 24);
-        const y = Math.min(Math.max(p.y, fs + 10), h - 12);
+        const x = Math.min(Math.max(p.x, tw / 2 + 8), w - tw / 2 - 8);
+        const y = Math.min(Math.max(p.y, fs + 4), h - 6);
+        const box = { x0: x - tw / 2 - 12, x1: x + tw / 2 + 12, y0: y - fs * 0.8, y1: y + 2 };
+        if (smallMap && collides(box.x0, box.x1, box.y0, box.y1)) continue;
+        placed.push(box);
         ctx.strokeText(d.name, x, y);
         ctx.fillText(d.name, x, y);
-      }
-      // POI labels (full map only): businesses, Pay'n'Spray, the shop,
-      // the safehouse and the mission givers. Stacked entries share a
-      // point with a vertical offset so they read as a list, not a blob.
-      const pfs = Math.round(7 * m);
-      ctx.font = `bold ${pfs}px "Courier New", monospace`;
-      ctx.lineWidth = Math.round(pfs / 6);
-      const pois = [];
-      if (s.businessBlips) for (const b of s.businessBlips) pois.push({ x: b.x, z: b.z, text: b.name, color: b.owned ? '#7affc4' : '#ffd978', dy: -14 });
-      if (s.sprayPos) pois.push({ x: s.sprayPos.x, z: s.sprayPos.z, text: "PAY'N'SPRAY", color: '#2ad0c4', dy: 0 });
-      if (s.shopPos) pois.push({ x: s.shopPos.x, z: s.shopPos.z, text: 'VICE CUTS', color: '#ff5aa8', dy: -14 });
-      pois.push({ x: 52, z: 0, text: 'MARA SOLIS', color: '#ffffff', dy: 14 });
-      pois.push({ x: -52, z: 330, text: 'JUNO REYES', color: '#ffffff', dy: 0 });
-      pois.push({ x: 104, z: -104, text: 'OTTO KANE', color: '#ffffff', dy: 16 });
-      pois.push({ x: 104, z: -104, text: 'SAFEHOUSE', color: '#ffffff', dy: 32 });
-      for (const poi of pois) {
-        const p = toMap(poi.x, poi.z);
-        ctx.fillStyle = poi.color;
-        const tw = ctx.measureText(poi.text).width;
-        const x = Math.min(Math.max(p.x, tw / 2 + 8), w - tw / 2 - 8);
-        const y = Math.min(Math.max(p.y + poi.dy, pfs + 6), h - 8);
-        ctx.strokeText(poi.text, x, y);
-        ctx.fillText(poi.text, x, y);
       }
     }
     const p = toMap(s.playerPos.x, s.playerPos.z);
@@ -486,6 +519,7 @@ export class Hud {
       rows;
   }
   showGarageScreen() {
+    this.hideMessage();
     this.el.garageScreen.classList.remove('hidden');
   }
   hideGarageScreen() {
@@ -542,6 +576,7 @@ export class Hud {
       `<div class="mission-summary">${doneCount}/${MISSIONS_IN_STORY} jobs done · ${pct}% COMPLETE · ${playTime} · payout $${totalPayout.toLocaleString('en-US')}</div>` + rows;
   }
   showPassed(title, missionName, rewards) {
+    this.hideMessage();
     this.el.passedTitle.textContent = title;
     this.el.passedMission.textContent = missionName;
     this.el.passedRewards.innerHTML = rewards.filter(Boolean).join('<br>');
@@ -705,6 +740,7 @@ export class Hud {
     this.el.objective.textContent = text;
   }
   showMenuTabs() {
+    this.hideMessage();
     this.el.menuTabs.classList.remove('hidden');
   }
   hideMenuTabs() {

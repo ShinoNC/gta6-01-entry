@@ -304,6 +304,7 @@ function startGame() {
 function togglePause() {
   if (state === 'play') {
     state = 'pause';
+    hud.hideMessage();
     pauseScreen.classList.remove('hidden');
   } else if (state === 'pause') {
     startGame();
@@ -312,6 +313,7 @@ function togglePause() {
 function openSettings() {
   titleScreen.classList.add('hidden');
   pauseScreen.classList.add('hidden');
+  hud.hideMessage();
   settingsScreen.classList.remove('hidden');
   settingsOpen = true;
   syncSettingsControls();
@@ -351,6 +353,7 @@ function openStyleScreen() {
   if (empireOpen) closeEmpireScreen();
   if (mapOpen) closeMapScreen();
   if (garageOpen) closeGarageScreen();
+  hud.hideMessage();
   $('style-screen').classList.remove('hidden');
   styleOpen = true;
 }
@@ -421,8 +424,10 @@ function showMenuTab(tab) {
   hud.setActiveMenuTab(tab);
   if (tab === 'map') {
     hud.resetMapView();
-    hud.renderMapScreen(mapScreenState());
+    // Show first: renderMapScreen paints the canvas, and the label floor
+    // reads the canvas's displayed width (0 while hidden).
     hud.showMapScreen();
+    hud.renderMapScreen(mapScreenState());
     mapOpen = true;
   } else if (tab === 'story') {
     hud.renderMissionList(missions.statusList(), missions.stageIndex, completionPct(), playTimeLine());
@@ -704,7 +709,16 @@ on('empire-list', (event) => {
 });
 on('phone-accept', acceptBriefing);
 on('phone-later', laterBriefing);
+// Short hint strip on short screens: the full line wraps to two lines
+// and its second line clips at the viewport bottom (audit 2026-11-21).
+const HINT_FULL = 'W/S&nbsp;move · A/D&nbsp;turn · F&nbsp;enter&nbsp;car · CLICK&nbsp;punch&nbsp;/&nbsp;shoot · SPACE&nbsp;jump · M&nbsp;missions · B&nbsp;business · N&nbsp;map';
+const HINT_SHORT = 'W/S&nbsp;move · F&nbsp;car · CLICK&nbsp;attack · M&nbsp;missions · N&nbsp;map';
+function syncHint() {
+  $('hud-hint').innerHTML = window.innerHeight <= 500 ? HINT_SHORT : HINT_FULL;
+}
+syncHint();
 window.addEventListener('resize', () => {
+  syncHint();
   camera.aspect = window.innerWidth / window.innerHeight;
   camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
@@ -850,6 +864,7 @@ function endRun(kind) {
   player.group.rotation.x = 0;
   $('down-title').textContent = kind;
   $('down-sub').textContent = wasted ? `Hospital bill $${fine.toLocaleString('en-US')}` : `Fine $${fine.toLocaleString('en-US')}`;
+  hud.hideMessage();
   $('down-screen').classList.remove('hidden');
 }
 function recoverFromDown() {
@@ -1607,7 +1622,7 @@ loadTextures()
       hud.showMessage('WAYPOINT SET');
       hud.renderMapScreen(mapScreenState());
     };
-    dialogue = new Dialogue();
+    dialogue = new Dialogue(hud);
     tapes = new Tapes(scene, rng);
     sideJobs = new SideJobs(scene, rng, {
       onOffered(job) {

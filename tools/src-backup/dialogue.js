@@ -23,7 +23,8 @@ const LINES = {
   ],
 };
 export class Dialogue {
-  constructor() {
+  constructor(hud = null) {
+    this.hud = hud;
     this.el = $('dialogue-panel');
     this.face = $('dialogue-face');
     this.name = $('dialogue-name');
@@ -36,6 +37,9 @@ export class Dialogue {
     this.face.setAttribute('href', `#${speaker}-portrait`);
     this.name.textContent = `${name} · ${role}`;
     this.text.textContent = text;
+    // A toast showing when dialogue opens would print over the panel on
+    // short screens, so the toast goes away (same as opening an overlay).
+    if (this.hud) this.hud.hideMessage();
     this.el.classList.remove('hidden');
     this.until = performance.now() + seconds * 1000;
   }
