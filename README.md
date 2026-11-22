@@ -25,7 +25,7 @@ three.js is vendored under `game/vendor/`, textures and radio are local.
 - `game/src/` — 26 ES modules: city, traffic (48 cars), police, combat,
   missions, businesses, side jobs, robberies, weather, audio, save.
 - `game/assets/` — pixel-art PNGs and three local radio tracks.
-- `screenshots/` — chase, street, missions, title.
+- `screenshots/` — chase, street, missions and title shots.
 - `main.ts` — the hand-in program: copies `game/` + `screenshots/` and
   writes `dossier.json` with the vendored make.fun dossier builder.
 

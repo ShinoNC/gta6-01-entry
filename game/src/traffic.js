@@ -1,4 +1,4 @@
-// VICE ROYALE traffic: 48 cars and bikes driving the road grid, day and night.
+// VICE ROYALE traffic: 48 cars and bikes on the road grid, day/night.
 // 48 cars + bikes driving the road grid, day and night.
 // Overtake a blocked player instead of queuing forever.
 // Fake headlights/taillights; density scales with the hour.

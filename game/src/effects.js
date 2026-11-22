@@ -1,4 +1,4 @@
-// VICE ROYALE effects: skid smoke, muzzle flash, explosions and screen shake.
+// VICE ROYALE effects: skid smoke, muzzle flash, blasts, screen shake.
 // Skid smoke, muzzle flash, explosions, screen shake.
 // Particles are pooled and recycled; no per-frame allocation.
 // Explosion radius damages cars + peds and raises wanted heat.

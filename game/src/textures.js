@@ -1,4 +1,4 @@
-// VICE ROYALE textures: procedural pixel-art facades, roads, sand and water.
+// VICE ROYALE textures: procedural pixel facades, roads, sand, water.
 // Procedural pixel-art facades, roads, sand and water.
 // Canvas-generated textures keep the bundle free of image assets.
 // Facade palettes vary by district for the map turf read.

@@ -1,4 +1,4 @@
-// VICE ROYALE wanted: 5-star heat from crimes, cooling when the player hides.
+// VICE ROYALE wanted: 5-star heat from crimes, cools slowly while hiding.
 // 5-star heat from crimes, cooling when the player hides.
 // Hiding 6s at 1 star clears it; higher stars need Pay'n'Spray.
 // Heat feeds police spawn rate and pursuit AI aggression.

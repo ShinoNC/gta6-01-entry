@@ -1,4 +1,4 @@
-// VICE ROYALE police: pursuit cars, roadblocks, helicopter and the arrest rule.
+// VICE ROYALE police: pursuit cars, roadblocks, helicopter, arrest rule.
 // Pursuit cars, roadblocks, helicopter, the arrest rule.
 // 5 stars: 6 pursuit cars + heli + roadblock; BUSTED on capture.
 // Pursuit rams + PITs; Pay'n'Spray clears stars for $200.

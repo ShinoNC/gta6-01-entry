@@ -1,4 +1,4 @@
-// VICE ROYALE random: seeded RNG so every run with one seed plays the same.
+// VICE ROYALE random: seeded RNG — one seed replays the same run.
 // Seeded RNG: one seed replays the same run.
 // Used for spawns, traffic, weather, loot.
 export function makeRng(n){let t=n>>>0;return function(){t=t+1831565813>>>0;let e=t;return e=Math.imul(e^e>>>15,e|1),e^=e+Math.imul(e^e>>>7,e|61),((e^e>>>14)>>>0)/4294967296}}export function intBetween(n,t,r){return t+Math.floor(n()*(r-t+1))}export function range(n,t,r){return t+n()*(r-t)}export function chance(n,t){return n()<t}export function pick(n,t){return t[Math.floor(n()*t.length)]}export function weightedPick(n,t){let r=0;for(const[,o]of t)r+=o;let e=n()*r;for(const[o,u]of t)if(e-=u,e<=0)return o;return t[t.length-1][0]}export function wrapAngle(n){let t=n;for(;t>Math.PI;)t-=Math.PI*2;for(;t<-Math.PI;)t+=Math.PI*2;return t}

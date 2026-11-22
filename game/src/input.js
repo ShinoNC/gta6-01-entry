@@ -1,4 +1,4 @@
-// VICE ROYALE input: keyboard + mouse state, edge-triggered pressed() checks.
+// VICE ROYALE input: keyboard and mouse state, edge-triggered presses.
 // Keyboard + mouse state, edge-triggered pressed() checks.
 // WASD drive/walk, F enter car, E interact, N map, M missions.
 // Keys are remapped in Settings; defaults listed in Controls.

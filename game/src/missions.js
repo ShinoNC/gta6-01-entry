@@ -1,4 +1,4 @@
-// VICE ROYALE missions: the 8-job story arc, beacons, briefings and rewards.
+// VICE ROYALE missions: 8-job story arc, beacons, briefings, rewards.
 // Story: 8 jobs, stages, beacons, briefings.
 // beaconFade: ring/halo fade 2-14m; diamond stays 0.95.
 // Fail respawns at hospital.
