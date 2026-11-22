@@ -4,33 +4,33 @@
 [![rank](https://make.fun/badge/gta6-01/ShinoNC/gta6-01-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/ShinoNC/gta6-01-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Start with nothing. Take the whole island. A 12×12-block open world with
-a beach ring and open sea: 8 story jobs, 3 businesses to buy, a garage,
-side jobs, bank robberies, 4 gangs, a 5-star wanted system, day/night
-weather, and 40 hidden tapes — in one static page, no build step.
+Begin with nothing and take the whole island. A 12x12-block open world
+ringed by beach and open sea: 8 story jobs, 3 businesses to buy, a garage,
+side jobs, bank robberies, 4 gangs, a 5-star wanted system, day and night
+weather plus 40 hidden tapes, in one static page with no build step.
 
 ## Play
 
-Serve `game/` statically (or run `node serve.ts`) and open
-`game/index.html` in a desktop browser. No network needed once loaded:
-three.js is vendored under `game/vendor/`, textures and radio are local.
+Serve `game/` as static files (or run `node serve.ts`), then open
+`game/index.html` in a desktop browser. Once loaded it needs no network:
+three.js ships vendored under `game/vendor/`, and textures and radio are local.
 
-- **W/S** move · **A/D** turn · **F** enter/exit car · **CLICK** punch/shoot
+- **W/S** move · **A/D** turn · **F** enter or exit a car · **CLICK** punch or shoot
 - **SPACE** jump / handbrake · **M** missions · **B** business · **N** map
-- **E** interact · **Q/E** switch menu tabs · **SHIFT** nitro (when owned)
+- **E** interact · **Q/E** change menu tabs · **SHIFT** nitro (when owned)
 
 ## What's inside
 
 - `game/index.html` — the whole page: HUD, menus, minimap, full map.
-- `game/src/` — 26 ES modules: city, traffic (48 cars), police, combat,
-  missions, businesses, side jobs, robberies, weather, audio, save.
-- `game/assets/` — pixel-art PNGs and three local radio tracks.
+- `game/src/` — 26 ES modules covering city, traffic (48 cars), police,
+  combat, missions, businesses, side jobs, robberies, weather, audio, save.
+- `game/assets/` — pixel-art PNGs plus three local radio tracks.
 - `screenshots/` — chase, street, missions and title shots.
-- `main.ts` — the hand-in program: copies `game/` + `screenshots/` and
-  writes `dossier.json` with the vendored make.fun dossier builder.
+- `main.ts` — the hand-in program: it copies `game/` and `screenshots/`,
+  then writes `dossier.json` using the vendored make.fun dossier builder.
 
 ## Notes
 
 - Seeded RNG: `?seed=N` replays the same island, traffic and weather.
-- Saves live in `localStorage` (3 slots); look and settings persist too.
-- The game runs offline; the only network use is this page's badges.
+- Saves sit in `localStorage` (3 slots); look and settings persist too.
+- The game runs offline; these badges are its only network use.
