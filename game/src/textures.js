@@ -1,2 +1,5 @@
 // VICE ROYALE textures: procedural pixel-art facades, roads, sand and water.
+// Procedural pixel-art facades, roads, sand and water.
+// Canvas-generated textures keep the bundle free of image assets.
+// Facade palettes vary by district for the map turf read.
 import*as e from"three";const s={facadeA:"facade-a.png",facadeB:"facade-b.png",facadeC:"facade-c.png",facadeD:"facade-d.png",facadeE:"facade-e.png",facadeF:"facade-f.png",road:"road.png",sidewalk:"sidewalk.png",sand:"sand.png",palm:"palm.png",carRed:"car-red.png",carBlue:"car-blue.png",carTaxi:"car-taxi.png",water:"water.png",roof:"roof.png",billboard:"billboard.png"},l=new Set(["road","sidewalk","sand","water"]);export function loadTextures(){const d=new e.TextureLoader,r={},o=Object.entries(s).map(([n,p])=>new Promise((c,i)=>{d.load(`./assets/${p}`,a=>{a.magFilter=e.NearestFilter,l.has(n)?(a.minFilter=e.NearestMipmapLinearFilter,a.generateMipmaps=!0,a.anisotropy=4):(a.minFilter=e.NearestFilter,a.generateMipmaps=!1),a.wrapS=e.RepeatWrapping,a.wrapT=e.RepeatWrapping,a.colorSpace=e.SRGBColorSpace,r[n]=a,c()},void 0,()=>i(new Error(`texture failed to load: ${p}`)))}));return Promise.all(o).then(()=>r)}
