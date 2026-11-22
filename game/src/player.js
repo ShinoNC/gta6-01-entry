@@ -1,4 +1,4 @@
-// VICE ROYALE player: on-foot moves, swimming, punching, entering cars.
+// VICE ROYALE hero: on-foot moves, swimming, punching, getting into cars.
 // Player: on-foot movement, swimming, punching, car entry.
 // Walk/run speeds, stamina drain + regen, health + armour.
 // Car entry (F) checks range + door side; exit parks the car.

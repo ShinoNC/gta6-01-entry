@@ -1,4 +1,4 @@
-// VICE ROYALE HUD: minimap, full map, health, wanted stars, menu screens.
+// VICE ROYALE interface: minimap, full map, health, wanted stars, menus.
 // HUD: minimap + full map, bars, stars, menus.
 // paintMap: streets, markers, purple waypoint route.
 // Sidebar: next mission, legend, districts, waypoint.

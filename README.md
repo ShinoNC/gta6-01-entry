@@ -5,7 +5,7 @@
 [![reward](https://make.fun/badge/gta6-01/ShinoNC/gta6-01-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
 Start with nothing. Take the whole island. A 12×12-block open world with
-a beach ring and open sea: 8 story jobs, 3 buyable businesses, a garage,
+a beach ring and open sea: 8 story jobs, 3 businesses to buy, a garage,
 side jobs, bank robberies, 4 gangs, a 5-star wanted system, day/night
 weather, and 40 hidden tapes — in one static page, no build step.
 

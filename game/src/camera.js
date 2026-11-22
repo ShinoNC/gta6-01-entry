@@ -1,4 +1,4 @@
-// VICE ROYALE chase camera: trails the player, dodges in behind walls.
+// VICE ROYALE camera: chase view that trails the player, ducks behind walls.
 // Chase camera: follows the player/car, pulls in on walls.
 // Lerp path is collision-checked so it never clips buildings.
 // FOV widens slightly with speed; shake hooks into effects.

@@ -1,4 +1,4 @@
-// VICE ROYALE tapes: 40 collectible cassettes stashed around the island.
+// VICE ROYALE cassettes: 40 tapes hidden in corners all over the island.
 // 40 collectible cassettes hidden around the island.
 // Pickup radius + chime; counter in the EMPIRE tab.
 // All 40 collected is a completion stat, not a mission gate.

@@ -1,4 +1,4 @@
-// VICE ROYALE businesses: buy firms, upgrade them, bank passive income.
+// VICE ROYALE firms: buy businesses, upgrade them, collect passive income.
 // Businesses: buy, upgrade, collect passive income from 3 firms.
 // Each firm has a price, upgrade tiers and a pending payout.
 // Income accrues in real time; collect from the EMPIRE tab.
