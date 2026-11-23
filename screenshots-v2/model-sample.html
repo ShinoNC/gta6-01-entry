@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Downloaded 3D Models — Sample</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f2ede4; font-family: "Courier New", monospace; }
+  #title { text-align: center; font-size: 28px; font-weight: bold; letter-spacing: 4px; padding: 18px 0 4px; color: #222; }
+  #sub { text-align: center; font-size: 14px; color: #555; padding-bottom: 10px; }
+  #stage { position: relative; width: 1280px; height: 640px; margin: 0 auto; }
+  #stage canvas { display: block; }
+  .label { position: absolute; bottom: 12px; transform: translateX(-50%); background: rgba(255,255,255,0.92); border: 1px solid #ccc; border-radius: 6px; padding: 8px 14px; text-align: center; font-size: 15px; line-height: 1.5; color: #222; white-space: nowrap; }
+  .label b { font-size: 17px; }
+  .label span { color: #666; font-size: 13px; }
+  #status { text-align: center; font-size: 13px; color: #888; padding: 8px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../game/vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="title">DOWNLOADED 3D MODELS — SAMPLE</div>
+<div id="sub">Free models, loaded as GLB in Three.js — idle animation playing</div>
+<div id="stage"></div>
+<div id="status">loading…</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from './models/GLTFLoader.js';
+
+// NOTE: Box3 on a skinned mesh measures the BIND pose unless the idle
+// animation has played + updateMatrixWorld ran. Measure AFTER starting
+// the idle clip (verified: Runner 1.71m, Casual Man 1.79m, Office Lady
+// 0.15m — Gobkit is authored in cm units).
+const MODELS = [
+  { file: 'models/runner-woman.glb', name: 'Runner Woman', src: 'vinish.dev', lic: 'CC-BY 4.0', size: '828 KB', x: -2.6 },
+  { file: 'models/casual-man.glb', name: 'Casual Man', src: 'vinish.dev', lic: 'CC-BY 4.0', size: '890 KB', x: 0 },
+  { file: 'models/office-lady.glb', name: 'Office Lady', src: 'gobkit.com', lic: 'CC0', size: '444 KB', x: 2.6 },
+];
+
+const stage = document.getElementById('stage');
+const statusEl = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(1280, 640);
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf2ede4);
+const camera = new THREE.PerspectiveCamera(38, 1280 / 640, 0.1, 100);
+camera.position.set(0, 1.25, 6.4);
+camera.lookAt(0, 0.95, 0);
+
+// lights
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd8cdb8, 1.1));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sun.position.set(3, 6, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -5; sun.shadow.camera.right = 5;
+sun.shadow.camera.top = 5; sun.shadow.camera.bottom = -5;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+fill.position.set(-4, 3, 3);
+scene.add(fill);
+
+// ground
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(9, 48),
+  new THREE.MeshStandardMaterial({ color: 0xe2d9c8, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const mixers = [];
+const loader = new GLTFLoader();
+const loaded = [];
+const failed = [];
+
+function addLabel(model, px) {
+  const d = document.createElement('div');
+  d.className = 'label';
+  d.style.left = px + 'px';
+  d.innerHTML = `<b>${model.name}</b><br><span>${model.src} · ${model.lic} · ${model.size}</span>`;
+  stage.appendChild(d);
+}
+
+// project world x to screen px (camera fixed, y ~ 0.95 centre)
+function worldToScreenX(wx) {
+  const v = new THREE.Vector3(wx, 0.95, 0).project(camera);
+  return (v.x * 0.5 + 0.5) * 1280;
+}
+
+let pending = MODELS.length;
+for (const m of MODELS) {
+  loader.load(m.file, (gltf) => {
+    const root = gltf.scene;
+    scene.add(root);
+    // start idle FIRST so the skinned bounds reflect the animated pose
+    let mixer = null;
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(root);
+      const idle = THREE.AnimationClip.findByName(gltf.animations, 'idle')
+        || THREE.AnimationClip.findByName(gltf.animations, 'Idle')
+        || gltf.animations[0];
+      mixer.clipAction(idle).play();
+      mixer.update(1.0);
+      mixers.push(mixer);
+      console.log(m.name, 'clips:', gltf.animations.map(a => a.name).join(', '));
+    }
+    root.updateMatrixWorld(true);
+    // normalise: animated height -> 1.8m, feet on ground, centred at m.x
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const s = 1.8 / (size.y || 1);
+    root.scale.setScalar(s);
+    root.updateMatrixWorld(true);
+    const box2 = new THREE.Box3().setFromObject(root);
+    root.position.x = m.x - (box2.min.x + box2.max.x) / 2;
+    root.position.y = -box2.min.y;
+    root.position.z = -(box2.min.z + box2.max.z) / 2;
+    root.rotation.y = Math.PI * 0.12; // slight 3/4 turn
+    root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+    loaded.push(m.name);
+    addLabel(m, worldToScreenX(m.x));
+    if (--pending === 0) finish();
+  }, undefined, (err) => {
+    console.error(m.name, 'FAILED', err);
+    failed.push(m.name);
+    if (--pending === 0) finish();
+  });
+}
+
+function finish() {
+  statusEl.textContent = 'loaded: ' + loaded.join(', ') + (failed.length ? ' | FAILED: ' + failed.join(', ') : '');
+  window.__READY__ = true;
+}
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  for (const mx of mixers) mx.update(dt);
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>

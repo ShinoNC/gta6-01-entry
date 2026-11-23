@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Zones GLB load test</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #bfd9e8; }
+  #stage { position: relative; width: 1500px; height: 900px; margin: 0 auto; }
+  #stage canvas { display: block; }
+  #status { text-align: center; font-size: 13px; color: #333; padding: 8px; font-family: monospace; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../game/vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="stage"></div>
+<div id="status">loading…</div>
+<script type="module">
+import * as THREE from 'three';
+import { loadProp, loadGLB, MODEL_PATHS } from '../game/src/models_loader.js';
+
+// Exact copy of city.js loadHouseModel: loadProp for registered names,
+// shared cached loadGLB + plain clone for the newer house/town models.
+const loadHouseModel = (name) => (MODEL_PATHS[name]
+  ? loadProp(name)
+  : loadGLB(`assets/models/${name}.glb`).then((g) => g.scene.clone(true)));
+
+const MODELS = [
+  { name: 'modern-house', x: -28, z: -14 },
+  { name: 'beach-house', x: -14, z: -14 },
+  { name: 'container-home', x: 0, z: -14 },
+  { name: 'bungalow', x: 14, z: -14 },
+  { name: 'family-house', x: 28, z: -14 },
+  { name: 'a-frame-cabin', x: -28, z: 0 },
+  { name: 'tiny-house', x: -14, z: 0 },
+  { name: 'supermarket', x: 4, z: 2 },
+  { name: 'corner-cafe', x: 28, z: 0 },
+  { name: 'office-tower', x: -28, z: 22 },
+  { name: 'speedboat', x: -10, z: 22 },
+  { name: 'road-straight', x: 4, z: 22 },
+  { name: 'street-light', x: 16, z: 22 },
+  { name: 'traffic-signal', x: 26, z: 22 },
+];
+
+const W = 1500, H = 900;
+const stage = document.getElementById('stage');
+const statusEl = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+stage.appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xbfd9e8);
+const camera = new THREE.PerspectiveCamera(50, W / H, 0.1, 500);
+camera.position.set(0, 42, 62);
+camera.lookAt(0, 4, 0);
+scene.add(new THREE.HemisphereLight(0xcfe8ff, 0x9a8a76, 1.7));
+const sun = new THREE.DirectionalLight(0xfff2d0, 3.0);
+sun.position.set(-30, 60, 40);
+sun.castShadow = true;
+scene.add(sun);
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(120, 90),
+  new THREE.MeshLambertMaterial({ color: 0x9ac08a }),
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const results = {};
+let pending = MODELS.length;
+for (const m of MODELS) {
+  loadHouseModel(m.name).then((group) => {
+    // Normalise: office tower is 70m, houses ~7m — scale the tower down
+    // to fit the frame, keep the rest at true scale.
+    const s = m.name === 'office-tower' ? 0.25 : m.name === 'supermarket' ? 0.5 : 1;
+    group.scale.setScalar(s);
+    group.traverse((o) => { if (o.isMesh) o.castShadow = true; });
+    group.position.set(m.x, 0, m.z);
+    scene.add(group);
+    results[m.name] = 'OK';
+  }).catch((err) => {
+    results[m.name] = `FAIL: ${err && err.message ? err.message : err}`;
+  }).finally(() => {
+    pending -= 1;
+    if (pending === 0) {
+      statusEl.textContent = JSON.stringify(results);
+      window.__RESULTS__ = results;
+      window.__READY__ = true;
+    }
+  });
+}
+function loop() {
+  requestAnimationFrame(loop);
+  renderer.render(scene, camera);
+}
+loop();
+</script>
+</body>
+</html>

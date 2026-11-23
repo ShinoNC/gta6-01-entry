@@ -4,7 +4,7 @@
 [![rank](https://make.fun/badge/gta6-01/ShinoNC/gta6-01-entry/rank.svg)](https://make.fun/bounty/gta6-01/leaderboard?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 [![reward](https://make.fun/badge/gta6-01/ShinoNC/gta6-01-entry/reward.svg)](https://make.fun/bounty/gta6-01?utm_source=github&utm_medium=readme&utm_campaign=gta6-01)
 
-Begin with nothing and take the whole island. A 12x12-block open world
+Begin with nothing and take the whole island. A 10x10-block open world
 ringed by beach and open sea: 8 story jobs, 3 businesses to buy, a garage,
 side jobs, bank robberies, 4 gangs, a 5-star wanted system, day and night
 weather plus 40 hidden tapes, in one static page with no build step.
@@ -28,6 +28,13 @@ three.js ships vendored under `game/vendor/`, and textures and radio are local.
 - `screenshots/` — chase, street, missions and title shots.
 - `main.ts` — the hand-in program: it copies `game/` and `screenshots/`,
   then writes `dossier.json` using the vendored make.fun dossier builder.
+
+## Credits
+
+- 3D models (people, vehicles, houses, weapons, city kit, speedboat,
+  Coconut Palm, animation clips) by [Vinish](https://vinish.dev), licensed
+  [CC-BY 4.0](https://creativecommons.org/licenses/by/4.0/) — decimated and
+  recoloured for the game.
 
 ## Notes
 

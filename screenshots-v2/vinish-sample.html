@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Vinish Character Sample — Player / Pedestrians / Police / Beach</title>
+<style>
+  html, body { margin: 0; padding: 0; background: #f2ede4; font-family: "Courier New", monospace; }
+  #title { text-align: center; font-size: 26px; font-weight: bold; letter-spacing: 3px; padding: 16px 0 2px; color: #222; }
+  #sub { text-align: center; font-size: 13px; color: #555; padding-bottom: 8px; }
+  #stage { position: relative; width: 1600px; height: 780px; margin: 0 auto; }
+  #stage canvas { display: block; }
+  .label { position: absolute; transform: translate(-50%, 0); background: rgba(255,255,255,0.92); border: 1px solid #ccc; border-radius: 6px; padding: 6px 12px; text-align: center; font-size: 14px; line-height: 1.45; color: #222; white-space: nowrap; }
+  .label b { font-size: 15px; }
+  .label span { color: #666; font-size: 12px; }
+  .label .role { color: #b03030; font-weight: bold; font-size: 12px; letter-spacing: 1px; }
+  #status { text-align: center; font-size: 13px; color: #888; padding: 8px; }
+</style>
+<script type="importmap">
+{ "imports": { "three": "../game/vendor/three.module.min.js" } }
+</script>
+</head>
+<body>
+<div id="title">VINISH CHARACTERS — SAMPLE</div>
+<div id="sub">Front row: player options + police (recoloured Soldier) &nbsp;·&nbsp; Back row: pedestrians walking</div>
+<div id="stage"></div>
+<div id="status">loading…</div>
+<script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from './models/GLTFLoader.js';
+
+// Two rows: front (z=0.9) = player / police / beach, back (z=-1.6) = pedestrians (Walk clip).
+// Police = Soldier GLB with uniform materials recoloured in code (GLB untouched).
+const MODELS = [
+  // front row
+  { file: 'models/runner-woman.glb', name: 'Runner Woman', role: 'PLAYER', sub: 'vinish.dev · CC-BY 4.0 · 828 KB', x: -3.3, z: 1.0, clip: 'Idle', label: 'feet' },
+  { file: 'models/casual-man.glb', name: 'Casual Man', role: 'PLAYER ALT', sub: 'vinish.dev · CC-BY 4.0 · 890 KB', x: -1.1, z: 1.0, clip: 'Idle', label: 'feet' },
+  { file: 'models/soldier.glb', name: 'Soldier → Police', role: 'POLICE (recoloured)', sub: 'vinish.dev · CC-BY 4.0 · 1.29 MB', x: 1.1, z: 1.0, clip: 'Idle', police: true, label: 'feet' },
+  // back row (pedestrians, walking in place) — staggered between front-row x slots
+  { file: 'models/casual-woman.glb', name: 'Casual Woman', role: 'PEDESTRIAN', sub: 'vinish.dev · CC-BY 4.0 · 837 KB', x: -4.4, z: -2.0, clip: 'Walk', label: 'head' },
+  { file: 'models/business-man.glb', name: 'Business Man', role: 'PEDESTRIAN', sub: 'vinish.dev · CC-BY 4.0 · 782 KB', x: -2.2, z: -2.0, clip: 'Walk', label: 'head' },
+  { file: 'models/business-woman.glb', name: 'Business Woman', role: 'PEDESTRIAN', sub: 'vinish.dev · CC-BY 4.0 · 775 KB', x: 0, z: -2.0, clip: 'Walk', label: 'head' },
+  { file: 'models/doctor.glb', name: 'Doctor', role: 'PEDESTRIAN', sub: 'vinish.dev · CC-BY 4.0 · 873 KB', x: 2.2, z: -2.0, clip: 'Walk', label: 'head' },
+  { file: 'models/construction-worker.glb', name: 'Construction Worker', role: 'PEDESTRIAN', sub: 'vinish.dev · CC-BY 4.0 · 1.01 MB', x: 4.4, z: -2.0, clip: 'Walk', label: 'head' },
+];
+
+const W = 1600, H = 780;
+const stage = document.getElementById('stage');
+const statusEl = document.getElementById('status');
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(1);
+renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+renderer.outputColorSpace = THREE.SRGBColorSpace;
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.1;
+stage.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0xf2ede4);
+const camera = new THREE.PerspectiveCamera(40, W / H, 0.1, 100);
+camera.position.set(0, 2.6, 8.6);
+camera.lookAt(0, 0.75, -0.5);
+
+scene.add(new THREE.HemisphereLight(0xffffff, 0xd8cdb8, 1.1));
+const sun = new THREE.DirectionalLight(0xfff2dd, 2.2);
+sun.position.set(3, 6, 4);
+sun.castShadow = true;
+sun.shadow.mapSize.set(2048, 2048);
+sun.shadow.camera.left = -7; sun.shadow.camera.right = 7;
+sun.shadow.camera.top = 7; sun.shadow.camera.bottom = -7;
+scene.add(sun);
+const fill = new THREE.DirectionalLight(0xdfe8ff, 0.7);
+fill.position.set(-4, 3, 3);
+scene.add(fill);
+
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(11, 48),
+  new THREE.MeshStandardMaterial({ color: 0xe2d9c8, roughness: 1 })
+);
+ground.rotation.x = -Math.PI / 2;
+ground.receiveShadow = true;
+scene.add(ground);
+
+const mixers = [];
+const loader = new GLTFLoader();
+const loaded = [];
+const failed = [];
+
+function project(wx, wy, wz) {
+  const v = new THREE.Vector3(wx, wy, wz).project(camera);
+  return { x: (v.x * 0.5 + 0.5) * W, y: (-v.y * 0.5 + 0.5) * H };
+}
+
+function addLabel(model) {
+  // back row: label floats ABOVE the head; front row: label sits BELOW the feet
+  const p = model.label === 'head'
+    ? project(model.x, 2.15, model.z)
+    : project(model.x, 0, model.z);
+  const d = document.createElement('div');
+  d.className = 'label';
+  d.style.left = p.x + 'px';
+  d.style.top = (model.label === 'head' ? p.y - 78 : p.y + 8) + 'px';
+  d.innerHTML = `<span class="role">${model.role}</span><br><b>${model.name}</b><br><span>${model.sub}</span>`;
+  stage.appendChild(d);
+}
+
+// Police recolour: swap the Soldier's camo/olive uniform materials to flat
+// dark navy (code only — the GLB file is untouched). Skin, face, hair and
+// boots keep their original materials.
+function recolourPolice(root) {
+  const NAVY = 0x1d2b53;
+  const DARK = 0x141c2e;
+  let changed = [];
+  root.traverse((o) => {
+    if (!o.isMesh) return;
+    const mats = Array.isArray(o.material) ? o.material : [o.material];
+    for (const mat of mats) {
+      if (!mat || !mat.name) continue;
+      if (mat.name === 'Camo') {
+        mat.map = null; mat.color.setHex(NAVY); mat.needsUpdate = true; changed.push('Camo→navy');
+      } else if (mat.name === 'Olive_Drab') {
+        mat.map = null; mat.color.setHex(DARK); mat.needsUpdate = true; changed.push('Olive_Drab→dark');
+      } else if (mat.name === 'Helmet_Olive') {
+        mat.map = null; mat.color.setHex(NAVY); mat.needsUpdate = true; changed.push('Helmet→navy');
+      }
+    }
+  });
+  console.log('POLICE recolour:', changed.join(', ') || 'NO MATERIALS MATCHED');
+}
+
+let pending = MODELS.length;
+for (const m of MODELS) {
+  loader.load(m.file, (gltf) => {
+    const root = gltf.scene;
+    scene.add(root);
+    if (m.police) recolourPolice(root);
+    let mixer = null;
+    if (gltf.animations && gltf.animations.length) {
+      mixer = new THREE.AnimationMixer(root);
+      const clip = THREE.AnimationClip.findByName(gltf.animations, m.clip)
+        || THREE.AnimationClip.findByName(gltf.animations, 'Idle')
+        || gltf.animations[0];
+      mixer.clipAction(clip).play();
+      mixer.update(1.0);
+      mixers.push(mixer);
+      console.log(m.name, 'clips:', gltf.animations.map(a => a.name).join(', '), '| playing:', clip.name);
+    } else {
+      console.log(m.name, 'NO animation clips — static pose');
+    }
+    root.updateMatrixWorld(true);
+    const box = new THREE.Box3().setFromObject(root);
+    const size = new THREE.Vector3();
+    box.getSize(size);
+    const s = 1.8 / (size.y || 1);
+    root.scale.setScalar(s);
+    root.updateMatrixWorld(true);
+    const box2 = new THREE.Box3().setFromObject(root);
+    root.position.x = m.x - (box2.min.x + box2.max.x) / 2;
+    root.position.y = -box2.min.y;
+    root.position.z = m.z - (box2.min.z + box2.max.z) / 2;
+    root.rotation.y = Math.PI * 0.1;
+    root.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = false; } });
+    loaded.push(m.name);
+    addLabel(m);
+    if (--pending === 0) finish();
+  }, undefined, (err) => {
+    console.error(m.name, 'FAILED', err);
+    failed.push(m.name);
+    if (--pending === 0) finish();
+  });
+}
+
+function finish() {
+  statusEl.textContent = 'loaded: ' + loaded.join(', ') + (failed.length ? ' | FAILED: ' + failed.join(', ') : '');
+  window.__READY__ = true;
+}
+
+const clock = new THREE.Clock();
+function animate() {
+  requestAnimationFrame(animate);
+  const dt = clock.getDelta();
+  for (const mx of mixers) mx.update(dt);
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
