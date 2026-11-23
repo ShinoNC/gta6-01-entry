@@ -1,1 +1,220 @@
-const t=[{name:"WAVE 88.1 · Neon Drive",file:"./assets/radio-1.mp3",track:"No Copyright Music"},{name:"RADIO SOL 101.9",file:"./assets/radio-2.mp3",track:"Energetic Instrumental"},{name:"KEYS FM 95.5 · Bassline",file:"./assets/radio-3.mp3",track:"Drift Phonk Instrumental"}];export class GameAudio{constructor(){this.ctx=null,this.stationIndex=0,this.radioAudio=null,this.radioLoaded=-1,this.radioFailed=!1,this.engineOsc=null,this.engineSubOsc=null,this.engineFilter=null,this.engineGain=null,this.sirenOsc=null,this.sirenGain=null,this.sirenIntensity=0,this.engineSpeed=0,this.engineDriving=!1,this.musicVolume=1,this.effectsVolume=1,this.clock=0}unlock(){if(this.ctx)return this.ctx.resume().catch(()=>{}),void this.startRadio();try{const t=window.AudioContext||window.webkitAudioContext;if(!t)return void this.startRadio();this.ctx=new t,this.engineOsc=this.ctx.createOscillator(),this.engineOsc.type="sawtooth",this.engineOsc.frequency.value=52,this.engineSubOsc=this.ctx.createOscillator(),this.engineSubOsc.type="sine",this.engineSubOsc.frequency.value=26,this.engineFilter=this.ctx.createBiquadFilter(),this.engineFilter.type="lowpass",this.engineFilter.frequency.value=420,this.engineGain=this.ctx.createGain(),this.engineGain.gain.value=0,this.engineOsc.connect(this.engineFilter),this.engineSubOsc.connect(this.engineFilter),this.engineFilter.connect(this.engineGain).connect(this.ctx.destination),this.engineOsc.start(),this.engineSubOsc.start(),this.sirenOsc=this.ctx.createOscillator(),this.sirenOsc.type="triangle",this.sirenOsc.frequency.value=720,this.sirenGain=this.ctx.createGain(),this.sirenGain.gain.value=0,this.sirenOsc.connect(this.sirenGain).connect(this.ctx.destination),this.sirenOsc.start()}catch{this.ctx=null}this.startRadio()}startRadio(){if(this.radioAudio||this.radioFailed){if(this.radioAudio&&this.musicVolume>0){const t=this.radioAudio.play();t&&t.catch(()=>{})}}else try{const t=new Audio;t.loop=!0,t.volume=.3*this.musicVolume,t.preload="auto",t.addEventListener("error",()=>{this.radioFailed=!0,console.warn("Radio MP3 failed to load — continuing silent")}),this.radioAudio=t,this.playStation()}catch{this.radioFailed=!0}}playStation(){const i=this.radioAudio;if(!i)return;if(this.radioLoaded!==this.stationIndex&&(i.src=t[this.stationIndex].file,this.radioLoaded=this.stationIndex),this.musicVolume<=0)return;const e=i.play();e&&e.catch(()=>{})}radioStationName(){return t[this.stationIndex].name}stationNames(){return t.map(t=>t.name)}setStation(i){return i<0||i>=t.length||i===this.stationIndex||(this.stationIndex=i,this.playStation()),this.radioStationName()}nowPlaying(){const i=t[this.stationIndex];return`${i.name} — '${i.track}'`}nextStation(){return this.stationIndex=(this.stationIndex+1)%t.length,this.playStation(),this.radioStationName()}setMusicVolume(t){if(this.musicVolume=Math.max(0,Math.min(1,t)),this.radioAudio)if(this.radioAudio.volume=.3*this.musicVolume,this.musicVolume<=0)this.radioAudio.pause();else{const t=this.radioAudio.play();t&&t.catch(()=>{})}}setEffectsVolume(t){this.effectsVolume=Math.max(0,Math.min(1,t)),this.ctx&&(this.effectsVolume<=0?this.ctx.suspend().catch(()=>{}):this.ctx.resume().catch(()=>{}))}setEngine(t,i){this.engineSpeed=t,this.engineDriving=i}setSiren(t){this.sirenIntensity=Number.isFinite(t)?Math.max(0,1-t/80):0}blip(t,i,e,s="sine",n=0){if(!this.ctx||this.effectsVolume<=0)return;const a=this.ctx.currentTime+n,c=this.ctx.createOscillator();c.type=s,c.frequency.value=t;const h=this.ctx.createGain();h.gain.setValueAtTime(e*this.effectsVolume,a),h.gain.exponentialRampToValueAtTime(1e-4,a+i),c.connect(h).connect(this.ctx.destination),c.start(a),c.stop(a+i+.02)}horn(){this.blip(392,.28,.09,"square"),this.blip(494,.28,.09,"square")}gunshot(){if(!this.ctx||this.effectsVolume<=0)return;const t=this.ctx.createBuffer(1,Math.floor(.14*this.ctx.sampleRate),this.ctx.sampleRate),i=t.getChannelData(0);for(let t=0;t<i.length;t+=1)i[t]=(2*Math.random()-1)*(1-t/i.length);const e=this.ctx.createBufferSource();e.buffer=t;const s=this.ctx.createGain();s.gain.value=.25*this.effectsVolume;const n=this.ctx.createBiquadFilter();n.type="lowpass",n.frequency.value=1600,e.connect(n).connect(s).connect(this.ctx.destination),e.start()}chime(){this.blip(880,.14,.08),this.blip(1174.66,.2,.08,"sine",.1)}punchSound(t){this.blip(500,.07,.06),this.blip(320,.09,.05,"sine",.05),t&&this.blip(75,.16,.25,"sine",.08)}click(){this.blip(1400,.04,.05,"square")}update(t){if(this.clock+=t,!this.ctx)return;const i=1/4,e=Math.min(3,Math.floor(this.engineSpeed/i)),s=52+39.5*e*.55+55*((this.engineSpeed-e*i)/i);this.engineOsc.frequency.setTargetAtTime(s,this.ctx.currentTime,.08),this.engineSubOsc.frequency.setTargetAtTime(s/2,this.ctx.currentTime,.08),this.engineFilter.frequency.setTargetAtTime(320+900*this.engineSpeed,this.ctx.currentTime,.1),this.engineGain.gain.setTargetAtTime((this.engineDriving?.05:0)*this.effectsVolume,this.ctx.currentTime,.1);const n=Math.floor(this.clock/.32)%2==0?720:980;this.sirenOsc.frequency.setTargetAtTime(n,this.ctx.currentTime,.03),this.sirenGain.gain.setTargetAtTime(.045*this.sirenIntensity*this.effectsVolume,this.ctx.currentTime,.15)}}
+const RADIO_STATIONS = [
+  // One real MP3 per station, looped. Tracks are Pixabay Content License
+  // music, provided by the user (studiokolomna, sub_clair).
+  { name: 'WAVE 88.1 · Neon Drive', file: './assets/radio-1.mp3', track: 'No Copyright Music' },
+  { name: 'RADIO SOL 101.9', file: './assets/radio-2.mp3', track: 'Energetic Instrumental' },
+  { name: 'KEYS FM 95.5 · Bassline', file: './assets/radio-3.mp3', track: 'Drift Phonk Instrumental' },
+];
+const RADIO_VOLUME = 0.3;
+const ENGINE_GEAR_COUNT = 4;
+const ENGINE_BASE_HZ = 52;
+const ENGINE_TOP_HZ = 210;
+const SIREN_LOW_HZ = 720;
+const SIREN_HIGH_HZ = 980;
+const SIREN_TONE_SECONDS = 0.32;
+export class GameAudio {
+  constructor() {
+    this.ctx = null;
+    this.stationIndex = 0;
+    this.radioAudio = null;
+    this.radioLoaded = -1;
+    this.radioFailed = false;
+    this.engineOsc = null;
+    this.engineSubOsc = null;
+    this.engineFilter = null;
+    this.engineGain = null;
+    this.sirenOsc = null;
+    this.sirenGain = null;
+    this.sirenIntensity = 0;
+    this.engineSpeed = 0;
+    this.engineDriving = false;
+    this.musicVolume = 1;
+    this.effectsVolume = 1;
+    this.clock = 0;
+  }
+  unlock() {
+    if (this.ctx) {
+      this.ctx.resume().catch(() => {});
+      this.startRadio();
+      return;
+    }
+    try {
+      const AudioContext = window.AudioContext || window.webkitAudioContext;
+      if (!AudioContext) {
+        this.startRadio();
+        return;
+      }
+      this.ctx = new AudioContext();
+      this.engineOsc = this.ctx.createOscillator();
+      this.engineOsc.type = 'sawtooth';
+      this.engineOsc.frequency.value = ENGINE_BASE_HZ;
+      this.engineSubOsc = this.ctx.createOscillator();
+      this.engineSubOsc.type = 'sine';
+      this.engineSubOsc.frequency.value = ENGINE_BASE_HZ / 2;
+      this.engineFilter = this.ctx.createBiquadFilter();
+      this.engineFilter.type = 'lowpass';
+      this.engineFilter.frequency.value = 420;
+      this.engineGain = this.ctx.createGain();
+      this.engineGain.gain.value = 0;
+      this.engineOsc.connect(this.engineFilter);
+      this.engineSubOsc.connect(this.engineFilter);
+      this.engineFilter.connect(this.engineGain).connect(this.ctx.destination);
+      this.engineOsc.start();
+      this.engineSubOsc.start();
+      this.sirenOsc = this.ctx.createOscillator();
+      this.sirenOsc.type = 'triangle';
+      this.sirenOsc.frequency.value = SIREN_LOW_HZ;
+      this.sirenGain = this.ctx.createGain();
+      this.sirenGain.gain.value = 0;
+      this.sirenOsc.connect(this.sirenGain).connect(this.ctx.destination);
+      this.sirenOsc.start();
+    } catch {
+      this.ctx = null;
+    }
+    this.startRadio();
+  }
+  startRadio() {
+    if (this.radioAudio || this.radioFailed) {
+      if (this.radioAudio && this.musicVolume > 0) {
+        const p = this.radioAudio.play();
+        if (p) p.catch(() => {});
+      }
+      return;
+    }
+    try {
+      const el = new Audio();
+      el.loop = true;
+      el.volume = RADIO_VOLUME * this.musicVolume;
+      el.preload = 'auto';
+      el.addEventListener('error', () => {
+        this.radioFailed = true;
+        console.warn('Radio MP3 failed to load — continuing silent');
+      });
+      this.radioAudio = el;
+      this.playStation();
+    } catch {
+      this.radioFailed = true;
+    }
+  }
+  playStation() {
+    const el = this.radioAudio;
+    if (!el) return;
+    if (this.radioLoaded !== this.stationIndex) {
+      el.src = RADIO_STATIONS[this.stationIndex].file;
+      this.radioLoaded = this.stationIndex;
+    }
+    if (this.musicVolume <= 0) return;
+    const p = el.play();
+    if (p) p.catch(() => {});
+  }
+  radioStationName() {
+    return RADIO_STATIONS[this.stationIndex].name;
+  }
+  stationNames() {
+    return RADIO_STATIONS.map((station) => station.name);
+  }
+  setStation(index) {
+    if (index < 0 || index >= RADIO_STATIONS.length || index === this.stationIndex) return this.radioStationName();
+    this.stationIndex = index;
+    this.playStation();
+    return this.radioStationName();
+  }
+  nowPlaying() {
+    const station = RADIO_STATIONS[this.stationIndex];
+    return `${station.name} — '${station.track}'`;
+  }
+  nextStation() {
+    this.stationIndex = (this.stationIndex + 1) % RADIO_STATIONS.length;
+    this.playStation();
+    return this.radioStationName();
+  }
+  setMusicVolume(volume) {
+    this.musicVolume = Math.max(0, Math.min(1, volume));
+    if (!this.radioAudio) return;
+    this.radioAudio.volume = RADIO_VOLUME * this.musicVolume;
+    if (this.musicVolume <= 0) {
+      this.radioAudio.pause();
+    } else {
+      const p = this.radioAudio.play();
+      if (p) p.catch(() => {});
+    }
+  }
+  setEffectsVolume(volume) {
+    this.effectsVolume = Math.max(0, Math.min(1, volume));
+    if (!this.ctx) return;
+    if (this.effectsVolume <= 0) this.ctx.suspend().catch(() => {});
+    else this.ctx.resume().catch(() => {});
+  }
+  setEngine(speedNorm, driving) {
+    this.engineSpeed = speedNorm;
+    this.engineDriving = driving;
+  }
+  setSiren(nearestPoliceDistance) {
+    this.sirenIntensity = Number.isFinite(nearestPoliceDistance)
+      ? Math.max(0, 1 - nearestPoliceDistance / 80)
+      : 0;
+  }
+  blip(frequency, seconds, gainValue, type = 'sine', when = 0) {
+    if (!this.ctx || this.effectsVolume <= 0) return;
+    const startAt = this.ctx.currentTime + when;
+    const osc = this.ctx.createOscillator();
+    osc.type = type;
+    osc.frequency.value = frequency;
+    const gain = this.ctx.createGain();
+    gain.gain.setValueAtTime(gainValue * this.effectsVolume, startAt);
+    gain.gain.exponentialRampToValueAtTime(0.0001, startAt + seconds);
+    osc.connect(gain).connect(this.ctx.destination);
+    osc.start(startAt);
+    osc.stop(startAt + seconds + 0.02);
+  }
+  horn() {
+    this.blip(392, 0.28, 0.09, 'square');
+    this.blip(494, 0.28, 0.09, 'square');
+  }
+  gunshot() {
+    if (!this.ctx || this.effectsVolume <= 0) return;
+    const duration = 0.14;
+    const buffer = this.ctx.createBuffer(1, Math.floor(this.ctx.sampleRate * duration), this.ctx.sampleRate);
+    const data = buffer.getChannelData(0);
+    for (let i = 0; i < data.length; i += 1) {
+      data[i] = (Math.random() * 2 - 1) * (1 - i / data.length);
+    }
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.25 * this.effectsVolume;
+    const filter = this.ctx.createBiquadFilter();
+    filter.type = 'lowpass';
+    filter.frequency.value = 1600;
+    source.connect(filter).connect(gain).connect(this.ctx.destination);
+    source.start();
+  }
+  chime() {
+    this.blip(880, 0.14, 0.08);
+    this.blip(1174.66, 0.2, 0.08, 'sine', 0.1);
+  }
+  punchSound(hit) {
+    this.blip(500, 0.07, 0.06);
+    this.blip(320, 0.09, 0.05, 'sine', 0.05);
+    if (hit) this.blip(75, 0.16, 0.25, 'sine', 0.08);
+  }
+  click() {
+    this.blip(1400, 0.04, 0.05, 'square');
+  }
+  update(dt) {
+    this.clock += dt;
+    if (!this.ctx) return;
+    const gearSpan = 1 / ENGINE_GEAR_COUNT;
+    const gear = Math.min(ENGINE_GEAR_COUNT - 1, Math.floor(this.engineSpeed / gearSpan));
+    const withinGear = (this.engineSpeed - gear * gearSpan) / gearSpan;
+    const gearBase = ENGINE_BASE_HZ + gear * ((ENGINE_TOP_HZ - ENGINE_BASE_HZ) / ENGINE_GEAR_COUNT) * 0.55;
+    const engineFrequency = gearBase + withinGear * 55;
+    this.engineOsc.frequency.setTargetAtTime(engineFrequency, this.ctx.currentTime, 0.08);
+    this.engineSubOsc.frequency.setTargetAtTime(engineFrequency / 2, this.ctx.currentTime, 0.08);
+    this.engineFilter.frequency.setTargetAtTime(320 + this.engineSpeed * 900, this.ctx.currentTime, 0.1);
+    this.engineGain.gain.setTargetAtTime((this.engineDriving ? 0.05 : 0) * this.effectsVolume, this.ctx.currentTime, 0.1);
+    const sirenTone = Math.floor(this.clock / SIREN_TONE_SECONDS) % 2 === 0 ? SIREN_LOW_HZ : SIREN_HIGH_HZ;
+    this.sirenOsc.frequency.setTargetAtTime(sirenTone, this.ctx.currentTime, 0.03);
+    this.sirenGain.gain.setTargetAtTime(this.sirenIntensity * 0.045 * this.effectsVolume, this.ctx.currentTime, 0.15);
+  }
+}

@@ -1,1 +1,417 @@
-import*as e from"three";export const MISSIONS_IN_STORY=8;const t=[{name:"FIRST FARE",giver:"Mara Solis",start:[52,0],briefing:"Rook. Mara Solis. Word is you can drive. Prove it — my client waits at the east pier. Pick them up, drop them at Palm Row. Do not keep them waiting.",rewardMoney:500,rewardRep:60,objectives:[{kind:"driveTo",x:104,z:0,needsCar:!0,label:"Pick up the client at the pier"},{kind:"waitAt",x:104,z:0,seconds:2,needsCar:!0,label:"Wait for the client"},{kind:"driveTo",x:-52,z:52,label:"Drop the client at Palm Row"}]},{name:"THE CORAL RUN",giver:"Juno Reyes",start:[-52,330],briefing:"Rook. Juno. Stranded on Coral Strand, my ride is not coming. Come get me, drop me at Sunset Bluff — treat the car like it is yours, because soon it will be.",rewardMoney:750,rewardRep:90,objectives:[{kind:"waitAt",x:-52,z:330,seconds:2,needsCar:!0,label:"Pick up Juno on Coral Strand"},{kind:"driveTo",x:104,z:330,label:"Drop Juno at Sunset Bluff"}]},{name:"HEAT ON WHEELS",giver:"Mara Solis",start:[-104,-104],briefing:"The drop is blown — the VRPD are on you the second you move. Shake them, bring the package to Old Port. I left an SMG in the glovebox.",rewardMoney:1e3,rewardRep:120,rewardWeapon:"smg",scriptedHeat:2,objectives:[{kind:"loseWanted",label:"Lose the heat — break line of sight"},{kind:"driveTo",x:-104,z:-104,label:"Deliver the package to Old Port"}]},{name:"KEYS TO THE CITY",giver:"Juno Reyes",start:[52,-104],briefing:"Rook. Juno. A Sunset Coupe sits in Harbor Lights, keys in it. I did not say steal it. It needs a new garage in Old Port — mine.",rewardMoney:1250,rewardRep:140,scriptedHeat:1,objectives:[{kind:"stealCar",carName:"SUNSET COUPE",label:"Steal the Sunset Coupe"},{kind:"driveTo",x:-156,z:-104,label:"Deliver the Coupe to Old Port"}]},{name:"SUNSET BLUFF DROP",giver:"Juno Reyes",start:[130,330],briefing:"Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then straight back to Marina Del Sol.",rewardMoney:1500,rewardRep:160,objectives:[{kind:"driveTo",x:130,z:330,label:"Drive to Sunset Bluff"},{kind:"waitAt",x:130,z:330,seconds:3,label:"Make the drop — hold position"},{kind:"driveTo",x:52,z:0,label:"Return to Marina Del Sol"}]},{name:"THE GETAWAY",giver:"Mara Solis",start:[104,-104],briefing:"Three stars, a helicopter, a roadblock with your name on it. Get clean, get to Harbor Lights. The job that makes your name.",rewardMoney:1750,rewardRep:180,scriptedHeat:3,objectives:[{kind:"loseWanted",label:"Lose the heat — 3 stars, heli overhead"},{kind:"driveTo",x:104,z:-104,label:"Reach the safehouse"}]},{name:"HARBOR LIGHTS HEIST",giver:"Otto Kane",start:[104,-104],briefing:"Rook. Otto Kane. The crew waits at Harbor Lights. Pick them up, crack the vault, be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.",rewardMoney:2500,rewardRep:240,objectives:[{kind:"waitAt",x:104,z:-104,seconds:2,needsCar:!0,label:"Pick up the crew"},{kind:"waitAt",x:-52,z:-104,seconds:4,label:"Crack the vault — hold position"},{kind:"driveTo",x:-104,z:26,label:"Escape to Palm Row"}]},{name:"KING OF THE KEYS",giver:"Mara Solis",start:[-52,330],briefing:"One last drive. Meet me on Coral Strand at sunset, then the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.",rewardMoney:4e3,rewardRep:400,finale:!0,objectives:[{kind:"driveTo",x:-52,z:330,label:"Drive to Coral Strand"},{kind:"waitAt",x:-52,z:330,seconds:3,label:"Meet Mara and the crew"},{kind:"driveTo",x:130,z:52,label:"Take the Bluff road"},{kind:"waitAt",x:130,z:52,seconds:3,label:"Watch the sunset — King of the Keys"}]}];export function beaconFade(e){return Math.min(1,Math.max(.12,(e-2)/12))}let i=null;function s(){if(i)return i;const t=document.createElement("canvas");t.width=128,t.height=128;const s=t.getContext("2d"),n=s.createRadialGradient(64,64,4,64,64,64);return n.addColorStop(0,"rgba(255,255,255,0.9)"),n.addColorStop(.4,"rgba(255,255,255,0.35)"),n.addColorStop(1,"rgba(255,255,255,0)"),s.fillStyle=n,s.fillRect(0,0,128,128),i=new e.CanvasTexture(t),i}export function buildBeacon(t,i=16770560){const n=new e.Group,o=new e.MeshBasicMaterial({color:i,transparent:!0,opacity:.95,fog:!1}),a=new e.Mesh(new e.OctahedronGeometry(1.1,0),o);a.position.y=4.2;const r=new e.SpriteMaterial({map:s(),color:i,transparent:!0,opacity:.5,blending:e.AdditiveBlending,depthWrite:!1,fog:!1}),h=new e.Sprite(r);h.scale.set(5,5,1),h.position.y=4.2;const d=new e.MeshBasicMaterial({color:16774856,transparent:!0,opacity:.5,side:e.DoubleSide,depthWrite:!1,fog:!1}),l=new e.Mesh(new e.RingGeometry(3.8,4,32),d);return l.rotation.x=-Math.PI/2,l.position.y=.06,n.add(l,a,h),n.visible=!1,t.add(n),{group:n,ring:l,diamond:a,halo:h}}export function fadeBeacon(e,t,i){const s=beaconFade(t);e.ring.material.opacity=.5*s,e.halo.material.opacity=(.45+.1*Math.sin(2*i))*s}export function colorBeacon(e,t){e.diamond.material.color.setHex(t),e.halo.material.color.setHex(t)}export class Missions{constructor(e,i){this.callbacks=i,this.status=t.map(()=>"locked"),this.status[0]="pending",this.curIdx=-1,this.stageIndex=0,this.waitSeconds=0,this.briefingIdx=0,this.snooze=0,this.briefingArmed=!0,this.needsCarHint=!1,this.atMarker=!1,this.target=null,this.clock=0,this.missionClock=0,this.parSeconds=0,this.beacon=buildBeacon(e)}get pendingBriefing(){return this.briefingIdx<0||this.curIdx>=0||this.snooze>0||!this.atMarker||!this.briefingArmed?null:{mission:t[this.briefingIdx],index:this.briefingIdx}}get pendingMission(){return this.briefingIdx>=0?t[this.briefingIdx]:null}currentMission(){return this.curIdx>=0?t[this.curIdx]:null}currentObjective(){const e=this.currentMission();return e?e.objectives[this.stageIndex]:null}doneCount(){return this.status.filter(e=>"done"===e).length}snoozeBriefing(e){this.snooze=e}dismissBriefing(){this.briefingArmed=!1}restoreActive(e,i,s){const n=t[e];this.curIdx=e,this.stageIndex=i,this.waitSeconds=0,this.missionClock=s||0,this.parSeconds=90+45*n.objectives.length,this.status[e]="active",this.briefingIdx=-1,this.snooze=0,this.briefingArmed=!0}startMission(e){const i=t[e];this.curIdx=e,this.stageIndex=0,this.waitSeconds=0,this.missionClock=0,this.parSeconds=90+45*i.objectives.length,this.status[e]="active",this.briefingIdx=-1,this.snooze=0,i.scriptedHeat&&this.callbacks.onScriptedHeat(i.scriptedHeat),this.callbacks.onMissionStarted(i,e)}forceStart(e){this.briefingIdx=-1,this.startMission(e)}failCurrent(){this.curIdx<0||(this.status[this.curIdx]="pending",this.briefingIdx=this.curIdx,this.briefingArmed=!0,this.snooze=5,this.curIdx=-1,this.target=null,this.beacon.group.visible=!1)}setCompleted(e){for(let t=0;t<8;t+=1)this.status[t]=t<e?"done":"locked";e<8?(this.status[e]="pending",this.briefingIdx=e,this.briefingArmed=!0,this.snooze=1):this.briefingIdx=-1}completeStage(){const e=this.currentMission();if(this.stageIndex+=1,this.waitSeconds=0,this.callbacks.onObjectiveComplete(),this.stageIndex<e.objectives.length)return;const t=this.curIdx;this.status[t]="done",this.curIdx=-1,this.target=null;const i=t+1;i<8&&(this.status[i]="pending",this.briefingIdx=i,this.briefingArmed=!0,this.snooze=2),this.callbacks.onMissionComplete(e,t)}animateBeacon(e,t){const i=this.beacon;fadeBeacon(i,t,this.clock);const s=1+.05*Math.sin(2*this.clock);i.ring.scale.set(s,s,1),i.diamond.rotation.y+=1.5*e,i.diamond.position.y=4.2+.4*Math.sin(2*this.clock),i.halo.position.y=i.diamond.position.y}update(e,t){this.clock+=e,this.snooze=Math.max(0,this.snooze-e);const i=this.currentMission();if(!i){const i=this.pendingMission;if(this.target=i?{x:i.start[0],z:i.start[1]}:null,this.beacon.group.visible=null!==this.target,this.target){this.beacon.group.position.set(this.target.x,0,this.target.z);const i=Math.hypot(t.playerPos.x-this.target.x,t.playerPos.z-this.target.z);this.animateBeacon(e,i),this.atMarker=i<6,!this.briefingArmed&&i>15&&(this.briefingArmed=!0)}else this.atMarker=!1;return}this.missionClock+=e,this.needsCarHint=!1;const s=i.objectives[this.stageIndex],{playerPos:n,drivenCar:o,cars:a,wantedStars:r}=t;if("stealCar"===s.kind){const e=a.find(e=>e.name===s.carName);this.target=e?{x:e.position.x,z:e.position.z}:null}else"loseWanted"===s.kind?this.target=null:this.target={x:s.x,z:s.z};if(this.beacon.group.visible=null!==this.target,this.target&&(this.beacon.group.position.set(this.target.x,0,this.target.z),this.animateBeacon(e,Math.hypot(n.x-this.target.x,n.z-this.target.z))),"driveTo"===s.kind){const e=Math.hypot(n.x-s.x,n.z-s.z)<15;s.needsCar&&!o?this.needsCarHint=e:e&&this.completeStage()}else if("waitAt"===s.kind){const t=Math.hypot(n.x-s.x,n.z-s.z)<15;s.needsCar&&!o?(this.waitSeconds=0,this.needsCarHint=t):t?(this.waitSeconds+=e,this.waitSeconds>=s.seconds&&this.completeStage()):this.waitSeconds=0}else"loseWanted"===s.kind?0===r&&this.completeStage():"stealCar"===s.kind&&o&&o.name===s.carName&&this.completeStage()}stageInfo(){const e=this.currentMission();if(!e)return null;const t=e.objectives[this.stageIndex];let i=0;return t&&"waitAt"===t.kind&&t.seconds&&(i=Math.min(1,this.waitSeconds/t.seconds)),{stage:this.stageIndex+1,total:e.objectives.length,frac:(this.stageIndex+i)/e.objectives.length}}progressLine(){if(this.curIdx<0)return this.doneCount()>=8?"STORY COMPLETE":"FREE ROAM";const e=this.currentMission(),t=this.missionClock-this.parSeconds,i=t>0?`+${Math.floor(t/60)}:${String(Math.floor(t%60)).padStart(2,"0")} OVER PAR`:`${Math.floor((this.parSeconds-this.missionClock)/60)}:${String(Math.floor((this.parSeconds-this.missionClock)%60)).padStart(2,"0")}`;return`MISSION ${this.curIdx+1}/8 — ${e.name} · STAGE ${this.stageIndex+1}/${e.objectives.length} · ${i}`}nextLine(){const e=this.currentMission();if(!e)return"";const t=e.objectives[this.stageIndex+1];return t?t.label:`Finish the job — report to ${e.giver.split(" ")[0]}`}nextObjectiveLine(){const e=this.currentObjective();return e?"waitAt"===e.kind&&this.waitSeconds>0?`${e.label} — ${Math.max(0,e.seconds-this.waitSeconds).toFixed(1)}s`:e.label:null}statusList(){return t.map((e,t)=>({number:t+1,name:e.name,giver:e.giver,briefing:e.briefing,start:e.start,rewardMoney:e.rewardMoney,rewardRep:e.rewardRep,objectiveCount:e.objectives.length,finale:Boolean(e.finale),status:this.status[t]}))}}
+import * as THREE from 'three';
+export const MISSIONS_IN_STORY = 8;
+const ARRIVE_M = 15;
+const MARKER_M = 6;
+const MISSION_CHAIN = [
+  {
+    name: 'FIRST FARE',
+    giver: 'Mara Solis',
+    start: [52, 0],
+    briefing:
+      'Rook. Mara Solis. Word is you can drive. Prove it — my client waits at the east pier. Pick them up, drop them at Palm Row. Do not keep them waiting.',
+    rewardMoney: 500,
+    rewardRep: 60,
+    objectives: [
+      { kind: 'driveTo', x: 104, z: 0, needsCar: true, label: 'Pick up the client at the pier' },
+      { kind: 'waitAt', x: 104, z: 0, seconds: 2, needsCar: true, label: 'Wait for the client' },
+      { kind: 'driveTo', x: -52, z: 52, label: 'Drop the client at Palm Row' },
+    ],
+  },
+  {
+    name: 'THE CORAL RUN',
+    giver: 'Juno Reyes',
+    start: [-52, 330],
+    briefing:
+      'Rook. Juno. Stranded on Coral Strand, my ride is not coming. Come get me, drop me at Sunset Bluff — treat the car like it is yours, because soon it will be.',
+    rewardMoney: 750,
+    rewardRep: 90,
+    objectives: [
+      { kind: 'waitAt', x: -52, z: 330, seconds: 2, needsCar: true, label: 'Pick up Juno on Coral Strand' },
+      { kind: 'driveTo', x: 104, z: 330, label: 'Drop Juno at Sunset Bluff' },
+    ],
+  },
+  {
+    name: 'HEAT ON WHEELS',
+    giver: 'Mara Solis',
+    start: [-104, -104],
+    briefing:
+      'The drop is blown — the VRPD are on you the second you move. Shake them, bring the package to Old Port. I left an SMG in the glovebox.',
+    rewardMoney: 1000,
+    rewardRep: 120,
+    rewardWeapon: 'smg',
+    scriptedHeat: 2,
+    objectives: [
+      { kind: 'loseWanted', label: 'Lose the heat — break line of sight' },
+      { kind: 'driveTo', x: -104, z: -104, label: 'Deliver the package to Old Port' },
+    ],
+  },
+  {
+    name: 'KEYS TO THE CITY',
+    giver: 'Juno Reyes',
+    start: [52, -104],
+    briefing:
+      'Rook. Juno. A Sunset Coupe sits in Harbor Lights, keys in it. I did not say steal it. It needs a new garage in Old Port — mine.',
+    rewardMoney: 1250,
+    rewardRep: 140,
+    scriptedHeat: 1,
+    objectives: [
+      { kind: 'stealCar', carName: 'SUNSET COUPE', label: 'Steal the Sunset Coupe' },
+      { kind: 'driveTo', x: -156, z: -104, label: 'Deliver the Coupe to Old Port' },
+    ],
+  },
+  {
+    name: 'SUNSET BLUFF DROP',
+    giver: 'Juno Reyes',
+    start: [130, 330],
+    briefing:
+      'Rook. Juno. Sunset Bluff, top of the hill, one package, no questions. Wait for the nod, then straight back to Marina Del Sol.',
+    rewardMoney: 1500,
+    rewardRep: 160,
+    objectives: [
+      { kind: 'driveTo', x: 130, z: 330, label: 'Drive to Sunset Bluff' },
+      { kind: 'waitAt', x: 130, z: 330, seconds: 3, label: 'Make the drop — hold position' },
+      { kind: 'driveTo', x: 52, z: 0, label: 'Return to Marina Del Sol' },
+    ],
+  },
+  {
+    name: 'THE GETAWAY',
+    giver: 'Mara Solis',
+    start: [104, -104],
+    briefing:
+      'Three stars, a helicopter, a roadblock with your name on it. Get clean, get to Harbor Lights. The job that makes your name.',
+    rewardMoney: 1750,
+    rewardRep: 180,
+    scriptedHeat: 3,
+    objectives: [
+      { kind: 'loseWanted', label: 'Lose the heat — 3 stars, heli overhead' },
+      { kind: 'driveTo', x: 104, z: -104, label: 'Reach the safehouse' },
+    ],
+  },
+  {
+    name: 'HARBOR LIGHTS HEIST',
+    giver: 'Otto Kane',
+    start: [104, -104],
+    briefing:
+      'Rook. Otto Kane. The crew waits at Harbor Lights. Pick them up, crack the vault, be in Palm Row before the sirens find their pitch. My cut is my cut — do not get creative.',
+    rewardMoney: 2500,
+    rewardRep: 240,
+    objectives: [
+      { kind: 'waitAt', x: 104, z: -104, seconds: 2, needsCar: true, label: 'Pick up the crew' },
+      { kind: 'waitAt', x: -52, z: -104, seconds: 4, label: 'Crack the vault — hold position' },
+      { kind: 'driveTo', x: -104, z: 26, label: 'Escape to Palm Row' },
+    ],
+  },
+  {
+    name: 'KING OF THE KEYS',
+    giver: 'Mara Solis',
+    start: [-52, 330],
+    briefing:
+      'One last drive. Meet me on Coral Strand at sunset, then the Bluff road together — Juno, the crew, all of us. After tonight, the Keys are yours, Rook.',
+    rewardMoney: 4000,
+    rewardRep: 400,
+    finale: true,
+    objectives: [
+      { kind: 'driveTo', x: -52, z: 330, label: 'Drive to Coral Strand' },
+      { kind: 'waitAt', x: -52, z: 330, seconds: 3, label: 'Meet Mara and the crew' },
+      { kind: 'driveTo', x: 130, z: 52, label: 'Take the Bluff road' },
+      { kind: 'waitAt', x: 130, z: 52, seconds: 3, label: 'Watch the sunset — King of the Keys' },
+    ],
+  },
+];
+export function beaconFade(dist) {
+  return Math.min(1, Math.max(0.12, (dist - 2) / 12));
+}
+// Marker = small floating diamond + soft halo + a thin pale ground ring.
+// The diamond is 2.2m across and bobs at 4.2m, so it reads as a gem over
+// its ring instead of a block in the sky. No sky-beam pillar: it flooded
+// the screen up close and showed on the title screen too. The ring and
+// halo fade as the player nears the marker; the diamond stays readable
+// so the spot is never lost.
+let haloTexture = null;
+function beaconHaloTexture() {
+  if (haloTexture) return haloTexture;
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d');
+  const g = ctx.createRadialGradient(64, 64, 4, 64, 64, 64);
+  g.addColorStop(0, 'rgba(255,255,255,0.9)');
+  g.addColorStop(0.4, 'rgba(255,255,255,0.35)');
+  g.addColorStop(1, 'rgba(255,255,255,0)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, 128, 128);
+  haloTexture = new THREE.CanvasTexture(canvas);
+  return haloTexture;
+}
+export function buildBeacon(scene, color = 0xffe600) {
+  const group = new THREE.Group();
+  const diamondMaterial = new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.95, fog: false });
+  const diamond = new THREE.Mesh(new THREE.OctahedronGeometry(1.1, 0), diamondMaterial);
+  diamond.position.y = 4.2;
+  const haloMaterial = new THREE.SpriteMaterial({ map: beaconHaloTexture(), color, transparent: true, opacity: 0.5, blending: THREE.AdditiveBlending, depthWrite: false, fog: false });
+  const halo = new THREE.Sprite(haloMaterial);
+  halo.scale.set(5, 5, 1);
+  halo.position.y = 4.2;
+  const ringMaterial = new THREE.MeshBasicMaterial({ color: 0xfff6c8, transparent: true, opacity: 0.5, side: THREE.DoubleSide, depthWrite: false, fog: false });
+  const ring = new THREE.Mesh(new THREE.RingGeometry(3.8, 4.0, 32), ringMaterial);
+  ring.rotation.x = -Math.PI / 2;
+  ring.position.y = 0.06;
+  group.add(ring, diamond, halo);
+  group.visible = false;
+  scene.add(group);
+  return { group, ring, diamond, halo };
+}
+// Fade a beacon's ring + halo with distance (the diamond stays readable).
+export function fadeBeacon(beacon, dist, clock) {
+  const f = beaconFade(dist);
+  beacon.ring.material.opacity = 0.5 * f;
+  beacon.halo.material.opacity = (0.45 + 0.1 * Math.sin(clock * 2)) * f;
+}
+export function colorBeacon(beacon, hex) {
+  beacon.diamond.material.color.setHex(hex);
+  beacon.halo.material.color.setHex(hex);
+}
+export class Missions {
+  constructor(scene, callbacks) {
+    this.callbacks = callbacks;
+    this.status = MISSION_CHAIN.map(() => 'locked');
+    this.status[0] = 'pending';
+    this.curIdx = -1;
+    this.stageIndex = 0;
+    this.waitSeconds = 0;
+    this.briefingIdx = 0;
+    this.snooze = 0;
+    this.briefingArmed = true;
+    this.needsCarHint = false;
+    this.atMarker = false;
+    this.target = null;
+    this.clock = 0;
+    this.missionClock = 0;
+    this.parSeconds = 0;
+    this.beacon = buildBeacon(scene);
+  }
+  get pendingBriefing() {
+    if (this.briefingIdx < 0 || this.curIdx >= 0 || this.snooze > 0 || !this.atMarker || !this.briefingArmed) return null;
+    return { mission: MISSION_CHAIN[this.briefingIdx], index: this.briefingIdx };
+  }
+  // Next mission waiting at its gold marker, or null once the story is done.
+  get pendingMission() {
+    return this.briefingIdx >= 0 ? MISSION_CHAIN[this.briefingIdx] : null;
+  }
+  currentMission() {
+    return this.curIdx >= 0 ? MISSION_CHAIN[this.curIdx] : null;
+  }
+  currentObjective() {
+    const mission = this.currentMission();
+    return mission ? mission.objectives[this.stageIndex] : null;
+  }
+  doneCount() {
+    return this.status.filter((status) => status === 'done').length;
+  }
+  snoozeBriefing(seconds) {
+    this.snooze = seconds;
+  }
+  // LATER pressed: the briefing stays shut until the player leaves the
+  // marker area (>15m) and comes back — crossing the area must not force
+  // ACCEPT or LATER on the player again and again.
+  dismissBriefing() {
+    this.briefingArmed = false;
+  }
+  // Resume a mission mid-way (save/load): same state as startMission but
+  // without the scripted heat or the started callback — both already
+  // happened when the mission first began.
+  restoreActive(index, stage, clock) {
+    const mission = MISSION_CHAIN[index];
+    this.curIdx = index;
+    this.stageIndex = stage;
+    this.waitSeconds = 0;
+    this.missionClock = clock || 0;
+    this.parSeconds = 90 + mission.objectives.length * 45;
+    this.status[index] = 'active';
+    this.briefingIdx = -1;
+    this.snooze = 0;
+    this.briefingArmed = true;
+  }
+  startMission(index) {
+    const mission = MISSION_CHAIN[index];
+    this.curIdx = index;
+    this.stageIndex = 0;
+    this.waitSeconds = 0;
+    this.missionClock = 0;
+    this.parSeconds = 90 + mission.objectives.length * 45;
+    this.status[index] = 'active';
+    this.briefingIdx = -1;
+    this.snooze = 0;
+    if (mission.scriptedHeat) this.callbacks.onScriptedHeat(mission.scriptedHeat);
+    this.callbacks.onMissionStarted(mission, index);
+  }
+  forceStart(index) {
+    this.briefingIdx = -1;
+    this.startMission(index);
+  }
+  failCurrent() {
+    if (this.curIdx < 0) return;
+    this.status[this.curIdx] = 'pending';
+    this.briefingIdx = this.curIdx;
+    this.briefingArmed = true;
+    this.snooze = 5;
+    this.curIdx = -1;
+    this.target = null;
+    this.beacon.group.visible = false;
+  }
+  setCompleted(count) {
+    for (let i = 0; i < MISSIONS_IN_STORY; i += 1) {
+      this.status[i] = i < count ? 'done' : 'locked';
+    }
+    if (count < MISSIONS_IN_STORY) {
+      this.status[count] = 'pending';
+      this.briefingIdx = count;
+      this.briefingArmed = true;
+      this.snooze = 1;
+    } else {
+      this.briefingIdx = -1;
+    }
+  }
+  completeStage() {
+    const mission = this.currentMission();
+    this.stageIndex += 1;
+    this.waitSeconds = 0;
+    this.callbacks.onObjectiveComplete();
+    if (this.stageIndex < mission.objectives.length) return;
+    const finishedIndex = this.curIdx;
+    this.status[finishedIndex] = 'done';
+    this.curIdx = -1;
+    this.target = null;
+    const nextIndex = finishedIndex + 1;
+    if (nextIndex < MISSIONS_IN_STORY) {
+      this.status[nextIndex] = 'pending';
+      this.briefingIdx = nextIndex;
+      this.briefingArmed = true;
+      this.snooze = 2;
+    }
+    this.callbacks.onMissionComplete(mission, finishedIndex);
+  }
+  animateBeacon(dt, dist) {
+    const b = this.beacon;
+    fadeBeacon(b, dist, this.clock);
+    const s = 1 + 0.05 * Math.sin(this.clock * 2);
+    b.ring.scale.set(s, s, 1);
+    b.diamond.rotation.y += dt * 1.5;
+    b.diamond.position.y = 4.2 + Math.sin(this.clock * 2) * 0.4;
+    b.halo.position.y = b.diamond.position.y;
+  }
+  update(dt, context) {
+    this.clock += dt;
+    this.snooze = Math.max(0, this.snooze - dt);
+    const mission = this.currentMission();
+    if (!mission) {
+      // Free roam: the gold marker for the next mission waits at its start.
+      const next = this.pendingMission;
+      this.target = next ? { x: next.start[0], z: next.start[1] } : null;
+      this.beacon.group.visible = this.target !== null;
+      if (this.target) {
+        this.beacon.group.position.set(this.target.x, 0, this.target.z);
+        const dist = Math.hypot(context.playerPos.x - this.target.x, context.playerPos.z - this.target.z);
+        this.animateBeacon(dt, dist);
+        this.atMarker = dist < MARKER_M;
+        // Leaving the area re-arms a dismissed briefing.
+        if (!this.briefingArmed && dist > 15) this.briefingArmed = true;
+      } else {
+        this.atMarker = false;
+      }
+      return;
+    }
+    this.missionClock += dt;
+    this.needsCarHint = false;
+    const objective = mission.objectives[this.stageIndex];
+    const { playerPos, drivenCar, cars, wantedStars } = context;
+    if (objective.kind === 'stealCar') {
+      const car = cars.find((candidate) => candidate.name === objective.carName);
+      this.target = car ? { x: car.position.x, z: car.position.z } : null;
+    } else if (objective.kind === 'loseWanted') {
+      this.target = null;
+    } else {
+      this.target = { x: objective.x, z: objective.z };
+    }
+    this.beacon.group.visible = this.target !== null;
+    if (this.target) {
+      this.beacon.group.position.set(this.target.x, 0, this.target.z);
+      this.animateBeacon(dt, Math.hypot(playerPos.x - this.target.x, playerPos.z - this.target.z));
+    }
+    if (objective.kind === 'driveTo') {
+      const inRange = Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M;
+      // A pickup needs a car: arriving on foot holds the stage and hints
+      // at it instead of letting the client "get in" with no car there.
+      if (objective.needsCar && !drivenCar) {
+        this.needsCarHint = inRange;
+      } else if (inRange) {
+        this.completeStage();
+      }
+    } else if (objective.kind === 'waitAt') {
+      const inRange = Math.hypot(playerPos.x - objective.x, playerPos.z - objective.z) < ARRIVE_M;
+      if (objective.needsCar && !drivenCar) {
+        this.waitSeconds = 0;
+        this.needsCarHint = inRange;
+      } else if (inRange) {
+        this.waitSeconds += dt;
+        if (this.waitSeconds >= objective.seconds) this.completeStage();
+      } else {
+        this.waitSeconds = 0;
+      }
+    } else if (objective.kind === 'loseWanted') {
+      if (wantedStars === 0) this.completeStage();
+    } else if (objective.kind === 'stealCar') {
+      if (drivenCar && drivenCar.name === objective.carName) this.completeStage();
+    }
+  }
+  // Stage count + progress for the HUD mission panel: completed stages
+  // over total, with the current waitAt stage counting its held seconds.
+  stageInfo() {
+    const mission = this.currentMission();
+    if (!mission) return null;
+    const objective = mission.objectives[this.stageIndex];
+    let within = 0;
+    if (objective && objective.kind === 'waitAt' && objective.seconds) within = Math.min(1, this.waitSeconds / objective.seconds);
+    return { stage: this.stageIndex + 1, total: mission.objectives.length, frac: (this.stageIndex + within) / mission.objectives.length };
+  }
+  progressLine() {
+    if (this.curIdx < 0) return this.doneCount() >= MISSIONS_IN_STORY ? 'STORY COMPLETE' : 'FREE ROAM';
+    const mission = this.currentMission();
+    // Par is display-only (no fail), but a timer stuck at 0:00 looks
+    // broken — past par it counts up over par instead.
+    const over = this.missionClock - this.parSeconds;
+    const timer =
+      over > 0
+        ? `+${Math.floor(over / 60)}:${String(Math.floor(over % 60)).padStart(2, '0')} OVER PAR`
+        : `${Math.floor((this.parSeconds - this.missionClock) / 60)}:${String(Math.floor((this.parSeconds - this.missionClock) % 60)).padStart(2, '0')}`;
+    return `MISSION ${this.curIdx + 1}/${MISSIONS_IN_STORY} — ${mission.name} · STAGE ${this.stageIndex + 1}/${mission.objectives.length} · ${timer}`;
+  }
+  nextLine() {
+    const mission = this.currentMission();
+    if (!mission) return '';
+    const next = mission.objectives[this.stageIndex + 1];
+    return next ? next.label : `Finish the job — report to ${mission.giver.split(' ')[0]}`;
+  }
+  nextObjectiveLine() {
+    const objective = this.currentObjective();
+    if (!objective) return null;
+    if (objective.kind === 'waitAt' && this.waitSeconds > 0) {
+      return `${objective.label} — ${Math.max(0, objective.seconds - this.waitSeconds).toFixed(1)}s`;
+    }
+    return objective.label;
+  }
+  statusList() {
+    return MISSION_CHAIN.map((mission, index) => ({
+      number: index + 1,
+      name: mission.name,
+      giver: mission.giver,
+      briefing: mission.briefing,
+      start: mission.start,
+      rewardMoney: mission.rewardMoney,
+      rewardRep: mission.rewardRep,
+      objectiveCount: mission.objectives.length,
+      finale: Boolean(mission.finale),
+      status: this.status[index],
+    }));
+  }
+}

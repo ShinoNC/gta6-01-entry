@@ -1,1 +1,172 @@
-import*as i from"three";import{roadLines as t,districtNameAt as s}from"./city.js";import{buildWalkerMesh as o}from"./pedestrians.js";import{buildBeacon as e,fadeBeacon as h}from"./missions.js";function r(i){const s=t(),o=s[i()*s.length|0],e=o.from+i()*(o.to-o.from),h=7.6*(i()<.5?-1:1);return"z"===o.axis?{x:o.at+h,z:e}:{x:e,z:o.at+h}}export class SideJobs{constructor(t,s,h){this.rng=s,this.callbacks=h,this.job=null,this.clock=0,this.hintAt=-99,this.forcedType=null,this.avoid={x:0,z:0},this.beacon=e(t,8060868),this.passenger=o(16767352,2771594,15249530,4860442,null,1),this.passenger.armLeft.rotation.z=2.4,this.passenger.group.visible=!1,t.add(this.passenger.group),this.taxiMarker=new i.Mesh(new i.OctahedronGeometry(.4),new i.MeshBasicMaterial({color:16762920})),this.taxiMarker.visible=!1,t.add(this.taxiMarker),this.package=new i.Group;const r=new i.Mesh(new i.BoxGeometry(.8,.6,.8),new i.MeshLambertMaterial({color:11569738}));r.position.y=.3;const a=new i.Mesh(new i.BoxGeometry(.84,.12,.84),new i.MeshLambertMaterial({color:16767352}));a.position.y=.62,this.package.add(r,a),this.package.visible=!1,t.add(this.package),this.offerJob(!0)}offerJob(i){const t=this.forcedType||(this.rng()<.5?"taxi":"delivery");this.forcedType=null;let s=r(this.rng),o=0;for(;Math.hypot(s.x-this.avoid.x,s.z-this.avoid.z)<60&&o<20;)s=r(this.rng),o+=1;let e=r(this.rng);for(o=0;Math.hypot(e.x-s.x,e.z-s.z)<80&&o<20;)e=r(this.rng),o+=1;const h=Math.hypot(e.x-s.x,e.z-s.z),a="taxi"===t?Math.min(150,Math.round(50+.5*h)):Math.min(200,Math.round(75+.6*h));this.job={type:t,stage:"pickup",pickup:s,dropoff:e,rewardMoney:a,rewardRep:"taxi"===t?10:15,discovered:!i},i?this.showPickupHidden():(this.showPickup(),this.callbacks.onOffered(this.job))}showPickupHidden(){const{pickup:i,type:t}=this.job;"taxi"===t?(this.passenger.group.position.set(i.x,0,i.z),this.passenger.group.visible=!0):(this.package.position.set(i.x,0,i.z),this.package.visible=!0)}discover(){this.job.discovered=!0,this.showPickup(),this.callbacks.onOffered(this.job)}showPickup(){const{pickup:i,type:t}=this.job;this.beacon.group.position.set(i.x,0,i.z),this.beacon.group.visible=!0,"taxi"===t?(this.passenger.group.position.set(i.x,0,i.z),this.passenger.group.visible=!0,this.taxiMarker.position.set(i.x,3,i.z),this.taxiMarker.visible=!0):(this.package.position.set(i.x,0,i.z),this.package.visible=!0)}showDropoff(){const{dropoff:i}=this.job;this.beacon.group.position.set(i.x,0,i.z),this.beacon.group.visible=!0,this.passenger.group.visible=!1,this.taxiMarker.visible=!1,this.package.visible=!1}hideAll(){this.beacon.group.visible=!1,this.passenger.group.visible=!1,this.taxiMarker.visible=!1,this.package.visible=!1}completeJob(){const i=this.job;this.job=null,this.hideAll(),this.callbacks.onComplete(i),this.offerJob(!0)}forceJob(i){this.forcedType=i,this.job&&(this.job=null,this.hideAll()),this.offerJob(!1)}get target(){return this.job&&this.job.discovered?"pickup"===this.job.stage?this.job.pickup:this.job.dropoff:null}objectiveLine(){if(!this.job||!this.job.discovered)return null;const{type:i,stage:t,pickup:o,dropoff:e,rewardMoney:h}=this.job;return"taxi"===i?"pickup"===t?`TAXI — Pick up the fare at ${s(o.x,o.z)}`:`TAXI — Drop the fare at ${s(e.x,e.z)} ($${h})`:"pickup"===t?`DELIVERY — Collect the package at ${s(o.x,o.z)}`:`DELIVERY — Deliver to ${s(e.x,e.z)} ($${h})`}statusLine(){return this.job&&this.job.discovered?"taxi"===this.job.type?"SIDE JOB — TAXI FARE":"SIDE JOB — DELIVERY RUN":null}update(i,t){this.clock+=i;const{focusPos:s,driving:o}=t;if(this.avoid=s,!this.job)return;const e=this.job;if(!e.discovered)return void(Math.hypot(s.x-e.pickup.x,s.z-e.pickup.z)<40&&this.discover());const r=Math.hypot(s.x-this.beacon.group.position.x,s.z-this.beacon.group.position.z);if(h(this.beacon,r,this.clock),this.taxiMarker.visible&&(this.taxiMarker.rotation.y+=2*i,this.taxiMarker.position.y=3+.15*Math.sin(2*this.clock)),"pickup"===e.stage){const i="taxi"===e.type?8:4;if(Math.hypot(s.x-e.pickup.x,s.z-e.pickup.z)>=i)return;return"taxi"!==e.type||o?(e.stage="dropoff",this.showDropoff(),void this.callbacks.onPickedUp(e)):void(this.clock-this.hintAt>5&&(this.hintAt=this.clock,this.callbacks.onNeedCar()))}Math.hypot(s.x-e.dropoff.x,s.z-e.dropoff.z)<10&&this.completeJob()}}
+import * as THREE from 'three';
+import { roadLines, districtNameAt } from './city.js';
+import { buildWalkerMesh } from './pedestrians.js';
+import { buildBeacon, fadeBeacon } from './missions.js';
+const DISCOVER = 40, AVOID = 60, PICKUP = 8, PKG_PICKUP = 4, DROP = 10, MIN_TRIP = 80, HINT_CD = 5;
+function roadside(rng) {
+  const lines = roadLines(), line = lines[(rng() * lines.length) | 0];
+  const along = line.from + rng() * (line.to - line.from), side = (rng() < 0.5 ? -1 : 1) * 7.6;
+  return line.axis === 'z' ? { x: line.at + side, z: along } : { x: along, z: line.at + side };
+}
+export class SideJobs {
+  constructor(scene, rng, callbacks) {
+    this.rng = rng;
+    this.callbacks = callbacks;
+    this.job = null;
+    this.clock = 0;
+    this.hintAt = -99;
+    this.forcedType = null;
+    this.avoid = { x: 0, z: 0 };
+    this.beacon = buildBeacon(scene, 0x7affc4);
+    this.passenger = buildWalkerMesh(0xffd978, 0x2a4a8a, 0xe8b07a, 0x4a2a1a, null, 1);
+    this.passenger.armLeft.rotation.z = 2.4;
+    this.passenger.group.visible = false;
+    scene.add(this.passenger.group);
+    this.taxiMarker = new THREE.Mesh(new THREE.OctahedronGeometry(0.4), new THREE.MeshBasicMaterial({ color: 0xffc828 }));
+    this.taxiMarker.visible = false;
+    scene.add(this.taxiMarker);
+    this.package = new THREE.Group();
+    const box = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.6, 0.8), new THREE.MeshLambertMaterial({ color: 0xb08a4a }));
+    box.position.y = 0.3;
+    const tape = new THREE.Mesh(new THREE.BoxGeometry(0.84, 0.12, 0.84), new THREE.MeshLambertMaterial({ color: 0xffd978 }));
+    tape.position.y = 0.62;
+    this.package.add(box, tape);
+    this.package.visible = false;
+    scene.add(this.package);
+    this.offerJob(true);
+  }
+  offerJob(hidden) {
+    const type = this.forcedType || (this.rng() < 0.5 ? 'taxi' : 'delivery');
+    this.forcedType = null;
+    let pickup = roadside(this.rng), guard = 0;
+    while (Math.hypot(pickup.x - this.avoid.x, pickup.z - this.avoid.z) < AVOID && guard < 20) {
+      pickup = roadside(this.rng);
+      guard += 1;
+    }
+    let dropoff = roadside(this.rng);
+    guard = 0;
+    while (Math.hypot(dropoff.x - pickup.x, dropoff.z - pickup.z) < MIN_TRIP && guard < 20) {
+      dropoff = roadside(this.rng);
+      guard += 1;
+    }
+    const distance = Math.hypot(dropoff.x - pickup.x, dropoff.z - pickup.z);
+    const rewardMoney = type === 'taxi' ? Math.min(150, Math.round(50 + distance * 0.5)) : Math.min(200, Math.round(75 + distance * 0.6));
+    this.job = { type, stage: 'pickup', pickup, dropoff, rewardMoney, rewardRep: type === 'taxi' ? 10 : 15, discovered: !hidden };
+    if (hidden) this.showPickupHidden();
+    else {
+      this.showPickup();
+      this.callbacks.onOffered(this.job);
+    }
+  }
+  showPickupHidden() {
+    const { pickup, type } = this.job;
+    if (type === 'taxi') {
+      this.passenger.group.position.set(pickup.x, 0, pickup.z);
+      this.passenger.group.visible = true;
+    } else {
+      this.package.position.set(pickup.x, 0, pickup.z);
+      this.package.visible = true;
+    }
+  }
+  discover() {
+    this.job.discovered = true;
+    this.showPickup();
+    this.callbacks.onOffered(this.job);
+  }
+  showPickup() {
+    const { pickup, type } = this.job;
+    this.beacon.group.position.set(pickup.x, 0, pickup.z);
+    this.beacon.group.visible = true;
+    if (type === 'taxi') {
+      this.passenger.group.position.set(pickup.x, 0, pickup.z);
+      this.passenger.group.visible = true;
+      this.taxiMarker.position.set(pickup.x, 3, pickup.z);
+      this.taxiMarker.visible = true;
+    } else {
+      this.package.position.set(pickup.x, 0, pickup.z);
+      this.package.visible = true;
+    }
+  }
+  showDropoff() {
+    const { dropoff } = this.job;
+    this.beacon.group.position.set(dropoff.x, 0, dropoff.z);
+    this.beacon.group.visible = true;
+    this.passenger.group.visible = false;
+    this.taxiMarker.visible = false;
+    this.package.visible = false;
+  }
+  hideAll() {
+    this.beacon.group.visible = false;
+    this.passenger.group.visible = false;
+    this.taxiMarker.visible = false;
+    this.package.visible = false;
+  }
+  completeJob() {
+    const finished = this.job;
+    this.job = null;
+    this.hideAll();
+    this.callbacks.onComplete(finished);
+    this.offerJob(true);
+  }
+  forceJob(type) {
+    this.forcedType = type;
+    if (this.job) {
+      this.job = null;
+      this.hideAll();
+    }
+    this.offerJob(false);
+  }
+  get target() {
+    if (!this.job || !this.job.discovered) return null;
+    return this.job.stage === 'pickup' ? this.job.pickup : this.job.dropoff;
+  }
+  objectiveLine() {
+    if (!this.job || !this.job.discovered) return null;
+    const { type, stage, pickup, dropoff, rewardMoney } = this.job;
+    if (type === 'taxi') {
+      return stage === 'pickup'
+        ? `TAXI — Pick up the fare at ${districtNameAt(pickup.x, pickup.z)}`
+        : `TAXI — Drop the fare at ${districtNameAt(dropoff.x, dropoff.z)} ($${rewardMoney})`;
+    }
+    return stage === 'pickup'
+      ? `DELIVERY — Collect the package at ${districtNameAt(pickup.x, pickup.z)}`
+      : `DELIVERY — Deliver to ${districtNameAt(dropoff.x, dropoff.z)} ($${rewardMoney})`;
+  }
+  statusLine() {
+    if (!this.job || !this.job.discovered) return null;
+    return this.job.type === 'taxi' ? 'SIDE JOB — TAXI FARE' : 'SIDE JOB — DELIVERY RUN';
+  }
+  update(dt, context) {
+    this.clock += dt;
+    const { focusPos, driving } = context;
+    this.avoid = focusPos;
+    if (!this.job) return;
+    const job = this.job;
+    if (!job.discovered) {
+      if (Math.hypot(focusPos.x - job.pickup.x, focusPos.z - job.pickup.z) < DISCOVER) this.discover();
+      return;
+    }
+    const bd = Math.hypot(focusPos.x - this.beacon.group.position.x, focusPos.z - this.beacon.group.position.z);
+    fadeBeacon(this.beacon, bd, this.clock);
+    if (this.taxiMarker.visible) {
+      this.taxiMarker.rotation.y += dt * 2;
+      this.taxiMarker.position.y = 3 + Math.sin(this.clock * 2) * 0.15;
+    }
+    if (job.stage === 'pickup') {
+      const reach = job.type === 'taxi' ? PICKUP : PKG_PICKUP;
+      if (Math.hypot(focusPos.x - job.pickup.x, focusPos.z - job.pickup.z) >= reach) return;
+      if (job.type === 'taxi' && !driving) {
+        if (this.clock - this.hintAt > HINT_CD) {
+          this.hintAt = this.clock;
+          this.callbacks.onNeedCar();
+        }
+        return;
+      }
+      job.stage = 'dropoff';
+      this.showDropoff();
+      this.callbacks.onPickedUp(job);
+      return;
+    }
+    if (Math.hypot(focusPos.x - job.dropoff.x, focusPos.z - job.dropoff.z) < DROP) this.completeJob();
+  }
+}

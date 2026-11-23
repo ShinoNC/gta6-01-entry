@@ -1,1 +1,88 @@
-import*as t from"three";function s(s,i,e){const o=new Float32Array(3*i).fill(-50),r=new Float32Array(3*i),n=new Float32Array(i),a=new t.BufferGeometry;a.setAttribute("position",new t.BufferAttribute(o,3));const l=new t.Points(a,e);return l.frustumCulled=!1,s.add(l),{positions:o,velocities:r,life:n,points:l}}export class Effects{constructor(i){this.sparks=s(i,96,new t.PointsMaterial({color:16767352,size:.18,transparent:!0,depthWrite:!1,blending:t.AdditiveBlending})),this.smoke=s(i,64,new t.PointsMaterial({color:10130344,size:1.3,transparent:!0,opacity:.4,depthWrite:!1}))}get activeCount(){let t=0;for(const s of[this.sparks,this.smoke])for(let i=0;i<s.life.length;i+=1)s.life[i]>0&&(t+=1);return t}burstSparks(t,s,i,e=8){let o=0;for(let r=0;r<96&&o<e;r+=1)this.sparks.life[r]>0||(this.sparks.positions[3*r]=t,this.sparks.positions[3*r+1]=s,this.sparks.positions[3*r+2]=i,this.sparks.velocities[3*r]=6*(Math.random()-.5),this.sparks.velocities[3*r+1]=5*Math.random(),this.sparks.velocities[3*r+2]=6*(Math.random()-.5),this.sparks.life[r]=.4,o+=1);this.sparks.points.geometry.attributes.position.needsUpdate=!0}puffSmoke(t,s,i,e=2){let o=0;for(let r=0;r<64&&o<e;r+=1)this.smoke.life[r]>0||(this.smoke.positions[3*r]=t+.6*(Math.random()-.5),this.smoke.positions[3*r+1]=s,this.smoke.positions[3*r+2]=i+.6*(Math.random()-.5),this.smoke.velocities[3*r]=.8*(Math.random()-.5),this.smoke.velocities[3*r+1]=1+1.2*Math.random(),this.smoke.velocities[3*r+2]=.8*(Math.random()-.5),this.smoke.life[r]=1.1*(.7+.6*Math.random()),o+=1);this.smoke.points.geometry.attributes.position.needsUpdate=!0}update(t){for(const s of[this.sparks,this.smoke]){let i=!1;const e=s===this.sparks?9:-.4,o=s===this.sparks?0:.6;for(let r=0;r<s.life.length;r+=1)s.life[r]<=0||(s.life[r]-=t,s.velocities[3*r+1]-=e*t,s.velocities[3*r]*=1-o*t,s.velocities[3*r+2]*=1-o*t,s.positions[3*r]+=s.velocities[3*r]*t,s.positions[3*r+1]+=s.velocities[3*r+1]*t,s.positions[3*r+2]+=s.velocities[3*r+2]*t,s.life[r]<=0&&(s.positions[3*r+1]=-50),i=!0);i&&(s.points.geometry.attributes.position.needsUpdate=!0)}}}
+import * as THREE from 'three';
+const SPARK_COUNT = 96;
+const SMOKE_COUNT = 64;
+const SPARK_LIFE_SECONDS = 0.4;
+const SMOKE_LIFE_SECONDS = 1.1;
+const PARKED_Y = -50;
+function makePool(scene, count, material) {
+  const positions = new Float32Array(count * 3).fill(PARKED_Y);
+  const velocities = new Float32Array(count * 3);
+  const life = new Float32Array(count);
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+  scene.add(points);
+  return { positions, velocities, life, points };
+}
+export class Effects {
+  constructor(scene) {
+    this.sparks = makePool(
+      scene,
+      SPARK_COUNT,
+      new THREE.PointsMaterial({ color: 0xffd978, size: 0.18, transparent: true, depthWrite: false, blending: THREE.AdditiveBlending }),
+    );
+    this.smoke = makePool(
+      scene,
+      SMOKE_COUNT,
+      new THREE.PointsMaterial({ color: 0x9a93a8, size: 1.3, transparent: true, opacity: 0.4, depthWrite: false }),
+    );
+  }
+  get activeCount() {
+    let count = 0;
+    for (const pool of [this.sparks, this.smoke]) {
+      for (let i = 0; i < pool.life.length; i += 1) if (pool.life[i] > 0) count += 1;
+    }
+    return count;
+  }
+  burstSparks(x, y, z, burstCount = 8) {
+    let placed = 0;
+    for (let i = 0; i < SPARK_COUNT && placed < burstCount; i += 1) {
+      if (this.sparks.life[i] > 0) continue;
+      this.sparks.positions[i * 3] = x;
+      this.sparks.positions[i * 3 + 1] = y;
+      this.sparks.positions[i * 3 + 2] = z;
+      this.sparks.velocities[i * 3] = (Math.random() - 0.5) * 6;
+      this.sparks.velocities[i * 3 + 1] = Math.random() * 5;
+      this.sparks.velocities[i * 3 + 2] = (Math.random() - 0.5) * 6;
+      this.sparks.life[i] = SPARK_LIFE_SECONDS;
+      placed += 1;
+    }
+    this.sparks.points.geometry.attributes.position.needsUpdate = true;
+  }
+  puffSmoke(x, y, z, puffCount = 2) {
+    let placed = 0;
+    for (let i = 0; i < SMOKE_COUNT && placed < puffCount; i += 1) {
+      if (this.smoke.life[i] > 0) continue;
+      this.smoke.positions[i * 3] = x + (Math.random() - 0.5) * 0.6;
+      this.smoke.positions[i * 3 + 1] = y;
+      this.smoke.positions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.6;
+      this.smoke.velocities[i * 3] = (Math.random() - 0.5) * 0.8;
+      this.smoke.velocities[i * 3 + 1] = 1 + Math.random() * 1.2;
+      this.smoke.velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.8;
+      this.smoke.life[i] = SMOKE_LIFE_SECONDS * (0.7 + Math.random() * 0.6);
+      placed += 1;
+    }
+    this.smoke.points.geometry.attributes.position.needsUpdate = true;
+  }
+  update(dt) {
+    for (const pool of [this.sparks, this.smoke]) {
+      let moved = false;
+      const gravity = pool === this.sparks ? 9 : -0.4;
+      const drag = pool === this.sparks ? 0 : 0.6;
+      for (let i = 0; i < pool.life.length; i += 1) {
+        if (pool.life[i] <= 0) continue;
+        pool.life[i] -= dt;
+        pool.velocities[i * 3 + 1] -= gravity * dt;
+        pool.velocities[i * 3] *= 1 - drag * dt;
+        pool.velocities[i * 3 + 2] *= 1 - drag * dt;
+        pool.positions[i * 3] += pool.velocities[i * 3] * dt;
+        pool.positions[i * 3 + 1] += pool.velocities[i * 3 + 1] * dt;
+        pool.positions[i * 3 + 2] += pool.velocities[i * 3 + 2] * dt;
+        if (pool.life[i] <= 0) pool.positions[i * 3 + 1] = PARKED_Y;
+        moved = true;
+      }
+      if (moved) pool.points.geometry.attributes.position.needsUpdate = true;
+    }
+  }
+}

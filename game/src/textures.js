@@ -1,1 +1,52 @@
-import*as a from"three";const e={facadeA:"facade-a.png",facadeB:"facade-b.png",facadeC:"facade-c.png",facadeD:"facade-d.png",facadeE:"facade-e.png",facadeF:"facade-f.png",road:"road.png",sidewalk:"sidewalk.png",sand:"sand.png",palm:"palm.png",carRed:"car-red.png",carBlue:"car-blue.png",carTaxi:"car-taxi.png",carWhite:"car-white.png",water:"water.png",roof:"roof.png",billboard:"billboard.png"},r=new Set(["road","sidewalk","sand","water"]);export function loadTextures(){const n=new a.TextureLoader,p={},t=Object.entries(e).map(([e,t])=>new Promise((d,i)=>{n.load(`./assets/${t}`,n=>{n.magFilter=a.NearestFilter,r.has(e)?(n.minFilter=a.NearestMipmapLinearFilter,n.generateMipmaps=!0,n.anisotropy=4):(n.minFilter=a.NearestFilter,n.generateMipmaps=!1),n.wrapS=a.RepeatWrapping,n.wrapT=a.RepeatWrapping,n.colorSpace=a.SRGBColorSpace,p[e]=n,d()},void 0,()=>i(new Error(`texture failed to load: ${t}`)))}));return Promise.all(t).then(()=>p)}
+import * as THREE from 'three';
+const TEXTURE_FILES = {
+  facadeA: 'facade-a.png',
+  facadeB: 'facade-b.png',
+  facadeC: 'facade-c.png',
+  facadeD: 'facade-d.png',
+  facadeE: 'facade-e.png',
+  facadeF: 'facade-f.png',
+  road: 'road.png',
+  sidewalk: 'sidewalk.png',
+  sand: 'sand.png',
+  palm: 'palm.png',
+  carRed: 'car-red.png',
+  carBlue: 'car-blue.png',
+  carTaxi: 'car-taxi.png',
+  carWhite: 'car-white.png',
+  water: 'water.png',
+  roof: 'roof.png',
+  billboard: 'billboard.png',
+};
+const MIPMAPPED_TEXTURES = new Set(['road', 'sidewalk', 'sand', 'water']);
+export function loadTextures() {
+  const loader = new THREE.TextureLoader();
+  const loaded = {};
+  const jobs = Object.entries(TEXTURE_FILES).map(
+    ([name, file]) =>
+      new Promise((resolve, reject) => {
+        loader.load(
+          `./assets/${file}`,
+          (texture) => {
+            texture.magFilter = THREE.NearestFilter;
+            if (MIPMAPPED_TEXTURES.has(name)) {
+              texture.minFilter = THREE.NearestMipmapLinearFilter;
+              texture.generateMipmaps = true;
+              texture.anisotropy = 4;
+            } else {
+              texture.minFilter = THREE.NearestFilter;
+              texture.generateMipmaps = false;
+            }
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            texture.colorSpace = THREE.SRGBColorSpace;
+            loaded[name] = texture;
+            resolve();
+          },
+          undefined,
+          () => reject(new Error(`texture failed to load: ${file}`)),
+        );
+      }),
+  );
+  return Promise.all(jobs).then(() => loaded);
+}

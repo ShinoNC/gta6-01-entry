@@ -1,1 +1,122 @@
-import{buildBeacon as e,fadeBeacon as t,colorBeacon as s}from"./missions.js";const n=[{id:"taxi",name:"KEYS CAB CO.",kind:"TAXI COMPANY",x:52,z:52,district:"PELICAN BAY",price:2e3,repRequired:1,incomePerDay:1200},{id:"club",name:"NEON PALMS",kind:"NIGHTCLUB",x:-52,z:-52,district:"OLD PORT",price:6e3,repRequired:3,incomePerDay:3e3},{id:"dealer",name:"SOLSTICE MOTORS",kind:"CAR DEALERSHIP",x:104,z:-104,district:"HARBOR LIGHTS",price:15e3,repRequired:5,incomePerDay:7500}];export class Businesses{constructor(t){this.state=n.map(()=>({owned:!1,level:0,pending:0})),this.beacons=n.map(s=>{const n=e(t,13134847);return n.group.position.set(s.x,0,s.z),n.group.visible=!0,n}),this.clock=0}get defs(){return n}incomePerDay(e){return n[e].incomePerDay*(1+.5*this.state[e].level)}upgradeCost(e){return n[e].price/2}ownedCount(){return this.state.filter(e=>e.owned).length}totalIncomePerDay(){return n.reduce((e,t,s)=>e+(this.state[s].owned?this.incomePerDay(s):0),0)}totalPending(){return this.state.reduce((e,t)=>e+t.pending,0)}update(e,s){this.clock+=e;for(let r=0;r<n.length;r+=1){const i=s?Math.hypot(s.x-n[r].x,s.z-n[r].z):99;if(t(this.beacons[r],i,this.clock),!this.state[r].owned)continue;const o=3*this.incomePerDay(r);this.state[r].pending=Math.min(o,this.state[r].pending+this.incomePerDay(r)/2880*e)}}canBuy(e,t,s){const r=n[e];return this.state[e].owned?"owned":s<r.repRequired?"rep":t<r.price?"money":"ok"}buy(e){this.state[e].owned=!0,s(this.beacons[e],8060868)}canUpgrade(e,t){return this.state[e].owned?this.state[e].level>=2?"maxed":t<this.upgradeCost(e)?"money":"ok":"not-owned"}upgrade(e){this.state[e].level+=1}collect(e){const t=Math.floor(this.state[e].pending);return this.state[e].pending=0,t}nearestCollectable(e){for(let t=0;t<n.length;t+=1)if(this.state[t].owned&&!(this.state[t].pending<1)&&Math.hypot(e.x-n[t].x,e.z-n[t].z)<9)return t;return-1}blips(){return n.map((e,t)=>({x:e.x,z:e.z,owned:this.state[t].owned,name:e.name}))}serialize(){return this.state.map(e=>({owned:e.owned,level:e.level,pending:Math.floor(e.pending)}))}restore(e){if(Array.isArray(e))for(let t=0;t<this.state.length&&t<e.length;t+=1)e[t]&&"object"==typeof e[t]&&(this.state[t].owned=Boolean(e[t].owned),this.state[t].level=Math.max(0,Math.min(2,0|e[t].level)),this.state[t].pending=Math.max(0,e[t].pending||0),this.state[t].owned&&s(this.beacons[t],8060868))}reset(){this.state=n.map(()=>({owned:!1,level:0,pending:0}));for(const e of this.beacons)s(e,13134847)}}export const ACHIEVEMENTS=[{id:"firstWheels",name:"FIRST WHEELS",desc:"Steal your first car",reward:100,test:e=>e.carsStolen>=1},{id:"carThief",name:"CAR THIEF",desc:"Steal 10 cars",reward:500,test:e=>e.carsStolen>=10},{id:"menace",name:"MENACE",desc:"Knock down 10 pedestrians",reward:500,test:e=>e.pedsDown>=10},{id:"ghost",name:"GHOST",desc:"Escape from 5 wanted stars",reward:1e3,test:e=>e.escapes5>=1},{id:"skyHunter",name:"SKY HUNTER",desc:"Shoot down 3 helicopters",reward:1500,test:e=>e.helisDown>=3},{id:"tycoon",name:"TYCOON",desc:"Own all 3 businesses",reward:2500,test:e=>e.businessesOwned>=3},{id:"bigShot",name:"BIG SHOT",desc:"Earn $50,000 in your career",reward:2500,test:e=>e.moneyEarned>=5e4},{id:"roadKing",name:"ROAD KING",desc:"Drive 100 km",reward:1e3,test:e=>e.kmDriven>=100}];export function checkAchievements(e,t){const s=[];for(const n of ACHIEVEMENTS)!t.includes(n.id)&&n.test(e)&&s.push(n);return s}export function freshStats(){return{carsStolen:0,pedsDown:0,moneyEarned:0,kmDriven:0,escapes5:0,helisDown:0,robberiesStopped:0,jobsDone:0,businessesOwned:0,crimeCounts:{}}}
+import { buildBeacon, fadeBeacon, colorBeacon } from './missions.js';
+const BUSINESS_DEFS = [
+  { id: 'taxi', name: 'KEYS CAB CO.', kind: 'TAXI COMPANY', x: 52, z: 52, district: 'PELICAN BAY', price: 2000, repRequired: 1, incomePerDay: 1200 },
+  { id: 'club', name: 'NEON PALMS', kind: 'NIGHTCLUB', x: -52, z: -52, district: 'OLD PORT', price: 6000, repRequired: 3, incomePerDay: 3000 },
+  { id: 'dealer', name: 'SOLSTICE MOTORS', kind: 'CAR DEALERSHIP', x: 104, z: -104, district: 'HARBOR LIGHTS', price: 15000, repRequired: 5, incomePerDay: 7500 },
+];
+const SECONDS_PER_GAME_DAY = 2880;
+const MAX_UPGRADE_LEVEL = 2;
+const PENDING_CAP_DAYS = 3;
+const COLLECT_RANGE = 9;
+export class Businesses {
+  constructor(scene) {
+    this.state = BUSINESS_DEFS.map(() => ({ owned: false, level: 0, pending: 0 }));
+    this.beacons = BUSINESS_DEFS.map((def) => {
+      const beacon = buildBeacon(scene, 0xc86bff);
+      beacon.group.position.set(def.x, 0, def.z);
+      beacon.group.visible = true;
+      return beacon;
+    });
+    this.clock = 0;
+  }
+  get defs() {
+    return BUSINESS_DEFS;
+  }
+  incomePerDay(index) {
+    return BUSINESS_DEFS[index].incomePerDay * (1 + 0.5 * this.state[index].level);
+  }
+  upgradeCost(index) {
+    return BUSINESS_DEFS[index].price / 2;
+  }
+  ownedCount() {
+    return this.state.filter((s) => s.owned).length;
+  }
+  totalIncomePerDay() {
+    return BUSINESS_DEFS.reduce((sum, _def, i) => sum + (this.state[i].owned ? this.incomePerDay(i) : 0), 0);
+  }
+  totalPending() {
+    return this.state.reduce((sum, s) => sum + s.pending, 0);
+  }
+  update(dt, playerPos) {
+    this.clock += dt;
+    for (let i = 0; i < BUSINESS_DEFS.length; i += 1) {
+      const dist = playerPos ? Math.hypot(playerPos.x - BUSINESS_DEFS[i].x, playerPos.z - BUSINESS_DEFS[i].z) : 99;
+      fadeBeacon(this.beacons[i], dist, this.clock);
+      if (!this.state[i].owned) continue;
+      const cap = this.incomePerDay(i) * PENDING_CAP_DAYS;
+      this.state[i].pending = Math.min(cap, this.state[i].pending + (this.incomePerDay(i) / SECONDS_PER_GAME_DAY) * dt);
+    }
+  }
+  canBuy(index, money, repLevel) {
+    const def = BUSINESS_DEFS[index];
+    if (this.state[index].owned) return 'owned';
+    if (repLevel < def.repRequired) return 'rep';
+    if (money < def.price) return 'money';
+    return 'ok';
+  }
+  buy(index) {
+    this.state[index].owned = true;
+    colorBeacon(this.beacons[index], 0x7affc4);
+  }
+  canUpgrade(index, money) {
+    if (!this.state[index].owned) return 'not-owned';
+    if (this.state[index].level >= MAX_UPGRADE_LEVEL) return 'maxed';
+    if (money < this.upgradeCost(index)) return 'money';
+    return 'ok';
+  }
+  upgrade(index) {
+    this.state[index].level += 1;
+  }
+  collect(index) {
+    const amount = Math.floor(this.state[index].pending);
+    this.state[index].pending = 0;
+    return amount;
+  }
+  nearestCollectable(pos) {
+    for (let i = 0; i < BUSINESS_DEFS.length; i += 1) {
+      if (!this.state[i].owned || this.state[i].pending < 1) continue;
+      if (Math.hypot(pos.x - BUSINESS_DEFS[i].x, pos.z - BUSINESS_DEFS[i].z) < COLLECT_RANGE) return i;
+    }
+    return -1;
+  }
+  blips() {
+    return BUSINESS_DEFS.map((def, i) => ({ x: def.x, z: def.z, owned: this.state[i].owned, name: def.name }));
+  }
+  serialize() {
+    return this.state.map((s) => ({ owned: s.owned, level: s.level, pending: Math.floor(s.pending) }));
+  }
+  restore(data) {
+    if (!Array.isArray(data)) return;
+    for (let i = 0; i < this.state.length && i < data.length; i += 1) {
+      if (!data[i] || typeof data[i] !== 'object') continue;
+      this.state[i].owned = Boolean(data[i].owned);
+      this.state[i].level = Math.max(0, Math.min(MAX_UPGRADE_LEVEL, data[i].level | 0));
+      this.state[i].pending = Math.max(0, data[i].pending || 0);
+      if (this.state[i].owned) colorBeacon(this.beacons[i], 0x7affc4);
+    }
+  }
+  reset() {
+    this.state = BUSINESS_DEFS.map(() => ({ owned: false, level: 0, pending: 0 }));
+    for (const beacon of this.beacons) colorBeacon(beacon, 0xc86bff);
+  }
+}
+export const ACHIEVEMENTS = [
+  { id: 'firstWheels', name: 'FIRST WHEELS', desc: 'Steal your first car', reward: 100, test: (s) => s.carsStolen >= 1 },
+  { id: 'carThief', name: 'CAR THIEF', desc: 'Steal 10 cars', reward: 500, test: (s) => s.carsStolen >= 10 },
+  { id: 'menace', name: 'MENACE', desc: 'Knock down 10 pedestrians', reward: 500, test: (s) => s.pedsDown >= 10 },
+  { id: 'ghost', name: 'GHOST', desc: 'Escape from 5 wanted stars', reward: 1000, test: (s) => s.escapes5 >= 1 },
+  { id: 'skyHunter', name: 'SKY HUNTER', desc: 'Shoot down 3 helicopters', reward: 1500, test: (s) => s.helisDown >= 3 },
+  { id: 'tycoon', name: 'TYCOON', desc: 'Own all 3 businesses', reward: 2500, test: (s) => s.businessesOwned >= 3 },
+  { id: 'bigShot', name: 'BIG SHOT', desc: 'Earn $50,000 in your career', reward: 2500, test: (s) => s.moneyEarned >= 50000 },
+  { id: 'roadKing', name: 'ROAD KING', desc: 'Drive 100 km', reward: 1000, test: (s) => s.kmDriven >= 100 },
+];
+export function checkAchievements(stats, unlocked) {
+  const fresh = [];
+  for (const achievement of ACHIEVEMENTS) {
+    if (!unlocked.includes(achievement.id) && achievement.test(stats)) fresh.push(achievement);
+  }
+  return fresh;
+}
+export function freshStats() {
+  return { carsStolen: 0, pedsDown: 0, moneyEarned: 0, kmDriven: 0, escapes5: 0, helisDown: 0, robberiesStopped: 0, jobsDone: 0, businessesOwned: 0, crimeCounts: {} };
+}

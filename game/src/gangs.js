@@ -1,1 +1,132 @@
-import{buildWalkerMesh as t,SKIN_COLOURS as o,HAIR_COLOURS as i}from"./pedestrians.js";import{densityForMinute as e,roadLines as s}from"./city.js";import{range as n,pick as r}from"./random.js";export const GANGS=[{name:"PORT KINGS",x0:-266,z0:-208,x1:0,z1:-52,colour:10117072,taunt:"You lost, tourist?"},{name:"HARBOR SAINTS",x0:0,z0:-208,x1:266,z1:-52,colour:4040811,taunt:"Wrong side of the harbor."},{name:"LANTERN BOYS",x0:-266,z0:-52,x1:0,z1:26,colour:16742973,taunt:"This is our street."},{name:"SOL MIRAMAR",x0:0,z0:-52,x1:266,z1:26,colour:14037054,taunt:"Walk away, Rook."}];const a=7.6;export class Gangs{constructor(e,a,h){this.cb=h,this.rng=a,this.lines=s(),this.members=[],this.tauntTimer=[0,0,0,0],this.target=6*GANGS.length,this.activeCount=this.target;for(let s=0;s<GANGS.length;s++){const h=GANGS[s],m=[this.turfPoint(h),this.turfPoint(h)];for(let g=0;g<6;g++){const u=m[g%2],x=t(h.colour,2302766,r(a,o),r(a,i),"bandana",n(a,.92,1.05));e.add(x.group);const c={gang:s,mesh:x,home:u,tx:u.x,tz:u.z,walking:!1,hostile:!1,punchTimer:0,knockedTimer:0,dormant:!1,retryTimer:0,walkPhase:n(a,0,2*Math.PI)};x.group.position.set(u.x,0,u.z),this.members.push(c)}}}turfPoint(t){const o=this.rng;return t.z1<=-52?{x:t.x0+20+o()*(t.x1-t.x0-40),z:-278-12*o()}:t.x1<=0?{x:-278-12*o(),z:t.z0+10+o()*(t.z1-t.z0-20)}:{x:278+12*o(),z:t.z0+10+o()*(t.z1-t.z0-20)}}sidewalkClamp(t){for(const o of this.lines)"z"===o.axis&&Math.abs(t.x-o.at)<7&&t.z>=-266&&t.z<=266&&(t.x=o.at+(t.x<o.at?-7.6:a)),"x"===o.axis&&Math.abs(t.z-o.at)<7&&t.x>=-266&&t.x<=266&&(t.z=o.at+(t.z<o.at?-7.6:a));return t}setDensity(t){this.target=Math.max(0,Math.round(6*GANGS.length*e(t)));let o=0;for(const t of this.members)o<this.target?(t.dormant&&this.respawn(t),o++):t.dormant||(t.dormant=!0,t.hostile=!1,t.mesh.group.visible=!1);this.activeCount=o}respawn(t){t.dormant=!1,t.hostile=!1,t.knockedTimer=0,t.walking=!1,t.mesh.group.visible=!0,t.mesh.group.rotation.x=0,t.mesh.group.position.y=0,t.home=this.turfPoint(GANGS[t.gang]),t.tx=t.home.x,t.tz=t.home.z,t.mesh.group.position.set(t.home.x,0,t.home.z)}onAttacked(t,o){o?(t.knockedTimer=3,t.mesh.group.rotation.x=Math.PI/2,t.mesh.group.position.y=.4):t.hostile=!0;for(const o of this.members){if(o===t||o.gang!==t.gang||o.dormant||o.knockedTimer>0)continue;const i=o.mesh.group.position,e=t.mesh.group.position;Math.hypot(i.x-e.x,i.z-e.z)<15&&(o.hostile=!0)}}update(t,o){for(let o=0;o<GANGS.length;o++)this.tauntTimer[o]-=t;for(const i of this.members){if(i.dormant){i.retryTimer-=t,i.retryTimer<=0&&(i.retryTimer=2,this.activeCount<this.target&&(this.respawn(i),this.activeCount++));continue}const e=i.mesh.group.position;if(i.knockedTimer>0){i.knockedTimer-=t,i.knockedTimer<=0&&(e.y=0,i.mesh.group.rotation.x=0,i.hostile=!0);continue}const s=o.x-e.x,n=o.z-e.z,r=Math.hypot(s,n);if(i.hostile)i.punchTimer-=t,r>30?(i.hostile=!1,i.walking=!1):r<1.6?(i.mesh.group.rotation.y=Math.atan2(s,n),i.punchTimer<=0?(i.punchTimer=1.2,i.mesh.armRight.rotation.x=-1.8,this.cb.onPunch(5)):i.mesh.armRight.rotation.x*=.8):this.walkToward(i,o.x,o.z,3.4,t);else if(r<8&&this.tauntTimer[i.gang]<=0&&(this.tauntTimer[i.gang]=30,this.cb.onTaunt(GANGS[i.gang].taunt)),i.walking)this.walkToward(i,i.tx,i.tz,1.5,t)&&(i.walking=!1);else if(this.rng()<.1*t){const t=this.rng()*Math.PI*2,o=3+3*this.rng(),e=this.sidewalkClamp({x:i.home.x+Math.cos(t)*o,z:i.home.z+Math.sin(t)*o});i.tx=e.x,i.tz=e.z,i.walking=!0}}}walkToward(t,o,i,e,s){const n=t.mesh.group.position,r=o-n.x,a=i-n.z,h=Math.hypot(r,a);if(h<.3)return!0;const m=Math.min(h,e*s);n.x+=r/h*m,n.z+=a/h*m,t.mesh.group.rotation.y=Math.atan2(r,a),t.walkPhase+=6*s;const g=.5*Math.sin(t.walkPhase);return t.mesh.legLeft.rotation.x=g,t.mesh.legRight.rotation.x=-g,t.mesh.armLeft.rotation.x=-g,t.mesh.armRight.rotation.x=g,!1}}
+// Gangs: four crews tied to their turf. Members hang out in small groups,
+// idle and wander near home, taunt the player up close, and fight back
+// (melee) when attacked. Night density applies like peds and beachgoers.
+import { buildWalkerMesh, SKIN_COLOURS, HAIR_COLOURS } from './pedestrians.js';
+import { densityForMinute, roadLines } from './city.js';
+import { range, pick } from './random.js';
+export const GANGS = [
+  { name: 'PORT KINGS', x0: -266, z0: -208, x1: 0, z1: -52, colour: 0x9a5fd0, taunt: 'You lost, tourist?' },
+  { name: 'HARBOR SAINTS', x0: 0, z0: -208, x1: 266, z1: -52, colour: 0x3da86b, taunt: 'Wrong side of the harbor.' },
+  { name: 'LANTERN BOYS', x0: -266, z0: -52, x1: 0, z1: 26, colour: 0xff7a3d, taunt: 'This is our street.' },
+  { name: 'SOL MIRAMAR', x0: 0, z0: -52, x1: 266, z1: 26, colour: 0xd6303e, taunt: 'Walk away, Rook.' },
+];
+const PER_GANG = 6, GROUPS = 2;
+const TAUNT_RANGE = 8, TAUNT_CD = 30, PUNCH_RANGE = 1.6, PUNCH_DMG = 5, PUNCH_CD = 1.2;
+const CHASE_RANGE = 30, JOIN_RANGE = 15, WALK_SPEED = 1.5, CHASE_SPEED = 3.4, KNOCKED_SECONDS = 3;
+const SIDEWALK = 7.6, RETRY_SECONDS = 2;
+export class Gangs {
+  constructor(scene, rng, cb) {
+    this.cb = cb; this.rng = rng; this.lines = roadLines();
+    this.members = []; this.tauntTimer = [0, 0, 0, 0];
+    this.target = GANGS.length * PER_GANG; this.activeCount = this.target;
+    for (let g = 0; g < GANGS.length; g++) {
+      const gang = GANGS[g];
+      const homes = [this.turfPoint(gang), this.turfPoint(gang)];
+      for (let i = 0; i < PER_GANG; i++) {
+        const home = homes[i % GROUPS];
+        const mesh = buildWalkerMesh(gang.colour, 0x23232e, pick(rng, SKIN_COLOURS), pick(rng, HAIR_COLOURS), 'bandana', range(rng, 0.92, 1.05));
+        scene.add(mesh.group);
+        const m = { gang: g, mesh, home, tx: home.x, tz: home.z, walking: false, hostile: false, punchTimer: 0, knockedTimer: 0, dormant: false, retryTimer: 0, walkPhase: range(rng, 0, Math.PI * 2) };
+        mesh.group.position.set(home.x, 0, home.z);
+        this.members.push(m);
+      }
+    }
+  }
+  // Gang hangouts live on the BEACH (no roads there): north crews on the
+  // north shore, the west crew on the west shore, the east crew on the
+  // east shore. Turf rects stay as the gang's territory (map + standing).
+  turfPoint(gang) {
+    const r = this.rng;
+    if (gang.z1 <= -52) return { x: gang.x0 + 20 + r() * (gang.x1 - gang.x0 - 40), z: -278 - r() * 12 };
+    if (gang.x1 <= 0) return { x: -278 - r() * 12, z: gang.z0 + 10 + r() * (gang.z1 - gang.z0 - 20) };
+    return { x: 278 + r() * 12, z: gang.z0 + 10 + r() * (gang.z1 - gang.z0 - 20) };
+  }
+  // Wander targets stay on the sidewalk: a target on a road is pushed to
+  // the nearest sidewalk (7.6m off the road centre), so members never
+  // idle standing in traffic.
+  sidewalkClamp(p) {
+    for (const l of this.lines) {
+      if (l.axis === 'z' && Math.abs(p.x - l.at) < 7 && p.z >= -266 && p.z <= 266) p.x = l.at + (p.x < l.at ? -SIDEWALK : SIDEWALK);
+      if (l.axis === 'x' && Math.abs(p.z - l.at) < 7 && p.x >= -266 && p.x <= 266) p.z = l.at + (p.z < l.at ? -SIDEWALK : SIDEWALK);
+    }
+    return p;
+  }
+  setDensity(minutes) {
+    this.target = Math.max(0, Math.round(GANGS.length * PER_GANG * densityForMinute(minutes)));
+    let active = 0;
+    for (const m of this.members) {
+      if (active < this.target) { if (m.dormant) this.respawn(m); active++; }
+      else if (!m.dormant) { m.dormant = true; m.hostile = false; m.mesh.group.visible = false; }
+    }
+    this.activeCount = active;
+  }
+  respawn(m) {
+    m.dormant = false; m.hostile = false; m.knockedTimer = 0; m.walking = false;
+    m.mesh.group.visible = true; m.mesh.group.rotation.x = 0; m.mesh.group.position.y = 0;
+    m.home = this.turfPoint(GANGS[m.gang]); m.tx = m.home.x; m.tz = m.home.z;
+    m.mesh.group.position.set(m.home.x, 0, m.home.z);
+  }
+  onAttacked(m, lethal) {
+    if (lethal) {
+      m.knockedTimer = KNOCKED_SECONDS;
+      m.mesh.group.rotation.x = Math.PI / 2;
+      m.mesh.group.position.y = 0.4;
+    } else m.hostile = true;
+    // Nearby members of the same gang join the fight.
+    for (const o of this.members) {
+      if (o === m || o.gang !== m.gang || o.dormant || o.knockedTimer > 0) continue;
+      const p = o.mesh.group.position, q = m.mesh.group.position;
+      if (Math.hypot(p.x - q.x, p.z - q.z) < JOIN_RANGE) o.hostile = true;
+    }
+  }
+  update(dt, playerPos) {
+    for (let g = 0; g < GANGS.length; g++) this.tauntTimer[g] -= dt;
+    for (const m of this.members) {
+      if (m.dormant) {
+        m.retryTimer -= dt;
+        if (m.retryTimer <= 0) { m.retryTimer = RETRY_SECONDS; if (this.activeCount < this.target) { this.respawn(m); this.activeCount++; } }
+        continue;
+      }
+      const pos = m.mesh.group.position;
+      if (m.knockedTimer > 0) {
+        m.knockedTimer -= dt;
+        if (m.knockedTimer <= 0) { pos.y = 0; m.mesh.group.rotation.x = 0; m.hostile = true; }
+        continue;
+      }
+      const dx = playerPos.x - pos.x, dz = playerPos.z - pos.z;
+      const dist = Math.hypot(dx, dz);
+      if (m.hostile) {
+        m.punchTimer -= dt;
+        if (dist > CHASE_RANGE) { m.hostile = false; m.walking = false; }
+        else if (dist < PUNCH_RANGE) {
+          m.mesh.group.rotation.y = Math.atan2(dx, dz);
+          if (m.punchTimer <= 0) { m.punchTimer = PUNCH_CD; m.mesh.armRight.rotation.x = -1.8; this.cb.onPunch(PUNCH_DMG); }
+          else m.mesh.armRight.rotation.x *= 0.8;
+        } else this.walkToward(m, playerPos.x, playerPos.z, CHASE_SPEED, dt);
+        continue;
+      }
+      if (dist < TAUNT_RANGE && this.tauntTimer[m.gang] <= 0) { this.tauntTimer[m.gang] = TAUNT_CD; this.cb.onTaunt(GANGS[m.gang].taunt); }
+      if (!m.walking) {
+        if (this.rng() < dt * 0.1) {
+          const a = this.rng() * Math.PI * 2, r = 3 + this.rng() * 3;
+          const t = this.sidewalkClamp({ x: m.home.x + Math.cos(a) * r, z: m.home.z + Math.sin(a) * r });
+          m.tx = t.x; m.tz = t.z; m.walking = true;
+        }
+      } else if (this.walkToward(m, m.tx, m.tz, WALK_SPEED, dt)) m.walking = false;
+    }
+  }
+  walkToward(m, tx, tz, speed, dt) {
+    const pos = m.mesh.group.position;
+    const dx = tx - pos.x, dz = tz - pos.z;
+    const dist = Math.hypot(dx, dz);
+    if (dist < 0.3) return true;
+    const step = Math.min(dist, speed * dt);
+    pos.x += (dx / dist) * step; pos.z += (dz / dist) * step;
+    m.mesh.group.rotation.y = Math.atan2(dx, dz);
+    m.walkPhase += dt * 6;
+    const swing = Math.sin(m.walkPhase) * 0.5;
+    m.mesh.legLeft.rotation.x = swing; m.mesh.legRight.rotation.x = -swing;
+    m.mesh.armLeft.rotation.x = -swing; m.mesh.armRight.rotation.x = swing;
+    return false;
+  }
+}

@@ -1,1 +1,100 @@
-import{MISSIONS_IN_STORY as e}from"./missions.js";const t="solaris-keys-save-",o="solaris-keys-look",s="solaris-keys-settings-v2",n=new Map;export function saveGame(e,o){const s={...o,version:1,savedAt:Date.now()};n.set(e,s);try{return localStorage.setItem(t+e,JSON.stringify(s)),!0}catch{return!0}}export function loadGame(o){let s=null;try{const e=localStorage.getItem(t+o);e&&(s=JSON.parse(e))}catch{}return s||(s=n.get(o)||null),function(t){return!(!t||"object"!=typeof t||1!==t.version||"number"!=typeof t.money||t.money<0||"number"!=typeof t.rep||t.rep<0||!Number.isInteger(t.missionsDone)||t.missionsDone<0||t.missionsDone>e||!Array.isArray(t.weaponsOwned)||"number"!=typeof t.playerX||"number"!=typeof t.playerZ)}(s)?s:null}export function saveLook(e){try{localStorage.setItem(o,JSON.stringify(e))}catch{}}export function loadLook(){try{const e=JSON.parse(localStorage.getItem(o));if(e&&Number.isInteger(e.hair)&&Number.isInteger(e.shirt)&&Number.isInteger(e.skin))return e}catch{}return null}export const DEFAULT_SETTINGS={musicVolume:100,effectsVolume:100,station:0,quality:"high",shadows:!1,hudDensity:"full"};export function saveSettings(e){try{localStorage.setItem(s,JSON.stringify(e))}catch{}}export function loadSettings(){try{const e=localStorage.getItem(s),t={...DEFAULT_SETTINGS};if(!e)return t;const o=JSON.parse(e),n={...t};return"number"==typeof o.musicVolume&&(n.musicVolume=Math.max(0,Math.min(100,o.musicVolume))),"number"==typeof o.effectsVolume&&(n.effectsVolume=Math.max(0,Math.min(100,o.effectsVolume))),"number"==typeof o.station&&(n.station=Math.max(0,Math.min(2,Math.round(o.station)))),"high"!==o.quality&&"medium"!==o.quality&&"low"!==o.quality||(n.quality=o.quality),"boolean"==typeof o.shadows&&(n.shadows=o.shadows),"full"!==o.hudDensity&&"minimal"!==o.hudDensity||(n.hudDensity=o.hudDensity),n}catch{return{...DEFAULT_SETTINGS}}}export function latestSaveSlot(){let e=null,t=0;for(let o=1;o<=3;o+=1){const s=loadGame(o);s&&s.savedAt>t&&(t=s.savedAt,e=o)}return e}export function saveSlotSummaries(){const e=[];for(let t=1;t<=3;t+=1){const o=loadGame(t);e.push(o?{slot:t,money:o.money,rep:o.rep,missionsDone:o.missionsDone,savedAt:o.savedAt}:{slot:t,empty:!0})}return e}
+import { MISSIONS_IN_STORY } from './missions.js';
+const SAVE_SLOT_COUNT = 3;
+const SAVE_FORMAT_VERSION = 1;
+const SAVE_KEY_PREFIX = 'solaris-keys-save-';
+const LOOK_KEY = 'solaris-keys-look';
+const SETTINGS_KEY = 'solaris-keys-settings-v2';
+const memorySlots = new Map();
+function isValidSave(data) {
+  if (!data || typeof data !== 'object') return false;
+  if (data.version !== SAVE_FORMAT_VERSION) return false;
+  if (typeof data.money !== 'number' || data.money < 0) return false;
+  if (typeof data.rep !== 'number' || data.rep < 0) return false;
+  if (!Number.isInteger(data.missionsDone) || data.missionsDone < 0 || data.missionsDone > MISSIONS_IN_STORY) return false;
+  if (!Array.isArray(data.weaponsOwned)) return false;
+  if (typeof data.playerX !== 'number' || typeof data.playerZ !== 'number') return false;
+  return true;
+}
+export function saveGame(slot, data) {
+  const record = { ...data, version: SAVE_FORMAT_VERSION, savedAt: Date.now() };
+  memorySlots.set(slot, record);
+  try {
+    localStorage.setItem(SAVE_KEY_PREFIX + slot, JSON.stringify(record));
+    return true;
+  } catch {
+    return true;
+  }
+}
+export function loadGame(slot) {
+  let data = null;
+  try {
+    const raw = localStorage.getItem(SAVE_KEY_PREFIX + slot);
+    if (raw) data = JSON.parse(raw);
+  } catch {
+  }
+  if (!data) data = memorySlots.get(slot) || null;
+  return isValidSave(data) ? data : null;
+}
+export function saveLook(look) {
+  try {
+    localStorage.setItem(LOOK_KEY, JSON.stringify(look));
+  } catch {
+  }
+}
+export function loadLook() {
+  try {
+    const data = JSON.parse(localStorage.getItem(LOOK_KEY));
+    if (data && Number.isInteger(data.hair) && Number.isInteger(data.shirt) && Number.isInteger(data.skin)) return data;
+  } catch {
+  }
+  return null;
+}
+export const DEFAULT_SETTINGS = { musicVolume: 100, effectsVolume: 100, station: 0, quality: 'high', shadows: false, hudDensity: 'full' };
+export function saveSettings(settings) {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+  }
+}
+export function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const defaults = { ...DEFAULT_SETTINGS };
+    if (!raw) return defaults;
+    const parsed = JSON.parse(raw);
+    const settings = { ...defaults };
+    if (typeof parsed.musicVolume === 'number') settings.musicVolume = Math.max(0, Math.min(100, parsed.musicVolume));
+    if (typeof parsed.effectsVolume === 'number') settings.effectsVolume = Math.max(0, Math.min(100, parsed.effectsVolume));
+    if (typeof parsed.station === 'number') settings.station = Math.max(0, Math.min(2, Math.round(parsed.station)));
+    if (parsed.quality === 'high' || parsed.quality === 'medium' || parsed.quality === 'low') settings.quality = parsed.quality;
+    if (typeof parsed.shadows === 'boolean') settings.shadows = parsed.shadows;
+    if (parsed.hudDensity === 'full' || parsed.hudDensity === 'minimal') settings.hudDensity = parsed.hudDensity;
+    return settings;
+  } catch {
+    return { ...DEFAULT_SETTINGS };
+  }
+}
+export function latestSaveSlot() {
+  let bestSlot = null;
+  let bestTime = 0;
+  for (let slot = 1; slot <= SAVE_SLOT_COUNT; slot += 1) {
+    const data = loadGame(slot);
+    if (data && data.savedAt > bestTime) {
+      bestTime = data.savedAt;
+      bestSlot = slot;
+    }
+  }
+  return bestSlot;
+}
+export function saveSlotSummaries() {
+  const summaries = [];
+  for (let slot = 1; slot <= SAVE_SLOT_COUNT; slot += 1) {
+    const data = loadGame(slot);
+    summaries.push(
+      data
+        ? { slot, money: data.money, rep: data.rep, missionsDone: data.missionsDone, savedAt: data.savedAt }
+        : { slot, empty: true },
+    );
+  }
+  return summaries;
+}

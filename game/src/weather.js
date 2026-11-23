@@ -1,1 +1,84 @@
-import*as t from"three";const i=[16748395,110,430],s=[5925498,40,190];export class Weather{constructor(i,s){this.scene=i,this.rng=s,this.raining=!1,this.night=0,this._fogColor=new t.Color,this._nightFog=new t.Color(1314858),this.timer=60+60*s();const r=new Float32Array(1200);for(let t=0;t<400;t+=1)r[3*t]=70*(s()-.5),r[3*t+1]=26*s(),r[3*t+2]=70*(s()-.5);const e=new t.BufferGeometry;e.setAttribute("position",new t.BufferAttribute(r,3)),this.rain=new t.Points(e,new t.PointsMaterial({color:11191528,size:.14,transparent:!0,opacity:.65,depthWrite:!1})),this.rain.frustumCulled=!1,this.rain.visible=!1,i.add(this.rain),this.positions=r}get grip(){return this.raining?.55:1}get label(){return this.raining?"☂ RAIN":"☀ CLEAR"}setFog(t){this.scene.fog.color.setHex(t[0]),this.scene.fog.near=t[1],this.scene.fog.far=t[2]}startRain(){this.raining=!0,this.rain.visible=!0,this.setFog(s)}stopRain(){this.raining=!1,this.rain.visible=!1,this.setFog(i)}forceRain(){this.startRain(),this.timer=45}forceClear(){this.stopRain(),this.timer=60}update(t,r){this.timer-=t,this.timer<=0&&(this.raining?(this.stopRain(),this.timer=60+60*this.rng()):(this.startRain(),this.timer=45+30*this.rng()));const e=this.raining?s:i;if(this._fogColor.setHex(e[0]).lerp(this._nightFog,this.night),this.scene.fog.color.copy(this._fogColor),!this.raining)return;this.rain.position.set(r.x,0,r.z);const n=this.positions;for(let i=0;i<400;i+=1)n[3*i+1]-=55*t,n[3*i+1]>=0||(n[3*i+1]=26,n[3*i]=70*(this.rng()-.5),n[3*i+2]=70*(this.rng()-.5));this.rain.geometry.attributes.position.needsUpdate=!0}}
+import * as THREE from 'three';
+const DROPS = 400, AREA = 70, HEIGHT = 26, FALL = 55, RAIN_GRIP = 0.55;
+const CLEAR_MIN = 60, CLEAR_MAX = 120, RAIN_MIN = 45, RAIN_MAX = 75;
+const CLEAR_FOG = [0xff8f6b, 110, 430], RAIN_FOG = [0x5a6a7a, 40, 190];
+const NIGHT_FOG = 0x14102a;
+export class Weather {
+  constructor(scene, rng) {
+    this.scene = scene;
+    this.rng = rng;
+    this.raining = false;
+    this.night = 0;
+    this._fogColor = new THREE.Color();
+    this._nightFog = new THREE.Color(NIGHT_FOG);
+    this.timer = CLEAR_MIN + rng() * (CLEAR_MAX - CLEAR_MIN);
+    const positions = new Float32Array(DROPS * 3);
+    for (let i = 0; i < DROPS; i += 1) {
+      positions[i * 3] = (rng() - 0.5) * AREA;
+      positions[i * 3 + 1] = rng() * HEIGHT;
+      positions[i * 3 + 2] = (rng() - 0.5) * AREA;
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.rain = new THREE.Points(geometry, new THREE.PointsMaterial({ color: 0xaac4e8, size: 0.14, transparent: true, opacity: 0.65, depthWrite: false }));
+    this.rain.frustumCulled = false;
+    this.rain.visible = false;
+    scene.add(this.rain);
+    this.positions = positions;
+  }
+  get grip() {
+    return this.raining ? RAIN_GRIP : 1;
+  }
+  get label() {
+    return this.raining ? '☂ RAIN' : '☀ CLEAR';
+  }
+  setFog(fog) {
+    this.scene.fog.color.setHex(fog[0]);
+    this.scene.fog.near = fog[1];
+    this.scene.fog.far = fog[2];
+  }
+  startRain() {
+    this.raining = true;
+    this.rain.visible = true;
+    this.setFog(RAIN_FOG);
+  }
+  stopRain() {
+    this.raining = false;
+    this.rain.visible = false;
+    this.setFog(CLEAR_FOG);
+  }
+  forceRain() {
+    this.startRain();
+    this.timer = RAIN_MIN;
+  }
+  forceClear() {
+    this.stopRain();
+    this.timer = CLEAR_MIN;
+  }
+  update(dt, focusPos) {
+    this.timer -= dt;
+    if (this.timer <= 0) {
+      if (this.raining) {
+        this.stopRain();
+        this.timer = CLEAR_MIN + this.rng() * (CLEAR_MAX - CLEAR_MIN);
+      } else {
+        this.startRain();
+        this.timer = RAIN_MIN + this.rng() * (RAIN_MAX - RAIN_MIN);
+      }
+    }
+    const base = this.raining ? RAIN_FOG : CLEAR_FOG;
+    this._fogColor.setHex(base[0]).lerp(this._nightFog, this.night);
+    this.scene.fog.color.copy(this._fogColor);
+    if (!this.raining) return;
+    this.rain.position.set(focusPos.x, 0, focusPos.z);
+    const positions = this.positions;
+    for (let i = 0; i < DROPS; i += 1) {
+      positions[i * 3 + 1] -= FALL * dt;
+      if (positions[i * 3 + 1] >= 0) continue;
+      positions[i * 3 + 1] = HEIGHT;
+      positions[i * 3] = (this.rng() - 0.5) * AREA;
+      positions[i * 3 + 2] = (this.rng() - 0.5) * AREA;
+    }
+    this.rain.geometry.attributes.position.needsUpdate = true;
+  }
+}
