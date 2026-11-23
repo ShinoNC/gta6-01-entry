@@ -9,7 +9,7 @@ ringed by beach and open sea: 8 story jobs, 3 businesses to buy, a garage,
 side jobs, bank robberies, 4 gangs, a 5-star wanted system, day and night
 weather plus 40 hidden tapes, in one static page with no build step.
 
-v2 (24 Nov 2026): 10x10 map, tower and arena on the front row, pooled robbery cars, punch fix.
+v2 (24 November 2026): 10x10 map, tower and arena on the front row, pooled robbery cars, punch fix.
 
 ## Play
 
