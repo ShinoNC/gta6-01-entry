@@ -1,207 +1,374 @@
 import * as THREE from 'three';
-const WEAPON_SLOTS = [
-  { id: 'fists', name: 'FISTS', range: 2.6, cooldownSeconds: 0.45, magSize: 0, reserveAmmo: 0, locked: false, damage: 10 },
-  { id: 'pistol', name: 'PISTOL', range: 60, cooldownSeconds: 0.28, magSize: 12, reserveAmmo: 48, locked: true, damage: 12 },
-  { id: 'smg', name: 'SMG', range: 45, cooldownSeconds: 0.09, magSize: 30, reserveAmmo: 90, locked: true, damage: 12 },
-  { id: 'shotgun', name: 'SHOTGUN', range: 30, cooldownSeconds: 0.7, magSize: 6, reserveAmmo: 24, locked: true, damage: 30 },
+
+// Weapon rows: [id, name, range, cooldown, mag, reserve, locked, damage].
+const WEAPON_ROWS = [
+  ['fists', 'FISTS', 2.6, 0.45, 0, 0, false, 10],
+  ['pistol', 'PISTOL', 60, 0.28, 12, 48, true, 12],
+  ['smg', 'SMG', 45, 0.09, 30, 90, true, 12],
+  ['shotgun', 'SHOTGUN', 30, 0.7, 6, 24, true, 30],
 ];
-const RELOAD_SECONDS = 1.2;
-const TRACER_LIFE_SECONDS = 0.09;
-const MUZZLE_FLASH_SECONDS = 0.06;
-const SPREAD_BASE_RADIANS = 0.004;
-const SPREAD_PER_SHOT_RADIANS = 0.012;
-const SPREAD_MAX_RADIANS = 0.09;
-const SPREAD_RECOVER_PER_SECOND = 0.12;
-const RECOIL_PER_SHOT = 0.35;
-const RECOIL_RECOVER_PER_SECOND = 3;
-const AMMO_CRATE_PICKUP_METRES = 3;
-const AMMO_CRATE_RESPAWN_SECONDS = 45;
-const AMMO_CRATE_SPOTS = [
-  { x: 26, z: 26, name: 'Pelican Bay' },
-  { x: -78, z: -52, name: 'Old Port' },
-  { x: 78, z: -130, name: 'Harbor Lights' },
+const WEAPON_FIELDS = ['id', 'name', 'range', 'cooldownSeconds', 'magSize', 'reserveAmmo', 'locked', 'damage'];
+// Ammo crate spots: [x, z, name].
+const CRATE_ROWS = [
+  [26, 26, 'Pelican Bay'],
+  [-78, -52, 'Old Port'],
+  [78, -130, 'Harbor Lights'],
 ];
-// Weapon models: one GLB prop per slot (the rifle serves SMG + Shotgun).
-// The GLBs load async via the shared loader; a box gun shows until the
-// GLB arrives, and stays if the load fails.
-const GUN_MODEL_NAMES = { pistol: 'pistol', smg: 'assault-rifle', shotgun: 'assault-rifle' };
-// Model-space offset that centres the grip on the mount point, measured
-// from the Vinish GLBs (muzzle +Z, grip below the barrel line): the wrist
-// sits at the top of the grip, the barrel just above the hand.
-const GUN_MODEL_OFFSETS = {
-  pistol: { x: 0, y: -0.075, z: 0.055 },
-  'assault-rifle': { x: 0, y: -0.19, z: 0.07 },
+// Gun routing: slot id -> GLB prop name (the rifle serves SMG + Shotgun).
+const GUN_MODELS = new Map([
+  ['pistol', 'pistol'],
+  ['smg', 'assault-rifle'],
+  ['shotgun', 'assault-rifle'],
+]);
+// Grip offsets per GLB prop, measured from the Vinish models (muzzle +Z,
+// grip below the barrel line): [x, y, z].
+const GUN_OFFSETS = new Map([
+  ['pistol', [0, -0.075, 0.055]],
+  ['assault-rifle', [0, -0.19, 0.07]],
+]);
+const TUNE = {
+  reload: 1.2,
+  tracerLife: 0.09,
+  tracerPool: 6,
+  muzzleFlash: 0.06,
+  spreadBase: 0.004,
+  spreadShot: 0.012,
+  spreadMax: 0.09,
+  spreadRecover: 0.12,
+  recoilShot: 0.35,
+  recoilRecover: 3,
+  fistRecoil: 0.3,
+  cratePickup: 3,
+  crateRespawn: 45,
+  gunMount: [0.48, 1, 0.12],
+  parentRetry: 1,
 };
-// Group fallback mount (no hand bone yet): the game's action arm sits at
-// x +0.48, hand height, slightly forward so the muzzle clears the body.
-const GUN_GROUP_MOUNT = { x: 0.48, y: 1, z: 0.12 };
-const GUN_PARENT_RETRY_SECONDS = 1;
-const BOX_GUN_DARK = new THREE.MeshLambertMaterial({ color: 0x2a2a2e });
-const BOX_GUN_GRIP = new THREE.MeshLambertMaterial({ color: 0x1d1d20 });
-// Box fallback gun, built in the same model space as the GLB (origin at
-// the grip, muzzle +Z), so the GLB swap needs no transform change.
-function buildBoxGun(modelName) {
-  const group = new THREE.Group();
-  const addBox = (w, h, d, x, y, z, mat, rx = 0) => {
-    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat || BOX_GUN_DARK);
-    mesh.position.set(x, y, z);
-    if (rx) mesh.rotation.x = rx;
-    mesh.castShadow = true;
-    group.add(mesh);
-  };
-  if (modelName === 'pistol') {
-    addBox(0.03, 0.04, 0.2, 0, 0.12, 0);
-    addBox(0.026, 0.085, 0.05, 0, 0.042, -0.067, BOX_GUN_GRIP, 0.25);
-  } else {
-    addBox(0.05, 0.09, 0.88, 0, 0.2, 0.03);
-    addBox(0.03, 0.19, 0.08, 0, 0.096, 0.04, BOX_GUN_GRIP);
-    addBox(0.03, 0.13, 0.05, 0, 0.135, -0.07, BOX_GUN_GRIP, 0.3);
-    addBox(0.04, 0.12, 0.16, 0, 0.16, -0.34, BOX_GUN_GRIP);
+const GUN_DARK = new THREE.MeshLambertMaterial({ color: 0x2a2a2e });
+const GUN_GRIP = new THREE.MeshLambertMaterial({ color: 0x1d1d20 });
+// Box fallback gun parts per model: [w, h, d, x, y, z, grip?, tiltX].
+// Built in the same model space as the GLB (origin at the grip, muzzle
+// +Z), so the GLB swap needs no transform change.
+const BOX_GUN_PARTS = {
+  pistol: [
+    [0.03, 0.04, 0.2, 0, 0.12, 0, false, 0],
+    [0.026, 0.085, 0.05, 0, 0.042, -0.067, true, 0.25],
+  ],
+  'assault-rifle': [
+    [0.05, 0.09, 0.88, 0, 0.2, 0.03, false, 0],
+    [0.03, 0.19, 0.08, 0, 0.096, 0.04, true, 0],
+    [0.03, 0.13, 0.05, 0, 0.135, -0.07, true, 0.3],
+    [0.04, 0.12, 0.16, 0, 0.16, -0.34, true, 0],
+  ],
+};
+// Right-hand bone names, in all the spellings rigs use.
+const HAND_BONE_TEST = /^(hand_r|hand-r)$|righthand|right_hand/;
+// Ammo crate parts: a green box, a light lid, a spinning marker.
+const CRATE_PARTS = [
+  { kind: 'box', w: 0.9, h: 0.6, d: 0.9, color: 0x2a8a4a, y: 0.3, marker: false },
+  { kind: 'box', w: 0.95, h: 0.14, d: 0.95, color: 0x7affc4, y: 0.65, marker: false },
+  { kind: 'octa', r: 0.35, color: 0x7affc4, y: 1.6, marker: true },
+];
+// What a hit does, by target kind. Pedestrians take the plain callback;
+// vehicles, getaway cars and helicopters use the optional ones.
+const HIT_HANDLERS = {
+  pedestrian: (cb, hit, dmg) => cb.onHitPedestrian(hit.ref, true),
+  car: (cb, hit, dmg) => cb.onHitCar?.(hit.ref, dmg),
+  police: (cb, hit, dmg) => cb.onHitCar?.(hit.ref, dmg),
+  getaway: (cb, hit) => cb.onHitGetaway?.(hit.ref),
+  helicopter: (cb, hit, dmg) => cb.onHitHelicopter?.(hit.ref, dmg),
+};
+
+function buildWeaponSlots() {
+  const slots = [];
+  for (let r = 0; r < WEAPON_ROWS.length; r += 1) {
+    const row = WEAPON_ROWS[r];
+    const slot = {};
+    for (let i = 0; i < WEAPON_FIELDS.length; i += 1) slot[WEAPON_FIELDS[i]] = row[i];
+    slot.mag = slot.magSize;
+    slot.reserve = slot.reserveAmmo;
+    slots.push(slot);
   }
-  return group;
+  return slots;
 }
-function findHandBone(group) {
+
+function buildBoxGun(modelName) {
+  const holder = new THREE.Group();
+  const parts = BOX_GUN_PARTS[modelName] || BOX_GUN_PARTS['assault-rifle'];
+  for (let i = 0; i < parts.length; i += 1) {
+    const [w, h, d, x, y, z, grip, tilt] = parts[i];
+    const mesh = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), grip ? GUN_GRIP : GUN_DARK);
+    mesh.position.set(x, y, z);
+    if (tilt) mesh.rotation.x = tilt;
+    mesh.castShadow = true;
+    holder.add(mesh);
+  }
+  return holder;
+}
+
+function findHandBone(root) {
   let found = null;
-  group.traverse((child) => {
+  root.traverse((child) => {
     if (found || !child.isBone) return;
-    const name = child.name.toLowerCase();
-    if (name === 'hand_r' || name === 'hand-r' || name.includes('righthand') || name.includes('right_hand')) found = child;
+    if (HAND_BONE_TEST.test(child.name.toLowerCase())) found = child;
   });
   return found;
 }
+
+// Nearest target inside a 2D corridor along the shot direction.
 function rayHit(origin, direction, range, targets, los) {
   let best = null;
-  for (const target of targets) {
+  for (let i = 0; i < targets.length; i += 1) {
+    const target = targets[i];
     const dx = target.x - origin.x;
     const dz = target.z - origin.z;
     const along = dx * direction.x + dz * direction.z;
     if (along < 0 || along > range) continue;
-    const perpendicular = Math.abs(dx * direction.z - dz * direction.x);
-    if (perpendicular > target.radius) continue;
+    const miss = Math.abs(dx * direction.z - dz * direction.x);
+    if (miss > target.radius) continue;
     if (los && !los(origin, target)) continue;
     if (!best || along < best.along) best = { ...target, along };
   }
   return best;
 }
-function buildAmmoCrate(scene, spot) {
-  const group = new THREE.Group();
-  const box = new THREE.Mesh(new THREE.BoxGeometry(0.9, 0.6, 0.9), new THREE.MeshLambertMaterial({ color: 0x2a8a4a }));
-  box.position.y = 0.3;
-  const lid = new THREE.Mesh(new THREE.BoxGeometry(0.95, 0.14, 0.95), new THREE.MeshLambertMaterial({ color: 0x7affc4 }));
-  lid.position.y = 0.65;
-  const marker = new THREE.Mesh(new THREE.OctahedronGeometry(0.35), new THREE.MeshBasicMaterial({ color: 0x7affc4 }));
-  marker.position.y = 1.6;
-  group.add(box, lid, marker);
-  group.position.set(spot.x, 0, spot.z);
-  scene.add(group);
-  return { group, marker, x: spot.x, z: spot.z, name: spot.name, available: true, respawnTimer: 0 };
+
+function makeAmmoCrate(scene, row) {
+  const holder = new THREE.Group();
+  let marker = null;
+  for (let i = 0; i < CRATE_PARTS.length; i += 1) {
+    const part = CRATE_PARTS[i];
+    let mesh;
+    if (part.kind === 'octa') {
+      mesh = new THREE.Mesh(new THREE.OctahedronGeometry(part.r), new THREE.MeshBasicMaterial({ color: part.color }));
+      marker = mesh;
+    } else {
+      mesh = new THREE.Mesh(new THREE.BoxGeometry(part.w, part.h, part.d), new THREE.MeshLambertMaterial({ color: part.color }));
+    }
+    mesh.position.y = part.y;
+    holder.add(mesh);
+  }
+  holder.position.set(row[0], 0, row[1]);
+  scene.add(holder);
+  return { group: holder, marker, x: row[0], z: row[1], name: row[2], available: true, respawnTimer: 0 };
 }
+
+function buildTracerPool(scene, count) {
+  const pool = [];
+  for (let i = 0; i < count; i += 1) {
+    const geo = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
+    const line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: 0xfff2a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }));
+    line.visible = false;
+    scene.add(line);
+    pool.push({ line, life: 0 });
+  }
+  return pool;
+}
+
+function buildMuzzleFlash(scene) {
+  const flash = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
+  flash.visible = false;
+  scene.add(flash);
+  return flash;
+}
+
+function buildGunRigs() {
+  const rigs = {};
+  for (const [id, modelName] of GUN_MODELS) {
+    const offset = GUN_OFFSETS.get(modelName);
+    const mount = new THREE.Group();
+    const model = new THREE.Group();
+    model.position.set(offset[0], offset[1], offset[2]);
+    const box = buildBoxGun(modelName);
+    model.add(box);
+    mount.add(model);
+    mount.visible = false;
+    rigs[id] = { mount, model, box, glb: null, modelName, loaded: false };
+  }
+  return rigs;
+}
+
 export class Combat {
   constructor(scene, callbacks, effects) {
     this.scene = scene;
     this.callbacks = callbacks;
     this.effects = effects;
-    this.weapons = WEAPON_SLOTS.map((slot) => ({ ...slot, mag: slot.magSize, reserve: slot.reserveAmmo }));
+    this.weapons = buildWeaponSlots();
     this.selected = 0;
     this.cooldownTimer = 0;
     this.reloading = false;
     this.reloadTimer = 0;
     this.muzzleTimer = 0;
-    this.spread = SPREAD_BASE_RADIANS;
+    this.spread = TUNE.spreadBase;
     this.recoil = 0;
     this.tracerIndex = 0;
-    this.tracers = [];
-    for (let i = 0; i < 6; i += 1) {
-      const geometry = new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(), new THREE.Vector3()]);
-      const line = new THREE.Line(geometry, new THREE.LineBasicMaterial({ color: 0xfff2a8, transparent: true, opacity: 0, blending: THREE.AdditiveBlending }));
-      line.visible = false;
-      scene.add(line);
-      this.tracers.push({ line, life: 0 });
-    }
-    this.muzzle = new THREE.Mesh(new THREE.PlaneGeometry(0.7, 0.7), new THREE.MeshBasicMaterial({ color: 0xffe9a8, transparent: true, opacity: 0.95, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }));
-    this.muzzle.visible = false;
-    scene.add(this.muzzle);
-    this.gunGroups = {};
-    for (const id of ['pistol', 'smg', 'shotgun']) {
-      const modelName = GUN_MODEL_NAMES[id];
-      const offset = GUN_MODEL_OFFSETS[modelName];
-      const mount = new THREE.Group();
-      const model = new THREE.Group();
-      model.position.set(offset.x, offset.y, offset.z);
-      const box = buildBoxGun(modelName);
-      model.add(box);
-      mount.add(model);
-      mount.visible = false;
-      this.gunGroups[id] = { mount, model, box, glb: null, modelName, loaded: false };
-    }
+    this.tracers = buildTracerPool(scene, TUNE.tracerPool);
+    this.muzzle = buildMuzzleFlash(scene);
+    this.gunGroups = buildGunRigs();
     this.playerRef = null;
     this.playerGroup = null;
     this.gunParent = null;
     this.gunParentIsBone = false;
     this.gunParentRetryTimer = 0;
     this.loadGunModels();
-    this.ammoCrates = AMMO_CRATE_SPOTS.map((spot) => buildAmmoCrate(scene, spot));
+    this.ammoCrates = [];
+    for (let i = 0; i < CRATE_ROWS.length; i += 1) {
+      this.ammoCrates.push(makeAmmoCrate(scene, CRATE_ROWS[i]));
+    }
   }
+
   currentWeapon() {
     return this.weapons[this.selected];
   }
-  // Hand the combat system the player object (main calls this after both
-  // exist). The gun hangs off the right-hand bone when the player model
-  // is loaded, and off the player group at hand height until then.
+
+  selectWeapon(index) {
+    if (index < 0 || index >= this.weapons.length) return 'invalid';
+    if (this.weapons[index].locked) return 'locked';
+    this.selected = index;
+    this.reloading = false;
+    this.refreshWeaponVisibility();
+    return 'ok';
+  }
+
+  cycleWeapon(step) {
+    let tries = 0;
+    while (tries < this.weapons.length) {
+      tries += 1;
+      this.selected = (this.selected + step + this.weapons.length) % this.weapons.length;
+      if (!this.weapons[this.selected].locked) {
+        this.reloading = false;
+        this.refreshWeaponVisibility();
+        return this.currentWeapon().name;
+      }
+    }
+    return null;
+  }
+
+  unlockWeapon(id) {
+    for (let i = 0; i < this.weapons.length; i += 1) {
+      if (this.weapons[i].id === id) this.weapons[i].locked = false;
+    }
+  }
+
+  ownedWeaponIds() {
+    const ids = [];
+    for (let i = 0; i < this.weapons.length; i += 1) {
+      if (!this.weapons[i].locked) ids.push(this.weapons[i].id);
+    }
+    return ids;
+  }
+
+  setOwnedWeapons(ids) {
+    for (let i = 0; i < this.weapons.length; i += 1) {
+      this.weapons[i].locked = !ids.includes(this.weapons[i].id);
+    }
+  }
+
+  restock() {
+    for (let i = 0; i < this.weapons.length; i += 1) {
+      const weapon = this.weapons[i];
+      weapon.mag = weapon.magSize;
+      weapon.reserve = weapon.reserveAmmo;
+    }
+    this.reloading = false;
+  }
+
+  ammoForHud() {
+    const rows = [];
+    for (let i = 0; i < this.weapons.length; i += 1) {
+      const weapon = this.weapons[i];
+      rows.push({
+        name: weapon.name,
+        mag: weapon.mag,
+        reserve: weapon.reserve,
+        active: i === this.selected,
+        locked: weapon.locked,
+        reloading: this.reloading && i === this.selected,
+      });
+    }
+    return rows;
+  }
+
+  ammoCratesForHud() {
+    const rows = [];
+    for (let i = 0; i < this.ammoCrates.length; i += 1) {
+      const crate = this.ammoCrates[i];
+      rows.push({ x: crate.x, z: crate.z, available: crate.available });
+    }
+    return rows;
+  }
+
+  // Hand the combat system the player object (main calls this after
+  // both exist). The gun hangs off the right-hand bone when the
+  // player model is loaded, and off the player group at hand height
+  // until then.
   setPlayer(player) {
     this.playerRef = player || null;
     this.gunParentRetryTimer = 0;
     this.refreshGunParent();
   }
+
+  handBoneFrom(player) {
+    if (typeof player.getHandBone !== 'function') return null;
+    let found = null;
+    try {
+      found = player.getHandBone();
+    } catch (err) {
+      found = null;
+    }
+    // getHandBone returns the group itself until the model loads —
+    // only a real bone counts as the bone mount.
+    return found && found.isBone ? found : null;
+  }
+
+  mountOn(root) {
+    const found = findHandBone(root);
+    if (found) return { parent: found, isBone: true };
+    return { parent: root, isBone: false };
+  }
+
   resolveGunParent() {
     const player = this.playerRef;
     if (player) {
-      if (typeof player.getHandBone === 'function') {
-        let bone = null;
-        try {
-          bone = player.getHandBone();
-        } catch (error) {
-          bone = null;
-        }
-        // getHandBone returns the group itself until the model loads —
-        // only a real bone counts as the bone mount.
-        if (bone && bone.isBone) return { parent: bone, isBone: true };
-      }
-      if (player.group && player.group.isObject3D) {
-        const bone = findHandBone(player.group);
-        if (bone) return { parent: bone, isBone: true };
-        return { parent: player.group, isBone: false };
-      }
-    }
-    if (this.playerGroup) {
-      const bone = findHandBone(this.playerGroup);
+      const bone = this.handBoneFrom(player);
       if (bone) return { parent: bone, isBone: true };
-      return { parent: this.playerGroup, isBone: false };
+      if (player.group && player.group.isObject3D) return this.mountOn(player.group);
     }
+    if (this.playerGroup) return this.mountOn(this.playerGroup);
     return null;
   }
+
   refreshGunParent() {
     const resolved = this.resolveGunParent();
-    if (!resolved) return;
-    if (resolved.parent === this.gunParent) return;
+    if (!resolved || resolved.parent === this.gunParent) return;
     this.gunParent = resolved.parent;
     this.gunParentIsBone = resolved.isBone;
-    for (const rig of Object.values(this.gunGroups)) {
+    const keys = Object.keys(this.gunGroups);
+    for (let i = 0; i < keys.length; i += 1) {
+      const rig = this.gunGroups[keys[i]];
       resolved.parent.add(rig.mount);
-      if (resolved.isBone) rig.mount.position.set(0, 0, 0);
-      else rig.mount.position.set(GUN_GROUP_MOUNT.x, GUN_GROUP_MOUNT.y, GUN_GROUP_MOUNT.z);
+      if (resolved.isBone) {
+        rig.mount.position.set(0, 0, 0);
+      } else {
+        rig.mount.position.set(TUNE.gunMount[0], TUNE.gunMount[1], TUNE.gunMount[2]);
+      }
       rig.mount.rotation.set(0, 0, 0);
     }
   }
+
   refreshWeaponVisibility() {
-    const id = this.currentWeapon().id;
-    for (const [key, rig] of Object.entries(this.gunGroups)) rig.mount.visible = key === id;
+    const active = this.currentWeapon().id;
+    const keys = Object.keys(this.gunGroups);
+    for (let i = 0; i < keys.length; i += 1) {
+      this.gunGroups[keys[i]].mount.visible = keys[i] === active;
+    }
   }
+
   // GLB guns load in the background; the box gun shows until each one
   // arrives and stays on any failure (missing loader, missing file).
   loadGunModels() {
     import('./models_loader.js').then((loader) => {
-      for (const rig of Object.values(this.gunGroups)) {
+      const keys = Object.keys(this.gunGroups);
+      for (let i = 0; i < keys.length; i += 1) {
+        const rig = this.gunGroups[keys[i]];
         loader.loadProp(rig.modelName).then((glb) => {
           if (rig.loaded) return;
           rig.loaded = true;
@@ -215,12 +382,13 @@ export class Combat {
       }
     }).catch(() => {});
   }
+
   updateGunMount(dt, playerPos) {
     this.gunParentRetryTimer -= dt;
     if (this.gunParentRetryTimer > 0) return;
-    this.gunParentRetryTimer = GUN_PARENT_RETRY_SECONDS;
-    // No player object handed over: find the player group in the scene by
-    // position identity (update receives the group's own position vector).
+    this.gunParentRetryTimer = TUNE.parentRetry;
+    // No player object handed over: find the player group in the scene
+    // by position identity (update receives the group's own vector).
     if (!this.playerGroup && !this.playerRef && playerPos) {
       let found = null;
       this.scene.traverse((child) => {
@@ -230,57 +398,7 @@ export class Combat {
     }
     this.refreshGunParent();
   }
-  selectWeapon(index) {
-    if (index < 0 || index >= this.weapons.length) return 'invalid';
-    if (this.weapons[index].locked) return 'locked';
-    this.selected = index;
-    this.reloading = false;
-    this.refreshWeaponVisibility();
-    return 'ok';
-  }
-  cycleWeapon(step) {
-    for (let tries = 0; tries < this.weapons.length; tries += 1) {
-      this.selected = (this.selected + step + this.weapons.length) % this.weapons.length;
-      if (!this.weapons[this.selected].locked) {
-        this.reloading = false;
-        this.refreshWeaponVisibility();
-        return this.currentWeapon().name;
-      }
-    }
-    return null;
-  }
-  unlockWeapon(id) {
-    const weapon = this.weapons.find((candidate) => candidate.id === id);
-    if (weapon) weapon.locked = false;
-  }
-  ownedWeaponIds() {
-    return this.weapons.filter((weapon) => !weapon.locked).map((weapon) => weapon.id);
-  }
-  setOwnedWeapons(ids) {
-    for (const weapon of this.weapons) {
-      weapon.locked = !ids.includes(weapon.id);
-    }
-  }
-  restock() {
-    for (const weapon of this.weapons) {
-      weapon.mag = weapon.magSize;
-      weapon.reserve = weapon.reserveAmmo;
-    }
-    this.reloading = false;
-  }
-  ammoForHud() {
-    return this.weapons.map((weapon, index) => ({
-      name: weapon.name,
-      mag: weapon.mag,
-      reserve: weapon.reserve,
-      active: index === this.selected,
-      locked: weapon.locked,
-      reloading: this.reloading && index === this.selected,
-    }));
-  }
-  ammoCratesForHud() {
-    return this.ammoCrates.map((crate) => ({ x: crate.x, z: crate.z, available: crate.available }));
-  }
+
   fireTracer(from, to) {
     const tracer = this.tracers[this.tracerIndex];
     this.tracerIndex = (this.tracerIndex + 1) % this.tracers.length;
@@ -290,87 +408,91 @@ export class Combat {
     positions.needsUpdate = true;
     tracer.line.material.opacity = 0.9;
     tracer.line.visible = true;
-    tracer.life = TRACER_LIFE_SECONDS;
+    tracer.life = TUNE.tracerLife;
   }
+
   tryShoot(origin, aimYaw, targets) {
     if (this.cooldownTimer > 0 || this.reloading) return 'busy';
     const weapon = this.currentWeapon();
-    const aimError = (Math.random() - 0.5) * 2 * this.spread;
-    const direction = { x: -Math.sin(aimYaw + aimError), z: -Math.cos(aimYaw + aimError) };
+    const err = (Math.random() - 0.5) * 2 * this.spread;
+    const dir = { x: -Math.sin(aimYaw + err), z: -Math.cos(aimYaw + err) };
     this.cooldownTimer = weapon.cooldownSeconds;
-    if (weapon.id === 'fists') {
-      const hit = rayHit(origin, direction, weapon.range, targets.filter((target) => target.kind === 'pedestrian'), this.callbacks.los);
-      if (hit) {
-        this.callbacks.onHitPedestrian(hit.ref, false);
-        this.callbacks.onDamage?.({ x: hit.x, y: 1.2, z: hit.z }, weapon.damage);
-        this.recoil = Math.min(1, this.recoil + 0.3);
-      }
-      return hit ? 'punch' : 'whiff';
+    if (weapon.id === 'fists') return this.swingFists(origin, dir, weapon, targets);
+    return this.fireRound(origin, dir, weapon, targets);
+  }
+
+  swingFists(origin, dir, weapon, targets) {
+    const peds = [];
+    for (let i = 0; i < targets.length; i += 1) {
+      if (targets[i].kind === 'pedestrian') peds.push(targets[i]);
     }
+    const hit = rayHit(origin, dir, weapon.range, peds, this.callbacks.los);
+    if (!hit) return 'whiff';
+    this.callbacks.onHitPedestrian(hit.ref, false);
+    this.callbacks.onDamage?.({ x: hit.x, y: 1.2, z: hit.z }, weapon.damage);
+    this.recoil = Math.min(1, this.recoil + TUNE.fistRecoil);
+    return 'punch';
+  }
+
+  fireRound(origin, dir, weapon, targets) {
     if (weapon.mag <= 0) {
       if (weapon.reserve > 0) {
         this.reloading = true;
-        this.reloadTimer = RELOAD_SECONDS;
+        this.reloadTimer = TUNE.reload;
         return 'reloading';
       }
       return 'empty';
     }
     weapon.mag -= 1;
-    this.spread = Math.min(SPREAD_MAX_RADIANS, this.spread + SPREAD_PER_SHOT_RADIANS);
-    this.recoil = Math.min(1, this.recoil + RECOIL_PER_SHOT);
-    const muzzle = { x: origin.x + direction.x * 0.9, y: 1.4, z: origin.z + direction.z * 0.9 };
-    this.muzzle.position.set(muzzle.x, muzzle.y, muzzle.z);
+    this.spread = Math.min(TUNE.spreadMax, this.spread + TUNE.spreadShot);
+    this.recoil = Math.min(1, this.recoil + TUNE.recoilShot);
+    const mx = origin.x + dir.x * 0.9;
+    const mz = origin.z + dir.z * 0.9;
+    this.muzzle.position.set(mx, 1.4, mz);
     this.muzzle.rotation.z = Math.random() * Math.PI;
-    const flashScale = 0.8 + Math.random() * 0.5;
-    this.muzzle.scale.set(flashScale, flashScale, 1);
+    const flash = 0.8 + Math.random() * 0.5;
+    this.muzzle.scale.set(flash, flash, 1);
     this.muzzle.visible = true;
-    this.muzzleTimer = MUZZLE_FLASH_SECONDS;
-    const hit = rayHit(origin, direction, weapon.range, targets, this.callbacks.los);
-    const end = hit
-      ? { x: origin.x + direction.x * hit.along, y: 1.2, z: origin.z + direction.z * hit.along }
-      : { x: origin.x + direction.x * weapon.range, y: 1.2, z: origin.z + direction.z * weapon.range };
-    this.fireTracer(muzzle, end);
+    this.muzzleTimer = TUNE.muzzleFlash;
+    const hit = rayHit(origin, dir, weapon.range, targets, this.callbacks.los);
+    const dist = hit ? hit.along : weapon.range;
+    const end = { x: origin.x + dir.x * dist, y: 1.2, z: origin.z + dir.z * dist };
+    this.fireTracer({ x: mx, y: 1.4, z: mz }, end);
     if (hit) {
       this.effects.burstSparks(end.x, end.y, end.z);
       this.callbacks.onDamage?.(end, weapon.damage);
-      if (hit.kind === 'pedestrian') this.callbacks.onHitPedestrian(hit.ref, true);
-      if (hit.kind === 'car' || hit.kind === 'police') this.callbacks.onHitCar?.(hit.ref, weapon.damage);
-      if (hit.kind === 'getaway') this.callbacks.onHitGetaway?.(hit.ref);
-      if (hit.kind === 'helicopter') this.callbacks.onHitHelicopter?.(hit.ref, weapon.damage);
+      const handle = HIT_HANDLERS[hit.kind];
+      if (handle) handle(this.callbacks, hit, weapon.damage);
     }
     this.callbacks.onShot();
     if (weapon.mag === 0 && weapon.reserve > 0) {
       this.reloading = true;
-      this.reloadTimer = RELOAD_SECONDS;
+      this.reloadTimer = TUNE.reload;
     }
     return 'shot';
   }
-  update(dt, playerPos) {
-    this.updateGunMount(dt, playerPos);
-    this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
-    this.spread = Math.max(SPREAD_BASE_RADIANS, this.spread - SPREAD_RECOVER_PER_SECOND * dt);
-    this.recoil = Math.max(0, this.recoil - RECOIL_RECOVER_PER_SECOND * dt);
-    if (this.reloading) {
-      this.reloadTimer -= dt;
-      if (this.reloadTimer <= 0) {
-        const weapon = this.currentWeapon();
-        const taken = Math.min(weapon.magSize, weapon.reserve);
-        weapon.mag = taken;
-        weapon.reserve -= taken;
-        this.reloading = false;
-      }
-    }
-    if (this.muzzleTimer > 0) {
-      this.muzzleTimer -= dt;
-      if (this.muzzleTimer <= 0) this.muzzle.visible = false;
-    }
-    for (const tracer of this.tracers) {
+
+  finishReload() {
+    const weapon = this.currentWeapon();
+    const taken = Math.min(weapon.magSize, weapon.reserve);
+    weapon.mag = taken;
+    weapon.reserve -= taken;
+    this.reloading = false;
+  }
+
+  tickTracers(dt) {
+    for (let i = 0; i < this.tracers.length; i += 1) {
+      const tracer = this.tracers[i];
       if (tracer.life <= 0) continue;
       tracer.life -= dt;
-      tracer.line.material.opacity = Math.max(0, tracer.life / TRACER_LIFE_SECONDS) * 0.9;
+      tracer.line.material.opacity = Math.max(0, tracer.life / TUNE.tracerLife) * 0.9;
       if (tracer.life <= 0) tracer.line.visible = false;
     }
-    for (const crate of this.ammoCrates) {
+  }
+
+  tickCrates(dt, playerPos) {
+    for (let i = 0; i < this.ammoCrates.length; i += 1) {
+      const crate = this.ammoCrates[i];
       if (!crate.available) {
         crate.respawnTimer -= dt;
         if (crate.respawnTimer <= 0) {
@@ -381,13 +503,30 @@ export class Combat {
       }
       crate.marker.rotation.y += dt * 2;
       crate.marker.position.y = 1.6 + Math.sin(performance.now() / 300) * 0.12;
-      if (playerPos && Math.hypot(playerPos.x - crate.x, playerPos.z - crate.z) < AMMO_CRATE_PICKUP_METRES) {
+      if (playerPos && Math.hypot(playerPos.x - crate.x, playerPos.z - crate.z) < TUNE.cratePickup) {
         this.restock();
         crate.available = false;
-        crate.respawnTimer = AMMO_CRATE_RESPAWN_SECONDS;
+        crate.respawnTimer = TUNE.crateRespawn;
         crate.group.visible = false;
         this.callbacks.onAmmoPickup(crate.name);
       }
     }
+  }
+
+  update(dt, playerPos) {
+    this.updateGunMount(dt, playerPos);
+    this.cooldownTimer = Math.max(0, this.cooldownTimer - dt);
+    this.spread = Math.max(TUNE.spreadBase, this.spread - TUNE.spreadRecover * dt);
+    this.recoil = Math.max(0, this.recoil - TUNE.recoilRecover * dt);
+    if (this.reloading) {
+      this.reloadTimer -= dt;
+      if (this.reloadTimer <= 0) this.finishReload();
+    }
+    if (this.muzzleTimer > 0) {
+      this.muzzleTimer -= dt;
+      if (this.muzzleTimer <= 0) this.muzzle.visible = false;
+    }
+    this.tickTracers(dt);
+    this.tickCrates(dt, playerPos);
   }
 }

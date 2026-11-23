@@ -1,9 +1,44 @@
 import { createCar } from './vehicles.js';
 import { roadLines, headingFor } from './city.js';
 import { pick } from './random.js';
-const GETAWAY_SPEED = 26, GETAWAY_HEALTH = 100, RAM_DAMAGE = 25, SHOT_DAMAGE = 12, POLICE_RAM_DAMAGE = 2;
-const RAM_CD = 0.8, TIMEOUT = 120, FIRST_MIN = 90, FIRST_MAX = 150, NEXT_MIN = 120, NEXT_MAX = 240;
-const ESCAPE_RADIUS = 18, CHASER_SPEED = 34, CHASER_ACCEL = 16, RAM_RANGE = 4.5, FOLLOW_RANGE = 8;
+
+// Robbery tuning, grouped: the getaway car's pace and toughness, what
+// a ram and a bullet do to it, how often the event fires, and how the
+// pursuing units behave.
+const TUNE = {
+  getawaySpeed: 26,
+  getawayHealth: 100,
+  getawayAccel: 12,
+  ramDamage: 25,
+  shotDamage: 12,
+  policeRamDamage: 2,
+  ramCooldown: 0.8,
+  policeRamCooldown: 1,
+  eventTimeout: 120,
+  firstMin: 90,
+  firstMax: 150,
+  nextMin: 120,
+  nextMax: 240,
+  escapeRadius: 18,
+  chaserSpeed: 34,
+  chaserAccel: 16,
+  chaserStagger: 0.5,
+  ramRange: 4.5,
+  followRange: 8,
+  blinkRate: 2.8,
+  wheelRadius: 0.36,
+};
+const CHASER_COUNT = 2;
+const SPAWN_TRIES = 12;
+const SPAWN_MIN_DIST = 45;
+const SPAWN_MAX_DIST = 90;
+const CHASER_GAP_FIRST = 14;
+const CHASER_GAP_STEP = 8;
+const PARK_STEP = 10;
+
+// The off-map lot where the pooled cars sit invisible between events.
+const PARK = { x: -900, z: -900 };
+
 export class Robbery {
   constructor(scene, textures, city, rng, police, callbacks) {
     this.scene = scene;
@@ -17,118 +52,180 @@ export class Robbery {
     this.chasers = [];
     this.pendingChasers = [];
     this.spawnTimer = 0;
-    // Pooled cars, built once at init (hidden) and reused every robbery:
-    // building a car at robbery start — GLB attach, geometry merge,
-    // material clone, first-render shader compile — froze the game for
-    // up to a second on weaker devices, no matter how the spawns were
-    // staggered. Prewarming moves all of that to the loading screen.
+    // The pool holds the three event cars, built once while loading and
+    // parked out of sight. Assembling a car mid-game — attaching the
+    // GLB, merging geometry, cloning materials, compiling shaders on
+    // first draw — stalled the frame for up to a second on slow
+    // machines, however the spawns were spread out. Building them up
+    // front shifts every bit of that cost to the loading screen.
     this.pool = { getaway: null, chasers: [] };
     this.escape = null;
     this.eventTimer = 0;
-    this.timer = FIRST_MIN + rng() * (FIRST_MAX - FIRST_MIN);
+    this.timer = TUNE.firstMin + rng() * (TUNE.firstMax - TUNE.firstMin);
     this.clock = 0;
     this.lastHitBy = null;
   }
+
   get active() {
     return this.getaway !== null;
   }
+
   get blip() {
-    return this.getaway ? { x: this.getaway.car.position.x, z: this.getaway.car.position.z } : null;
+    if (!this.getaway) return null;
+    const p = this.getaway.car.position;
+    return { x: p.x, z: p.z };
   }
+
   forceStart() {
     this.timer = 0;
   }
+
+  _hideCar(car) {
+    car.group.visible = false;
+  }
+
+  _showCar(car) {
+    car.group.visible = true;
+  }
+
+  _moveCarTo(car, x, z) {
+    car.group.position.set(x, 0, z);
+  }
+
+  _aimCar(car, heading) {
+    car.heading = heading;
+    car.group.rotation.y = heading;
+  }
+
+  _stashCar(car) {
+    car.group.visible = false;
+    car.group.position.set(PARK.x, 0, PARK.z);
+  }
+
   prewarm() {
-    // Build the 3 robbery cars now (loading screen) and park them
-    // invisible far off-map. startEvent only repositions + shows them.
-    const g = createCar(this.scene, this.textures, 'GETAWAY', this.textures.carBlue, 0x14141a, -900, -900, 0);
-    g.group.visible = false;
-    this.pool.getaway = g;
-    for (let i = 0; i < 2; i += 1) {
-      const unit = this.police.createPoliceCar(-900, -900 - (i + 1) * 10, 0, `CHASE-${i + 1}`);
-      unit.car.group.visible = false;
+    // Assemble the event fleet now, while the loading screen is up, and
+    // tuck it away far off the map. startEvent only has to move the
+    // cars into place and switch them on.
+    const getaway = createCar(this.scene, this.textures, 'GETAWAY', this.textures.carBlue, 0x14141a, PARK.x, PARK.z, 0);
+    this._hideCar(getaway);
+    this.pool.getaway = getaway;
+    for (let i = 0; i < CHASER_COUNT; i += 1) {
+      const unit = this.police.createPoliceCar(PARK.x, PARK.z - (i + 1) * PARK_STEP, 0, 'CHASE-' + (i + 1));
+      this._hideCar(unit.car);
       this.pool.chasers.push(unit);
     }
   }
-  pickEscapePoint(fromX, fromZ) {
-    let best = null, bestDist = -1;
+
+  _roadEnds() {
+    const ends = [];
     for (const line of this.lines) {
-      const ends = line.axis === 'x' ? [{ x: line.from, z: line.at }, { x: line.to, z: line.at }] : [{ x: line.at, z: line.from }];
-      for (const end of ends) {
-        const dist = Math.hypot(end.x - fromX, end.z - fromZ);
-        if (dist > bestDist) {
-          bestDist = dist;
-          best = end;
-        }
+      if (line.axis === 'x') {
+        ends.push({ x: line.from, z: line.at });
+        ends.push({ x: line.to, z: line.at });
+      } else {
+        ends.push({ x: line.at, z: line.from });
+      }
+    }
+    return ends;
+  }
+
+  pickEscapePoint(fromX, fromZ) {
+    let best = null;
+    let bestDist = -1;
+    for (const end of this._roadEnds()) {
+      const d = Math.hypot(end.x - fromX, end.z - fromZ);
+      if (d > bestDist) {
+        bestDist = d;
+        best = end;
       }
     }
     return best;
   }
-  startEvent(playerPos) {
+
+  _pointOnLine(line, along) {
+    return line.axis === 'z' ? { x: line.at, z: along } : { x: along, z: line.at };
+  }
+
+  _pickSpawn(playerPos) {
     let line = pick(this.rng, this.lines);
     let along = line.from + this.rng() * (line.to - line.from);
-    for (let attempt = 0; attempt < 12; attempt += 1) {
+    for (let attempt = 0; attempt < SPAWN_TRIES; attempt += 1) {
       const candidate = pick(this.rng, this.lines);
       const candidateAlong = candidate.from + this.rng() * (candidate.to - candidate.from);
-      const candidateX = candidate.axis === 'z' ? candidate.at : candidateAlong;
-      const candidateZ = candidate.axis === 'z' ? candidateAlong : candidate.at;
-      const dist = Math.hypot(candidateX - playerPos.x, candidateZ - playerPos.z);
-      if (dist > 45 && dist < 90) {
+      const spot = this._pointOnLine(candidate, candidateAlong);
+      const dist = Math.hypot(spot.x - playerPos.x, spot.z - playerPos.z);
+      if (dist > SPAWN_MIN_DIST && dist < SPAWN_MAX_DIST) {
         line = candidate;
         along = candidateAlong;
         break;
       }
     }
-    const direction = this.rng() < 0.5 ? -1 : 1;
-    const x = line.axis === 'z' ? line.at : along;
-    const z = line.axis === 'z' ? along : line.at;
-    const car = this.pool.getaway;
-    car.group.visible = true;
-    car.group.position.set(x, 0, z);
-    car.heading = headingFor(line.axis, direction);
-    car.group.rotation.y = car.heading;
-    car.speed = GETAWAY_SPEED;
-    this.getaway = { car, line, direction, along, speed: GETAWAY_SPEED, health: GETAWAY_HEALTH, stopped: false, ramCooldown: 0, turnCooldown: 0 };
-    this.police.placeOnRoad(this.getaway);
-    this.escape = this.pickEscapePoint(x, z);
-    this.eventTimer = TIMEOUT;
-    this.lastHitBy = null;
-    this.chasers = [];
-    // Stagger the 2 chaser spawns across frames: building the getaway car
-    // + 2 police cars in one frame froze the game for ~1s every time a
-    // robbery started (same hitch as the old police spawn loop).
-    this.pendingChasers = [];
-    for (let i = 0; i < 2; i += 1) {
-      const behind = Math.max(line.from + 2, Math.min(line.to - 2, along - direction * (14 + i * 8)));
-      this.pendingChasers.push({
+    return { line, along };
+  }
+
+  _stageChasers(line, along, direction) {
+    const staged = [];
+    for (let i = 0; i < CHASER_COUNT; i += 1) {
+      const behind = Math.max(line.from + 2, Math.min(line.to - 2, along - direction * (CHASER_GAP_FIRST + i * CHASER_GAP_STEP)));
+      const spot = this._pointOnLine(line, behind);
+      staged.push({
         unit: this.pool.chasers[i],
-        x: line.axis === 'z' ? line.at : behind,
-        z: line.axis === 'z' ? behind : line.at,
+        x: spot.x,
+        z: spot.z,
         heading: headingFor(line.axis, direction),
         line, direction, along: behind,
       });
     }
+    return staged;
+  }
+
+  startEvent(playerPos) {
+    const spawn = this._pickSpawn(playerPos);
+    const direction = this.rng() < 0.5 ? -1 : 1;
+    const spot = this._pointOnLine(spawn.line, spawn.along);
+    const car = this.pool.getaway;
+    this._showCar(car);
+    this._moveCarTo(car, spot.x, spot.z);
+    this._aimCar(car, headingFor(spawn.line.axis, direction));
+    car.speed = TUNE.getawaySpeed;
+    this.getaway = {
+      car, speed: TUNE.getawaySpeed, health: TUNE.getawayHealth,
+      line: spawn.line, direction, along: spawn.along,
+      stopped: false, ramCooldown: 0, turnCooldown: 0,
+    };
+    this.police.placeOnRoad(this.getaway);
+    this.escape = this.pickEscapePoint(spot.x, spot.z);
+    this.eventTimer = TUNE.eventTimeout;
+    this.lastHitBy = null;
+    this.chasers = [];
+    this.pendingChasers = this._stageChasers(spawn.line, spawn.along, direction);
     this.callbacks.onStart();
   }
+
   damage(amount, by) {
-    if (!this.getaway || this.getaway.stopped) return;
-    this.getaway.health -= amount;
+    const g = this.getaway;
+    if (!g || g.stopped) return;
+    g.health -= amount;
     this.lastHitBy = by;
-    if (this.getaway.health > 0) return;
-    this.getaway.stopped = true;
-    this.getaway.speed = 0;
+    if (g.health > 0) return;
+    g.stopped = true;
+    g.speed = 0;
     this.finish(true);
   }
+
   shotByPlayer() {
-    this.damage(SHOT_DAMAGE, 'player');
+    this.damage(TUNE.shotDamage, 'player');
   }
+
   ramByPlayer() {
-    if (!this.getaway || this.getaway.stopped || this.getaway.ramCooldown > 0) return false;
-    this.getaway.ramCooldown = RAM_CD;
-    this.getaway.speed *= 0.4;
-    this.damage(RAM_DAMAGE, 'player');
+    const g = this.getaway;
+    if (!g || g.stopped || g.ramCooldown > 0) return false;
+    g.ramCooldown = TUNE.ramCooldown;
+    g.speed *= 0.4;
+    this.damage(TUNE.ramDamage, 'player');
     return true;
   }
+
   finish(stopped) {
     const byPlayer = stopped && this.lastHitBy === 'player';
     const getaway = this.getaway;
@@ -137,59 +234,92 @@ export class Robbery {
     this.chasers = [];
     this.pendingChasers = [];
     this.spawnTimer = 0;
-    // Pooled cars, built once at init (hidden) and reused every robbery:
-    // building a car at robbery start — GLB attach, geometry merge,
-    // material clone, first-render shader compile — froze the game for
-    // up to a second on weaker devices, no matter how the spawns were
-    // staggered. Prewarming moves all of that to the loading screen.
     this.pool = { getaway: null, chasers: [] };
     this.escape = null;
-    this.timer = NEXT_MIN + this.rng() * (NEXT_MAX - NEXT_MIN);
-    if (getaway) {
-      getaway.car.group.visible = false;
-      getaway.car.group.position.set(-900, 0, -900);
-    }
-    for (const unit of chasers) {
-      unit.car.group.visible = false;
-      unit.car.group.position.set(-900, 0, -900);
-    }
+    this.timer = TUNE.nextMin + this.rng() * (TUNE.nextMax - TUNE.nextMin);
+    if (getaway) this._stashCar(getaway.car);
+    for (const unit of chasers) this._stashCar(unit.car);
     if (stopped) this.callbacks.onStopped(byPlayer);
     else this.callbacks.onEscaped();
   }
+
+  _decayCooldowns(unit, dt) {
+    unit.turnCooldown = Math.max(0, unit.turnCooldown - dt);
+    unit.ramCooldown = Math.max(0, unit.ramCooldown - dt);
+  }
+
+  _advanceOnRoad(unit, speed, dt) {
+    unit.along += unit.direction * speed * dt;
+    if (unit.along < unit.line.from || unit.along > unit.line.to) unit.direction *= -1;
+    this.police.placeOnRoad(unit);
+  }
+
+  _spinWheels(car, speed, dt) {
+    for (const wheel of car.wheels) wheel.wheel.rotation.x += (speed / TUNE.wheelRadius) * dt;
+  }
+
+  _flashLights(unit) {
+    const on = Math.floor(this.clock * TUNE.blinkRate) % 2 === 0;
+    unit.redMaterial.color.setHex(on ? 0xff2a3a : 0x551018);
+    unit.blueMaterial.color.setHex(on ? 0x10204d : 0x2a6bff);
+  }
+
   moveGetaway(dt) {
     const unit = this.getaway;
     if (unit.stopped) return;
-    unit.turnCooldown = Math.max(0, unit.turnCooldown - dt);
-    unit.ramCooldown = Math.max(0, unit.ramCooldown - dt);
-    unit.speed = Math.min(GETAWAY_SPEED, unit.speed + 12 * dt);
+    this._decayCooldowns(unit, dt);
+    unit.speed = Math.min(TUNE.getawaySpeed, unit.speed + TUNE.getawayAccel * dt);
     this.police.maybeTurnAtIntersection(unit, this.escape);
-    unit.along += unit.direction * unit.speed * dt;
-    if (unit.along < unit.line.from || unit.along > unit.line.to) unit.direction *= -1;
-    this.police.placeOnRoad(unit);
-    for (const wheel of unit.car.wheels) wheel.wheel.rotation.x += (unit.speed / 0.36) * dt;
-    if (Math.hypot(unit.car.position.x - this.escape.x, unit.car.position.z - this.escape.z) < ESCAPE_RADIUS) this.finish(false);
+    this._advanceOnRoad(unit, unit.speed, dt);
+    this._spinWheels(unit.car, unit.speed, dt);
+    const dx = unit.car.position.x - this.escape.x;
+    const dz = unit.car.position.z - this.escape.z;
+    if (Math.hypot(dx, dz) < TUNE.escapeRadius) this.finish(false);
   }
+
   moveChaser(dt, unit) {
     const target = this.getaway.car.position;
     const car = unit.car;
     const dist = Math.hypot(target.x - car.position.x, target.z - car.position.z);
-    const blinkOn = Math.floor(this.clock * 2.8) % 2 === 0;
-    unit.redMaterial.color.setHex(blinkOn ? 0xff2a3a : 0x551018);
-    unit.blueMaterial.color.setHex(blinkOn ? 0x10204d : 0x2a6bff);
+    this._flashLights(unit);
     unit.turnCooldown = Math.max(0, unit.turnCooldown - dt);
-    car.speed = Math.min(CHASER_SPEED, car.speed + CHASER_ACCEL * dt);
-    if (dist < FOLLOW_RANGE) car.speed = Math.min(car.speed, this.getaway.speed);
+    car.speed = Math.min(TUNE.chaserSpeed, car.speed + TUNE.chaserAccel * dt);
+    if (dist < TUNE.followRange) car.speed = Math.min(car.speed, this.getaway.speed);
     this.police.maybeTurnAtIntersection(unit, target);
-    unit.along += unit.direction * car.speed * dt;
-    if (unit.along < unit.line.from || unit.along > unit.line.to) unit.direction *= -1;
-    this.police.placeOnRoad(unit);
+    this._advanceOnRoad(unit, car.speed, dt);
     if (unit.ramCooldown > 0) unit.ramCooldown -= dt;
-    else if (dist < RAM_RANGE) {
-      unit.ramCooldown = 1;
-      this.damage(POLICE_RAM_DAMAGE, 'police');
+    else if (dist < TUNE.ramRange) {
+      unit.ramCooldown = TUNE.policeRamCooldown;
+      this.damage(TUNE.policeRamDamage, 'police');
     }
-    for (const wheel of car.wheels) wheel.wheel.rotation.x += (car.speed / 0.36) * dt;
+    this._spinWheels(car, car.speed, dt);
   }
+
+  _placeChaser(unit, spec) {
+    unit.line = spec.line;
+    unit.direction = spec.direction;
+    unit.along = spec.along;
+    unit.turnCooldown = 0;
+    unit.ramCooldown = 0;
+    unit.car.speed = TUNE.chaserSpeed;
+    this._aimCar(unit.car, spec.heading);
+    this._moveCarTo(unit.car, spec.x, spec.z);
+    this._showCar(unit.car);
+  }
+
+  _deployPending(dt) {
+    // One chaser every half second. The GLB attach (geometry merge,
+    // material clone, first-draw shader compile) lands a frame after
+    // the car appears, so bunching the deploys still piled every
+    // attach into the same few frames and stalled the game.
+    this.spawnTimer -= dt;
+    if (this.pendingChasers.length === 0 || this.spawnTimer > 0) return;
+    this.spawnTimer = TUNE.chaserStagger;
+    const spec = this.pendingChasers.shift();
+    this._placeChaser(spec.unit, spec);
+    this.chasers.push(spec.unit);
+  }
+
   update(dt, context) {
     this.clock += dt;
     if (!this.getaway) {
@@ -202,27 +332,7 @@ export class Robbery {
       this.finish(false);
       return;
     }
-    // One pending chaser per 0.5s: the GLB attach (geometry merge +
-    // material clone + first-render shader compile) lands a frame after
-    // createCar, so per-frame staggering still piled all 3 attaches
-    // into the same ~50ms and froze the game.
-    this.spawnTimer -= dt;
-    if (this.pendingChasers.length > 0 && this.spawnTimer <= 0) {
-      this.spawnTimer = 0.5;
-      const spec = this.pendingChasers.shift();
-      const unit = spec.unit;
-      unit.car.group.visible = true;
-      unit.car.group.position.set(spec.x, 0, spec.z);
-      unit.car.heading = spec.heading;
-      unit.car.group.rotation.y = spec.heading;
-      unit.line = spec.line;
-      unit.direction = spec.direction;
-      unit.along = spec.along;
-      unit.turnCooldown = 0;
-      unit.ramCooldown = 0;
-      unit.car.speed = CHASER_SPEED;
-      this.chasers.push(unit);
-    }
+    this._deployPending(dt);
     this.moveGetaway(dt);
     if (!this.getaway) return;
     for (const unit of this.chasers) this.moveChaser(dt, unit);

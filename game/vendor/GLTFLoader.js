@@ -1,3 +1,4 @@
+// GLTFLoader vendored from three.js r160; loaded by models_loader.js for GLB vehicles and characters.
 import {
 	AnimationClip,
 	Bone,
