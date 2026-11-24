@@ -11,6 +11,11 @@ weather plus 40 hidden tapes, in one static page with no build step.
 
 v2 (24 November 2026): 10x10 map, tower and arena on the front row, pooled robbery cars, punch fix.
 
+v3 (24 November 2026): the entry file split into focused modules — main.js
+is 799 lines (was 2302), with state in context.js, tuning in tuning.js,
+screens in menus.js, moment-to-moment play in gameplay.js, saves in
+savegame.js, UI wiring in bindings.js and the world build in boot.js.
+
 ## Play
 
 Serve `game/` as static files (or run `node serve.ts`), then open
@@ -24,8 +29,13 @@ three.js ships vendored under `game/vendor/`, and textures and radio are local.
 ## What's inside
 
 - `game/index.html` — the whole page: HUD, menus, minimap, full map.
-- `game/src/` — 26 ES modules covering city, traffic (48 cars), police,
+- `game/src/` — 38 ES modules covering city, traffic (48 cars), police,
   combat, missions, businesses, side jobs, robberies, weather, audio, save.
+  The entry file is split: `main.js` (frame loop, start/pause) with shared
+  state in `context.js`, tuning in `tuning.js`, screens in `menus.js`,
+  play in `gameplay.js`, saves in `savegame.js`, UI wiring in `bindings.js`,
+  the world build in `boot.js`, look in `look.js`, helpers in `helpers.js`
+  and walkers in `walkers.js`.
 - `game/assets/` — pixel-art PNGs plus three local radio tracks.
 - `screenshots/` — chase, street, missions and title shots.
 - `main.ts` — the hand-in program: it copies `game/` and `screenshots/`,
