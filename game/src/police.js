@@ -121,6 +121,26 @@ function liveryMaterials() {
   return { text: textMat, badge: badgeMat };
 }
 
+// Flash glow texture, drawn once and shared by every unit: a white
+// radial gradient (hot core fading to transparent) that the red/blue
+// sprite materials tint. One texture serves both colours.
+let glowTexture = null;
+
+function getGlowTexture() {
+  if (glowTexture) return glowTexture;
+  const canvas = makeCanvas(128, 128);
+  const ctx = canvas.getContext('2d');
+  const grad = ctx.createRadialGradient(64, 64, 0, 64, 64, 64);
+  grad.addColorStop(0, 'rgba(255, 255, 255, 1)');
+  grad.addColorStop(0.25, 'rgba(255, 255, 255, 0.85)');
+  grad.addColorStop(0.6, 'rgba(255, 255, 255, 0.28)');
+  grad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+  glowTexture = new THREE.CanvasTexture(canvas);
+  return glowTexture;
+}
+
 export class Police {
   constructor(scene, textures, city, rng) {
     this.scene = scene;
@@ -158,6 +178,7 @@ export class Police {
     this.lostTimer = 0;
     this.clock = 0;
     this.callsignIndex = 0;
+    this._unitSeq = 0;
     this.spawnTimer = 0;
     this.soldierPreloaded = false;
     this.soldierPreloadNext = 0;
@@ -290,7 +311,15 @@ export class Police {
   // 0.19, blue 0.32), so at intensity 3 the bar barely glows — override
   // them to full-bright colours and drive the intensity hard (8 on /
   // 0.1 off) so the bar reads as a flashing light even in daylight.
+  // Two more things make the flash read in screenshots: the milky
+  // translucent Em_Cover (alpha 0.28) is faded to nearly invisible so
+  // it stops washing the lenses out, and a pair of glow sprites hovers
+  // just above the bar — the lenses alone are only a few pixels wide
+  // at screenshot scale. Each unit's phase is flipped on alternate
+  // units (unit.phaseFlip), so red and blue are both visible at once
+  // instead of every car flashing the same colour in sync.
   _flashUnit(unit, blinkOn) {
+    const on = unit.phaseFlip ? !blinkOn : blinkOn;
     if (!unit.redMaterial || !unit.blueMaterial) {
       unit.car.group.traverse((o) => {
         if (!o.isMesh) return;
@@ -303,12 +332,37 @@ export class Police {
           } else if (m.name === 'Em_Blue') {
             unit.blueMaterial = m;
             m.emissive.setRGB(0.05, 0.25, 1);
+          } else if (m.name === 'Em_Cover' && !unit.coverMaterial) {
+            unit.coverMaterial = m;
+            m.opacity = 0.05;
           }
         }
       });
     }
-    if (unit.redMaterial) unit.redMaterial.emissiveIntensity = blinkOn ? 8 : 0.1;
-    if (unit.blueMaterial) unit.blueMaterial.emissiveIntensity = blinkOn ? 0.1 : 8;
+    if (unit.redMaterial) unit.redMaterial.emissiveIntensity = on ? 8 : 0.1;
+    if (unit.blueMaterial) unit.blueMaterial.emissiveIntensity = on ? 0.1 : 8;
+    // Glow halos above the light bar, created once per unit. The bar
+    // sits at y 1.34, z -0.36 (measured from police-car.glb: the
+    // Em_Cover bbox, dequantized and scaled by the 0.85 GLB scale), so
+    // the sprites hover just above it at y 1.52; red on the +x half,
+    // blue on the -x half, matching the lens layout. depthWrite false
+    // so the halos never occlude oddly.
+    if (!unit.glowSprites) {
+      const makeGlow = (color, x) => {
+        const mat = new THREE.SpriteMaterial({
+          map: getGlowTexture(), color, transparent: true,
+          depthWrite: false, opacity: 0.05,
+        });
+        const sprite = new THREE.Sprite(mat);
+        sprite.position.set(x, 1.52, -0.36);
+        sprite.scale.set(1.4, 1.4, 1);
+        unit.car.group.add(sprite);
+        return sprite;
+      };
+      unit.glowSprites = { red: makeGlow(0xff1a2e, 0.23), blue: makeGlow(0x1a5cff, -0.23) };
+    }
+    unit.glowSprites.red.material.opacity = on ? 0.9 : 0.05;
+    unit.glowSprites.blue.material.opacity = on ? 0.05 : 0.9;
   }
 
   _steerCar(car, desired, dt) {
@@ -760,14 +814,20 @@ export class Police {
     // flat section is too short for the 1.9 m plane. The car already wears
     // a black-and-white livery, so the text alone carries it.
     this._decoratePoliceCar(car);
+    // Alternating flash phase: consecutive units blink opposite each
+    // other, so at any instant half the cars show red and half blue.
+    this._unitSeq += 1;
     const unit = {
       car,
       callsign,
       status: 'PURSUIT',
       ramCooldown: 0,
       shootCooldown: 1 + Math.random() * 2,
+      phaseFlip: this._unitSeq % 2 === 0,
       redMaterial: null,
       blueMaterial: null,
+      coverMaterial: null,
+      glowSprites: null,
       escortSide: 0,
       officer: null,
       stillTimer: 0,
