@@ -29,10 +29,13 @@ const WATER = {
 const PUNCH = { total: 0.45, extend: 0.12, hold: 0.08 };
 // Punch pose as data: [bone, rotX, rotY, rotZ], each angle scaled by the
 // punch envelope. The right arm drives straight ahead; the left guards.
+// The model's arms rest in a ~40-degree A-pose, so the Z values on the
+// upper arms compensate that angle first (right +0.8, left -0.69): with
+// Z at zero the punching arm points off to the side instead of forward.
 const PUNCH_POSE = [
   ['UpperArm_R', -1.57, 0, 0.8],
   ['LowerArm_R', -0.25, 0, 0],
-  ['UpperArm_L', 0.4, 0, 0.3],
+  ['UpperArm_L', 0.4, 0, -0.69],
   ['LowerArm_L', -1.2, 0, 0],
   ['Chest', 0.12, -0.35, 0],
   ['Hand_R', 0, -0.8, 0],

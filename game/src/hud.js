@@ -527,7 +527,7 @@ export class Hud {
         { x: 104, z: -104, text: 'SAFEHOUSE', color: '#ffffff', dy: 32 },
       ];
       if (s.sprayPos) pois.push({ x: s.sprayPos.x, z: s.sprayPos.z, text: "PAY'N'SPRAY", color: '#2ad0c4', dy: 0 });
-      if (s.shopPos) pois.push({ x: s.shopPos.x, z: s.shopPos.z, text: 'VICE CUTS', color: '#ff5aa8', dy: -14 });
+      if (s.shopPos) pois.push({ x: s.shopPos.x, z: s.shopPos.z, text: 'SUNSET CUTS', color: '#ff5aa8', dy: -14 });
       if (s.businessBlips) {
         for (const b of s.businessBlips) pois.push({ x: b.x, z: b.z, text: b.name, color: b.owned ? '#7affc4' : '#ffd978', dy: -14 });
       }

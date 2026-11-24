@@ -675,10 +675,10 @@ function update(dt) {
   } else {
     G.hud.clearPrompt('collect');
   }
-  // VICE CUTS barbershop: walk in on foot, press E to change your look.
+  // SUNSET CUTS barbershop: walk in on foot, press E to change your look.
   const shopDist = Math.hypot(focus.position.x - SHOP_X, focus.position.z - SHOP_Z);
   if (!G.drivenCar && shopDist < SHOP_RANGE) {
-    G.hud.showPrompt('shop', 'VICE CUTS — press E to change your look');
+    G.hud.showPrompt('shop', 'SUNSET CUTS — press E to change your look');
     if (G.input.pressed('KeyE')) openStyleScreen();
   } else {
     G.hud.clearPrompt('shop');

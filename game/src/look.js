@@ -1,4 +1,4 @@
-// Character look: the VICE CUTS barbershop options (hair, shirt, skin),
+// Character look: the SUNSET CUTS barbershop options (hair, shirt, skin),
 // the swatch buttons the style screen shows, and applyLook, which
 // clamps a partial change, repaints the player model and persists it.
 // The look rides in the save file, so loading a save re-applies it.

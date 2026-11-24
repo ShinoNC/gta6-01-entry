@@ -67,6 +67,11 @@ const blockZone = (col, row) => {
   if (edge) return 'beachfront';
   return 'residential';
 };
+// The beach-facing front rows (rows 8-9, columns 4-7) face the title
+// camera: their buildings are white arena-style mid-rises instead of
+// houses or checkered facades. The SUNSET TOWER block (5,9) and the
+// park block (7,9) are reserved and never reach this test.
+const isWhiteFront = (col, row) => row >= 8 && row <= 9 && col >= 4 && col <= 7;
 // Models registered in models_loader.js load via loadProp. The newer
 // house and town models use the shared cached loadGLB path instead:
 // static props need no skeleton re-bind, so a deep clone is enough and
@@ -79,7 +84,7 @@ const loadHouse = (name) => {
 // visible building, and its glass-box placeholder shows until the 1.7 MB
 // model arrives — preloading means swapGlb finds it cached already.
 loadHouse('office-tower').catch(() => {});
-// VICE ROYALE is an island: a 10x10 block city grid ringed by beach,
+// SUNSET ROYALE is an island: a 10x10 block city grid ringed by beach,
 // with open sea on all four sides. The 52m pitch is kept so every
 // existing coordinate (missions, businesses, shop, spray, parked cars)
 // stays valid — the old 6x4 city is the centre of the new grid, and the
@@ -238,19 +243,26 @@ export function shoreOutward(x, z) {
   if (d <= 0.001) return null;
   return { x: dx / d, z: dz / d };
 }
+// Day and dusk sky gradients: same 4 offsets, so the dusk sky is a
+// straight per-stop lerp of the day sky. Dusk is a GTA VI-style Miami
+// sunset: indigo top, magenta, coral, gold horizon.
+const SKY_DAY_STOPS = [[0, '#3a7bd5'], [0.4, '#6db3e8'], [0.7, '#a8d8f0'], [1, '#d4eefc']];
+const SKY_DUSK_STOPS = [[0, '#2a1a5e'], [0.4, '#a83a7a'], [0.7, '#ff6b5a'], [1, '#ffc94d']];
+function drawSkyGradient(ctx, stops) {
+  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
+  for (const [o, c] of stops) gradient.addColorStop(o, c);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 4, 256);
+}
 function skyTexture() {
   const canvas = document.createElement('canvas');
   canvas.width = 4;
   canvas.height = 256;
   const ctx = canvas.getContext('2d');
-  const gradient = ctx.createLinearGradient(0, 0, 0, 256);
-  const stops = [[0, '#3a7bd5'], [0.4, '#6db3e8'], [0.7, '#a8d8f0'], [1, '#d4eefc']];
-  for (const [o, c] of stops) gradient.addColorStop(o, c);
-  ctx.fillStyle = gradient;
-  ctx.fillRect(0, 0, 4, 256);
+  drawSkyGradient(ctx, SKY_DAY_STOPS);
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-  return texture;
+  return { texture, ctx };
 }
 function pushOutOfBoxes(position, radius, boxes) {
   for (const box of boxes) {
@@ -353,15 +365,15 @@ function nightWindowsTex(cells, rand) {
 // border (white on #141030 is ~16:1 contrast) reads from street level,
 // and the emissive map makes signs glow at night like lit windows.
 const SHOP_NAMES = [
-  'PALM HOTEL', 'VICE DINER', 'NEON MART', 'CORAL CAFE',
+  'PALM HOTEL', 'SUNSET DINER', 'NEON MART', 'CORAL CAFE',
   'SUNSET BAR', 'KEYS BAKERY', 'MARINA MOTEL', 'LANTERN LOUNGE',
   'HARBOR GYM', 'OLD PORT TAVERN', 'PELICAN PIZZA', 'SOLARIS SUSHI',
   'BLUFF BOOKS', 'GULL GROCERY', 'EMBER GRILL', 'TIDE TATTOO',
   'COCONUT CLUB', 'STARFISH SPA', 'ANCHOR ARMS', 'RIPTIDE RECORDS',
   'OCEAN DRIVE INN', 'NEON PALMS HOTEL', 'CORAL BAY RESORT', 'SUNSET STRIP CAFE',
-  'VICE CITY TACOS', 'PALM COURT HOTEL', 'BAYSIDE BISTRO', 'TROPICANA LOUNGE',
-  'SEASIDE STEAKHOUSE', 'MIAMI VICE BAR', 'CORAL GABLES INN', 'OCEAN BREEZE SPA',
-  'PALM BEACH GRILL', 'SUNSET COVE HOTEL', 'VICE ROYALE CASINO', 'TROPICAL SMOOTHIES',
+  'SUNSET TACOS', 'PALM COURT HOTEL', 'BAYSIDE BISTRO', 'TROPICANA LOUNGE',
+  'SEASIDE STEAKHOUSE', 'SUNSET BAR', 'CORAL GABLES INN', 'OCEAN BREEZE SPA',
+  'PALM BEACH GRILL', 'SUNSET COVE HOTEL', 'SUNSET ROYALE CASINO', 'TROPICAL SMOOTHIES',
   'BEACHFRONT BAKERY', 'MARINA BAY HOTEL', 'COCONUT GROVE CAFE', 'STARFISH INN',
 ];
 const signTexCache = new Map();
@@ -422,7 +434,27 @@ export function buildCity(scene, textures, rand) {
   const glowMats = [];
   const neonMats = [];
   const signList = [];
-  const daySky = skyTexture();
+  const sky = skyTexture();
+  const daySky = sky.texture;
+  // Dusk sky: lerp the sky gradient from day blue to Miami sunset as
+  // f goes 0 -> 0.5, so the title screen's fixed f=0.4 already shows
+  // vivid dusk colours. Redraws are cached: setNight runs every
+  // frame, but the 4x256 gradient only repaints when f moved by 0.01.
+  const skyDayColors = SKY_DAY_STOPS.map(([, c]) => new THREE.Color(c));
+  const skyDuskColors = SKY_DUSK_STOPS.map(([, c]) => new THREE.Color(c));
+  const skyLerpColor = new THREE.Color();
+  let skyLastF = -1;
+  function updateSky(f) {
+    if (Math.abs(f - skyLastF) < 0.01) return;
+    skyLastF = f;
+    const t = Math.min(1, f / 0.5);
+    const stops = SKY_DAY_STOPS.map(([o], i) => {
+      skyLerpColor.lerpColors(skyDayColors[i], skyDuskColors[i], t);
+      return [o, `#${skyLerpColor.getHexString()}`];
+    });
+    drawSkyGradient(sky.ctx, stops);
+    daySky.needsUpdate = true;
+  }
   const darkSky = new THREE.Color(0x14102a);
   const sunDay = new THREE.Color(0xfff2d0);
   const sunNight = new THREE.Color(0x8090c8);
@@ -473,11 +505,12 @@ export function buildCity(scene, textures, rand) {
   moonDisc.lookAt(0, 20, 0);
   moonDisc.visible = false;
   root.add(moonDisc);
-  const layFlat = (tex, rx, ry, w, d, x, y, z) => {
-    const t = tex.clone();
-    t.needsUpdate = true;
-    t.repeat.set(rx, ry);
-    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ map: t }));
+  // Flat-colour ground plane: same rotated plane as the old textured
+  // layFlat, but a solid colour instead of a speckled 64x64 tile, so
+  // roads, sea, sand and sidewalk read clean like real surfaces.
+  // The colours are the averages of the textures they replace.
+  const layFlatColor = (color, w, d, x, y, z) => {
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, d), new THREE.MeshLambertMaterial({ color }));
     mesh.rotation.x = -Math.PI / 2;
     mesh.position.set(x, y, z);
     root.add(mesh);
@@ -486,30 +519,69 @@ export function buildCity(scene, textures, rand) {
   // Island stack, bottom to top: a wide ocean sheet, a sand sheet for
   // the beach ring, then the city ground — the sand shows as a 38m ring
   // around all four sides. Road strips sit above the ground.
-  const sea = layFlat(textures.water, 120, 120, SEA_FAR * 2, SEA_FAR * 2, 0, -0.15, 0);
-  const seaTex = sea.material.map;
-  layFlat(textures.sand, 40, 40, SHORELINE * 2, SHORELINE * 2, 0, 0.01, 0);
-  const cityFloor = layFlat(textures.sidewalk, 80, 80, HALF * 2, HALF * 2, 0, 0.02, 0);
+  layFlatColor(0x43adcd, SEA_FAR * 2, SEA_FAR * 2, 0, -0.15, 0);
+  layFlatColor(0xf6dfae, SHORELINE * 2, SHORELINE * 2, 0, 0.01, 0);
+  const cityFloor = layFlatColor(0xccc1b2, HALF * 2, HALF * 2, 0, 0.02, 0);
   cityFloor.receiveShadow = true;
   // Road strips stop at the city edge (+/-266): the old 544m strips
   // poked 6m onto the sand at both ends.
   for (let i = 0; i <= GRID_W; i += 1) {
-    layFlat(textures.road, 1, 61, ROAD_W, HALF * 2, roadX(i), 0.03, 0);
+    layFlatColor(0x424345, ROAD_W, HALF * 2, roadX(i), 0.03, 0);
   }
   for (let j = 0; j <= GRID_H; j += 1) {
-    const stripTexture = textures.road.clone();
-    stripTexture.needsUpdate = true;
-    stripTexture.repeat.set(1, 61);
     const stripGeometry = new THREE.PlaneGeometry(ROAD_W, HALF * 2);
     stripGeometry.rotateX(-Math.PI / 2);
     stripGeometry.rotateY(Math.PI / 2);
-    const strip = new THREE.Mesh(stripGeometry, new THREE.MeshLambertMaterial({ map: stripTexture }));
+    const strip = new THREE.Mesh(stripGeometry, new THREE.MeshLambertMaterial({ color: 0x424345 }));
     strip.position.set(0, 0.04, roadZ(j));
     root.add(strip);
+  }
+  // Dashed white centre lines on every road: the dark asphalt swallows
+  // dark cars, and a real road has markings. One merged geometry per
+  // axis (a mesh per dash would be ~2000 draw calls); the two axes sit
+  // 1mm apart so crossing dashes never z-fight. Basic material stays
+  // bright at dusk and night.
+  const dashGeo = new THREE.PlaneGeometry(0.3, 3);
+  dashGeo.rotateX(-Math.PI / 2);
+  const dashMat = new THREE.MeshBasicMaterial({ color: 0xf5f5f5 });
+  for (const [dashAxis, dashY] of [['z', 0.045], ['x', 0.046]]) {
+    const dashParts = [];
+    for (const line of roadLines()) {
+      if (line.axis !== dashAxis) continue;
+      const count = Math.floor((line.to - line.from) / 6);
+      for (let k = 0; k < count; k += 1) {
+        const s = line.from + 3 + k * 6;
+        const m = new THREE.Matrix4();
+        if (dashAxis === 'z') m.makeTranslation(line.at, dashY, s);
+        else m.makeRotationY(Math.PI / 2).setPosition(s, dashY, line.at);
+        dashParts.push([dashGeo, m]);
+      }
+    }
+    root.add(new THREE.Mesh(mergeParts(dashParts), dashMat));
   }
   const faceTexs = [textures.facadeA, textures.facadeB, textures.facadeC, textures.facadeD, textures.facadeE, textures.facadeF];
   const faceWins = faceTexs.map((facade) => findWindows(facade.image));
   const roofMat = new THREE.MeshLambertMaterial({ map: textures.roof });
+  // White arena-style front for the beach-facing rows: bright white
+  // walls (pure white + a strong emissive lift, the same recipe as
+  // the SUNSET ARENA, so the shaded side stays white instead of
+  // going grey-beige), a dark window band just under the roofline
+  // and a gold trim at the roofline. One shared material each for
+  // every white-front building. The wall material has no emissive
+  // map, so it never joins glowMats.
+  const whiteFrontMat = new THREE.MeshLambertMaterial({ color: 0xffffff, emissive: 0x9a9a9a });
+  const whiteFrontBandMat = new THREE.MeshLambertMaterial({ color: 0x1a2a3a });
+  const whiteFrontGoldMat = new THREE.MeshLambertMaterial({ color: 0xffb703 });
+  // Rooftop features for the white-front buildings: one per building,
+  // chosen by block position. Pool water, helipad darktop + white
+  // markings, and lawn green — one shared material each, plus a unit
+  // helipad disc scaled per building. The mast and shrubs reuse the
+  // existing rooftop-dressing geometries (mastCyl/tipBall/shrubBall).
+  const whiteFrontPoolMat = new THREE.MeshLambertMaterial({ color: 0x2a9fd8 });
+  const whiteFrontPadMat = new THREE.MeshLambertMaterial({ color: 0x3a3f4a });
+  const whiteFrontMarkMat = new THREE.MeshLambertMaterial({ color: 0xffffff });
+  const whiteFrontLawnMat = new THREE.MeshLambertMaterial({ color: 0x4a9a4a });
+  const whiteFrontPadGeo = new THREE.CylinderGeometry(1, 1, 0.12, 20);
   const unitBox = new THREE.BoxGeometry(1, 1, 1);
   const signPlane = new THREE.PlaneGeometry(SIGN_WIDTH, SIGN_HEIGHT);
   // A single radial glow texture serves sign halos, streetlight glow
@@ -664,7 +736,7 @@ export function buildCity(scene, textures, rand) {
   // the commercial ring stays mid-rise (3-6 storeys). A tall tower never
   // stands next to another tall tower downtown (prevTall caps the next
   // plot), so the rhythm reads short-tall-short instead of a flat line
-  // or a clump. VICE TOWER (70m, Office Tower GLB) stays the tallest
+  // or a clump. SUNSET TOWER (70m, Office Tower GLB) stays the tallest
   // silhouette on the island. Residential and beachfront blocks never
   // reach this code — they are houses, built below.
   let prevTall = false;
@@ -807,10 +879,15 @@ export function buildCity(scene, textures, rand) {
     for (let c = 0; c < GRID_W; c += 1) {
       const bx = blockX(c);
       const bz = blockZ(r);
-      // Reserved blocks — hospital (6,5), VICE TOWER (5,9), clock tower
-      // (5,5), casino (9,2), stadium (3,9) — are built separately below.
-      if ((c === 6 && r === 5) || (c === 5 && r === 9) || (c === 5 && r === 5) || (c === 9 && r === 2) || (c === 3 && r === 9)) continue;
-      const zk = blockZone(c, r);
+      // Reserved blocks — hospital (6,5), SUNSET TOWER (5,9), clock tower
+      // (5,5), casino (9,2), stadium (3,9), park (7,9) — are built
+      // separately below.
+      if ((c === 6 && r === 5) || (c === 5 && r === 9) || (c === 5 && r === 5) || (c === 9 && r === 2) || (c === 3 && r === 9) || (c === 7 && r === 9)) continue;
+      // White-front blocks go through the commercial parcel logic
+      // even on row 9 (residential by zone), so the front row gets
+      // white arena-style mid-rises instead of small houses.
+      const whiteFront = isWhiteFront(c, r);
+      const zk = whiteFront ? 'commercial' : blockZone(c, r);
       if (zk === 'residential' || zk === 'beachfront') {
         placeHouseBlock(c, r, bx, bz, zk);
         continue;
@@ -848,9 +925,12 @@ export function buildCity(scene, textures, rand) {
         // facade reflect the sky environment and gleam in the sun; the
         // emissive map still drives the night windows (emissive is
         // independent of metalness). On mobile this is Lambert — see
-        // facadeMat at the top of the file.
-        const sm = facadeMat(ft, et);
-        glowMats.push(sm);
+        // facadeMat at the top of the file. White-front parcels use the
+        // shared white arena-style material instead; ft/et are still built
+        // above so the seeded rand stream stays aligned for the blocks
+        // after this one.
+        const sm = whiteFront ? whiteFrontMat : facadeMat(ft, et);
+        if (!whiteFront) glowMats.push(sm);
         // One material, not a 6-material array: a material array costs
         // one draw call per box face group (6 per building); a single
         // material costs 1. The roof is a separate thin slab with its
@@ -866,13 +946,40 @@ export function buildCity(scene, textures, rand) {
         cap.scale.set(pc.w, 0.15, pc.d);
         cap.position.set(pc.x, h - 0.075, pc.z);
         root.add(cap);
+        // White-front dressing, arena style: a dark window band just
+        // under the roofline and a gold trim line at the roofline, so
+        // the white box reads as a building, not a blank slab. Main
+        // box only — setbacks stay plain white like the arena's tiers.
+        // Floor bands: one dark window band per 3m floor, so the hotel
+        // reads as storeys. Bands stop 1m short of the top band (its
+        // bottom is h-2.0), so the highest floor band's top is h-3.0.
+        if (whiteFront) {
+          const band = new THREE.Mesh(unitBox, whiteFrontBandMat);
+          band.scale.set(pc.w + 0.1, 1.2, pc.d + 0.1);
+          band.position.set(pc.x, h - 1.4, pc.z);
+          root.add(band);
+          const trim = new THREE.Mesh(unitBox, whiteFrontGoldMat);
+          trim.scale.set(pc.w + 0.2, 0.25, pc.d + 0.2);
+          trim.position.set(pc.x, h - 0.1, pc.z);
+          root.add(trim);
+          for (let fy = 3; fy + 0.5 <= h - 3.0; fy += 3) {
+            const fb = new THREE.Mesh(unitBox, whiteFrontBandMat);
+            fb.scale.set(pc.w + 0.1, 1.0, pc.d + 0.1);
+            fb.position.set(pc.x, fy, pc.z);
+            root.add(fb);
+          }
+        }
         // Shape variety: a setback box on some buildings, then a smaller
         // second setback on the tallest (guaranteed above 24m), plus a
         // parapet rim on most. Shops (6-7m) never get a setback — a box
         // on a 1-storey shop would double its height. ty/tw/td track
         // the roof the dressing sits on.
         let ty = h, tw = pc.w, td = pc.d;
-        const sb = h >= 8 && (rand() < 0.3 || h > 13);
+        // White-front parcels keep a clean flat roof (full footprint)
+        // for their rooftop feature, so the setback roll is computed
+        // — the seeded rand stream stays aligned — then forced off.
+        const sbRoll = h >= 8 && (rand() < 0.3 || h > 13);
+        const sb = whiteFront ? false : sbRoll;
         if (sb) {
           const s1 = intBetween(rand, 3, 6);
           const sb1 = new THREE.Mesh(unitBox, sm);
@@ -924,7 +1031,7 @@ export function buildCity(scene, textures, rand) {
         // on the tallest. When a setback leaves a lower roof ring
         // exposed, the ring gets its own AC unit so it is not a bare
         // slab. (Water towers were removed: brown wooden tanks look
-        // wrong on modern glass towers — Vice City / Miami style, not
+        // wrong on modern glass towers — Miami style, not
         // old NYC.)
         if (rand() < 0.75) {
           const na = 1 + Math.floor(rand() * 2);
@@ -970,12 +1077,61 @@ export function buildCity(scene, textures, rand) {
           tp.position.set(pc.x, ty + 5, pc.z);
           root.add(mp, tp);
         }
+        // White-front rooftop feature: one distinctive feature per
+        // building, chosen by block position so it is stable across
+        // runs — pool, helipad, antenna mast, rooftop garden in
+        // rotation. A twin parcel's east building takes the next
+        // feature in the rotation, so twin neighbours differ. All
+        // features sit on the flat main roof (base at y = h), clear
+        // of the parapet ring at the roof edge.
+        if (whiteFront) {
+          const feat = (c + r + (pc.x > bx ? 1 : 0)) % 4;
+          if (feat === 0) {
+            const pool = new THREE.Mesh(unitBox, whiteFrontPoolMat);
+            pool.scale.set(pc.w * 0.6, 0.15, pc.d * 0.6);
+            pool.position.set(pc.x, h + 0.075, pc.z);
+            root.add(pool);
+          } else if (feat === 1) {
+            const pr = Math.min(pc.w, pc.d) * 0.32;
+            const pad = new THREE.Mesh(whiteFrontPadGeo, whiteFrontPadMat);
+            pad.scale.set(pr, 1, pr);
+            pad.position.set(pc.x, h + 0.06, pc.z);
+            root.add(pad);
+            const bw = pr * 0.25, bl = pr * 1.2;
+            const h1 = new THREE.Mesh(unitBox, whiteFrontMarkMat);
+            h1.scale.set(bw, 0.06, bl);
+            h1.position.set(pc.x - pr * 0.325, h + 0.15, pc.z);
+            const h2 = h1.clone();
+            h2.position.x = pc.x + pr * 0.325;
+            const h3 = new THREE.Mesh(unitBox, whiteFrontMarkMat);
+            h3.scale.set(pr * 0.9, 0.06, bw);
+            h3.position.set(pc.x, h + 0.15, pc.z);
+            root.add(h1, h2, h3);
+          } else if (feat === 2) {
+            const mp = new THREE.Mesh(mastCyl, mastMtl);
+            mp.position.set(pc.x + pc.w * 0.25, h + 2.5, pc.z - pc.d * 0.25);
+            const tp = new THREE.Mesh(tipBall, tipMtl);
+            tp.position.set(pc.x + pc.w * 0.25, h + 5, pc.z - pc.d * 0.25);
+            root.add(mp, tp);
+          } else {
+            const lawn = new THREE.Mesh(unitBox, whiteFrontLawnMat);
+            lawn.scale.set(pc.w * 0.6, 0.12, pc.d * 0.6);
+            lawn.position.set(pc.x, h + 0.06, pc.z);
+            root.add(lawn);
+            const shrubOffs = [[-0.18, 0.12], [0.14, -0.1], [0.04, 0.18], [-0.06, -0.16]];
+            for (const [ox, oz] of shrubOffs) {
+              const shrub = new THREE.Mesh(shrubBall, shrubMtl);
+              shrub.position.set(pc.x + ox * pc.w, h + 1.0, pc.z + oz * pc.d);
+              root.add(shrub);
+            }
+          }
+        }
         const bb = { minX: pc.x - pc.w / 2, maxX: pc.x + pc.w / 2, minZ: pc.z - pc.d / 2, maxZ: pc.z + pc.d / 2 };
         colliders.push(bb);
         // Every building carries a name sign on the facade facing its
         // nearest road; no name repeats on the same street. Height is
         // kept for the high-sign pass below (tallest signed towers).
-        const rec = { box: bb, sign: null, height: h };
+        const rec = { box: bb, sign: null, height: h, whiteFront };
         towerList.push(rec);
         if (rand() < 1) {
           const nzr = roadX(Math.round((pc.x + HALF - ROAD_W / 2) / PITCH));
@@ -985,9 +1141,16 @@ export function buildCity(scene, textures, rand) {
           // Single plots sit equidistant from all four roads — break
           // the tie at random so signs do not all face east.
           const uz = dzr < dxr || (dzr === dxr && rand() < 0.5);
-          const rk = uz ? `z:${nzr}` : `x:${nxr}`;
-          const tx = uz ? nzr : pc.x;
-          const tz = uz ? pc.z : nxr;
+          // White-front signs always face SOUTH, toward the beach and
+          // the title camera: the target sits 1m beyond the south
+          // face, so nearestFace picks the south face (the 1m gap
+          // beats every other face's distance). Their name key is the
+          // E-W road south of the block, so no two front-row signs on
+          // the same street share a name. Other buildings keep the
+          // nearest-road logic above.
+          const rk = whiteFront ? `x:${roadZ(r + 1)}` : (uz ? `z:${nzr}` : `x:${nxr}`);
+          const tx = whiteFront ? pc.x : (uz ? nzr : pc.x);
+          const tz = whiteFront ? pc.z + pc.d / 2 + 1 : (uz ? pc.z : nxr);
           if (!namesPerRoad.has(rk)) namesPerRoad.set(rk, new Set());
           const taken = namesPerRoad.get(rk);
           const si = Math.floor(rand() * SHOP_NAMES.length);
@@ -1080,7 +1243,7 @@ export function buildCity(scene, textures, rand) {
     const signedT = towerList.filter((r) => r.sign && r.height >= 18);
     signedT.sort((a, b) => b.height - a.height);
     const bigPl = new THREE.PlaneGeometry(16, 4);
-    for (const record of signedT.slice(0, 10)) {
+    const addHighSign = (record) => {
       const p = record.sign.p;
       const fw = p.nz !== 0 ? record.box.maxX - record.box.minX : record.box.maxZ - record.box.minZ;
       const sw = Math.min(16, Math.max(10, fw - 2));
@@ -1096,6 +1259,16 @@ export function buildCity(scene, textures, rand) {
       hg.position.set(p.x - p.nx * 0.06, record.height - 2.2, p.z - p.nz * 0.06);
       hg.rotation.y = p.rotY;
       root.add(hg);
+    };
+    for (const record of signedT.slice(0, 10)) addHighSign(record);
+    // White-front buildings carry a roofline sign too, on the same
+    // south facade as their ground sign, so their names read from
+    // the title screen's aerial orbit. In addition to the top-10
+    // rule above — a front-row tower tall enough for both gets one
+    // sign, not two.
+    const frontDone = new Set(signedT.slice(0, 10));
+    for (const record of towerList) {
+      if (record.whiteFront && record.sign && !frontDone.has(record)) addHighSign(record);
     }
   }
   // HOSPITAL: white building on the block east of spawn; the starting
@@ -1135,7 +1308,7 @@ export function buildCity(scene, textures, rand) {
     root.add(cv, ch);
   }
   // Landmarks: one recognizable point per district, compact meshes.
-  // VICE TOWER — Office Tower GLB (30.2 x 30.9m, antenna tip 69.74m —
+  // SUNSET TOWER — Office Tower GLB (30.2 x 30.9m, antenna tip 69.74m —
   // both measured from the model, not guessed). A glass box of the
   // same footprint stands in until the GLB loads. Roof levels measured
   // from the GLB: main slab at 59m, stepped crown top at 62m (a 12.2m
@@ -1181,7 +1354,7 @@ export function buildCity(scene, textures, rand) {
     // z offset, so its centre is at world z=21.65, not 26: south face at
     // z=37.1, north at z=6.2, east/west faces at x=41.1/10.9. Each sign
     // sits 0.15m off its face, halo 0.1m behind the sign.
-    const tm = signMaterialFor('VICE TOWER').clone();
+    const tm = signMaterialFor('SUNSET TOWER').clone();
     neonMats.push({ mat: tm, phase: rand() * Math.PI * 2 });
     const sg2 = new THREE.PlaneGeometry(12, 3);
     const sS = new THREE.Mesh(sg2, tm);
@@ -1231,7 +1404,7 @@ export function buildCity(scene, textures, rand) {
     py.rotation.y = Math.PI / 4;
     py.position.set(182, 13, -182);
     root.add(py);
-    const cm = signMaterialFor('VICE CASINO').clone();
+    const cm = signMaterialFor('SUNSET CASINO').clone();
     neonMats.push({ mat: cm, phase: rand() * Math.PI * 2 });
     const cs = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), cm);
     cs.position.set(182, 6, -166.8);
@@ -1241,6 +1414,96 @@ export function buildCity(scene, textures, rand) {
     ch2.position.set(182, 6, -166.75);
     root.add(ch2);
     colliders.push({ minX: 167, maxX: 197, minZ: -197, maxZ: -167 });
+  }
+  // Park — front-row block (7,9) is green space instead of a white
+  // building: lawn, cross paths, trees, benches and a round fountain
+  // at the centre. Only the fountain collides; trees and benches are
+  // small props like the beach benches. Everything stays inside the
+  // 40m block, clear of the roads on all four sides.
+  {
+    const px = 130, pz = 234;
+    const lawn = new THREE.Mesh(unitBox, whiteFrontLawnMat);
+    lawn.scale.set(40, 0.1, 40);
+    lawn.position.set(px, 0.05, pz);
+    root.add(lawn);
+    const pathMat = new THREE.MeshLambertMaterial({ color: 0xe8e0d0 });
+    const pathNS = new THREE.Mesh(unitBox, pathMat);
+    pathNS.scale.set(3, 0.06, 40);
+    pathNS.position.set(px, 0.08, pz);
+    root.add(pathNS);
+    const pathEW = new THREE.Mesh(unitBox, pathMat);
+    pathEW.scale.set(40, 0.06, 3);
+    pathEW.position.set(px, 0.08, pz);
+    root.add(pathEW);
+    // Trees: trunk + round canopy, four at the corners and four
+    // flanking the north-south path, all clear of the paths.
+    const trunkGeo = new THREE.CylinderGeometry(0.18, 0.25, 2.2, 6);
+    const trunkMtl = new THREE.MeshLambertMaterial({ color: 0x6a4a2a });
+    const canopyGeo = new THREE.SphereGeometry(1.6, 8, 6);
+    const treeSpots = [
+      [-16, -16], [16, -16], [-16, 16], [16, 16],
+      [-10, -6], [10, -6], [-10, 6], [10, 6],
+    ];
+    for (const [ox, oz] of treeSpots) {
+      const trunk = new THREE.Mesh(trunkGeo, trunkMtl);
+      trunk.position.set(px + ox, 1.2, pz + oz);
+      const canopy = new THREE.Mesh(canopyGeo, shrubMtl);
+      canopy.position.set(px + ox, 3.4, pz + oz);
+      root.add(trunk, canopy);
+    }
+    // Benches face the fountain: seat + back + two legs, grouped so
+    // one rotation aims the whole bench. Default faces +z (south).
+    const pkSeatGeo = new THREE.BoxGeometry(1.8, 0.12, 0.5);
+    const pkBackGeo = new THREE.BoxGeometry(1.8, 0.5, 0.1);
+    const pkLegGeo = new THREE.BoxGeometry(0.12, 0.45, 0.45);
+    const pkBenchMtl = new THREE.MeshLambertMaterial({ color: 0x8a6a4a });
+    const benchDefs = [
+      { ox: -8, oz: 3, rotY: Math.PI / 2 },
+      { ox: 8, oz: -3, rotY: -Math.PI / 2 },
+      { ox: -3, oz: -8, rotY: 0 },
+      { ox: 3, oz: 8, rotY: Math.PI },
+    ];
+    for (const bd of benchDefs) {
+      const grp = new THREE.Group();
+      const st = new THREE.Mesh(pkSeatGeo, pkBenchMtl);
+      st.position.set(0, 0.5, 0);
+      const bk = new THREE.Mesh(pkBackGeo, pkBenchMtl);
+      bk.position.set(0, 0.85, -0.25);
+      const l1 = new THREE.Mesh(pkLegGeo, pkBenchMtl);
+      l1.position.set(-0.7, 0.22, 0);
+      const l2 = new THREE.Mesh(pkLegGeo, pkBenchMtl);
+      l2.position.set(0.7, 0.22, 0);
+      grp.add(st, bk, l1, l2);
+      grp.position.set(px + bd.ox, 0.1, pz + bd.oz);
+      grp.rotation.y = bd.rotY;
+      root.add(grp);
+    }
+    // Shrubs dotted around the lawn, clear of paths and benches.
+    const shrubSpots = [
+      [-13, -13], [13, -13], [-13, 13], [13, 13],
+      [-6, -13], [6, 13], [-13, 5], [13, -5],
+    ];
+    for (const [ox, oz] of shrubSpots) {
+      const sh = new THREE.Mesh(shrubBall, shrubMtl);
+      sh.position.set(px + ox, 0.9, pz + oz);
+      root.add(sh);
+    }
+    // Round fountain at the centre: blue disc, stone rim ring and a
+    // small centre jet column. The only collider in the park.
+    const pool = new THREE.Mesh(new THREE.CylinderGeometry(2, 2, 0.3, 20), whiteFrontPoolMat);
+    pool.position.set(px, 0.25, pz);
+    root.add(pool);
+    const rim = new THREE.Mesh(new THREE.TorusGeometry(2.2, 0.25, 8, 24), cWhite);
+    rim.rotation.x = Math.PI / 2;
+    rim.position.set(px, 0.3, pz);
+    root.add(rim);
+    const jet = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.35, 0.9, 8), cWhite);
+    jet.position.set(px, 0.8, pz);
+    root.add(jet);
+    const jetTop = new THREE.Mesh(new THREE.SphereGeometry(0.35, 8, 6), whiteFrontPoolMat);
+    jetTop.position.set(px, 1.4, pz);
+    root.add(jetTop);
+    colliders.push({ minX: px - 2.5, maxX: px + 2.5, minZ: pz - 2.5, maxZ: pz + 2.5 });
   }
   // Ferris wheel — south beach, slow rotation, lit hub at night.
   // A-frame legs converge on the hub (feet 7m out, tops at the axle),
@@ -1390,7 +1653,7 @@ export function buildCity(scene, textures, rand) {
     root.add(co);
     // Big name sign on the SOUTH face (toward the beach and the title
     // camera), so the name reads from the front instead of edge-on.
-    const am = signMaterialFor('VICE ARENA').clone();
+    const am = signMaterialFor('SUNSET ARENA').clone();
     neonMats.push({ mat: am, phase: rand() * Math.PI * 2 });
     const asn = new THREE.Mesh(new THREE.PlaneGeometry(12, 3), am);
     asn.position.set(ax, 5.5, az + 19.7);
@@ -2243,8 +2506,6 @@ export function buildCity(scene, textures, rand) {
       sun.position.set(fx + SUN_VEC.x * 250, SUN_VEC.y * 250, fz + SUN_VEC.z * 250);
     },
     update(dt) {
-      seaTex.offset.x += dt * 0.008;
-      seaTex.offset.y += dt * 0.005;
       nightTime += dt;
       if (landmarks.beam) {
         landmarks.beam.rotation.y += dt * 0.8;
@@ -2331,7 +2592,12 @@ export function buildCity(scene, textures, rand) {
       hemiLight.intensity = 1.7 - 1.35 * f;
       sunDisc.visible = f < 0.5;
       moonDisc.visible = f > 0.5;
-      scene.background = f > 0.5 ? darkSky : daySky;
+      if (f > 0.5) {
+        scene.background = darkSky;
+      } else {
+        scene.background = daySky;
+        updateSky(f);
+      }
       // Windows glow as night falls (0 by day — daytime is unchanged).
       for (const material of glowMats) material.emissiveIntensity = f * 1.7;
       // Neon signs: halo always on at night, face blinks gently and slowly,

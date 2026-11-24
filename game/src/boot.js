@@ -52,7 +52,7 @@ async function boot() {
   G.sprayBeacon = buildBeacon(G.scene, 0x2ad0c4);
   G.sprayBeacon.group.position.set(SPRAY_X, 0, SPRAY_Z);
   G.sprayBeacon.group.visible = true;
-  // VICE CUTS barbershop: a small pink storefront with a barber pole
+  // SUNSET CUTS barbershop: a small pink storefront with a barber pole
   // and a beacon. Its windows glow at night like the buildings'.
   const shopGroup = new THREE.Group();
   const shopBody = new THREE.Mesh(
@@ -87,7 +87,7 @@ async function boot() {
     shopWindow.rotation.y = Math.PI;
     G.scene.add(shopWindow);
   }
-  G.shopSignMat = signMaterialFor('VICE CUTS');
+  G.shopSignMat = signMaterialFor('SUNSET CUTS');
   const shopSign = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 0.6), G.shopSignMat);
   shopSign.position.set(SHOP_X, 3.0, SHOP_Z - 1.53);
   shopSign.rotation.y = Math.PI;
